@@ -954,6 +954,7 @@ do
         pieces[#pieces + 1] = t
       end
     end
+    pieces.corner = corner
     return pieces
   end
 
@@ -1027,6 +1028,53 @@ do
     if pieces[4] then Fade(wrap.Glyph) end
   end
 
+  -- The plate joined to the wrap as its last cell (Theme.JoinCell: the
+  -- search's sort, the Manage Recipients key), or nil.
+  function Parts.JoinedCell(wrap)
+    local search = wrap.__pbSearch
+    if type(search) == "table" and search.cell then return search.cell end
+    for i = 1, select("#", wrap:GetChildren()) do
+      local c = select(i, wrap:GetChildren())
+      if c and c.__pbJoinWrap == wrap then return c end
+    end
+    return nil
+  end
+
+  -- The field's end at its joined cell, while the cell is shown and wears
+  -- the small dark button (Parts.Seg): no end cap there, the border's top
+  -- and foot running straight on to the cell's left edge, where the cell's
+  -- own art takes them on. Hidden (a search with its sort taken out), the
+  -- field is whole again. Anchors only; nothing is made.
+  function Parts.FieldEnd(wrap, cell)
+    local pieces = wrap.__pbBlizzField
+    if not pieces then return end
+    local joined = (cell and cell.__pbBlizzSeg and cell:IsShown()) and true or false
+    if pieces.joined == joined then return end
+    pieces.joined = joined
+    if #pieces == 9 then
+      local corner = pieces.corner or CORNER
+      local rows = { { "TOP", -corner }, { "BOTTOM", corner }, { "BOTTOM", 0 } }
+      for r = 1, 3 do
+        local mid, tail = pieces[(r - 1) * 3 + 2], pieces[(r - 1) * 3 + 3]
+        local row = rows[r]
+        if joined then
+          mid:SetPoint("BOTTOMRIGHT", cell, row[1] .. "LEFT", 0, row[2])
+        else
+          mid:SetPoint("BOTTOMRIGHT", wrap, row[1] .. "RIGHT", -corner, row[2])
+        end
+        tail:SetShown(not joined)
+      end
+    else
+      local M, R = pieces[2], pieces[3]
+      if joined then
+        M:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", 0, 0)
+      else
+        M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+      end
+      R:SetShown(not joined)
+    end
+  end
+
   function Parts.Field(wrap)
     if wrap.__pbBlizzField ~= nil then return end
     wrap.__pbBlizzField = false
@@ -1040,6 +1088,9 @@ do
     if not pieces then return end
     wrap.__pbBlizzField = pieces
     Quiet(wrap)
+    -- A cell dressed before its field (a walk that met it first).
+    local cell = Parts.JoinedCell(wrap)
+    if cell then Parts.FieldEnd(wrap, cell) end
   end
 end
 
@@ -1285,9 +1336,13 @@ end
 -- (MailMemory.JoinRing's ring._first / _last), the History clock from
 -- RV.JoinClock (`_joined`) and Received / Sent after it, a bar of tiles (the
 -- Send tab's name row, Manage Recipients' filters) from the shown tiles in
--- it, two units apart. A plate standing alone is a whole button. Cells
--- joined to a FIELD (the sort on a search, the Manage Recipients key) keep
--- the look milestone 2 left them, and so does the options preview.
+-- it, two units apart. A plate standing alone is a whole button. A cell
+-- joined to a FIELD (Theme.JoinCell: the sort on a search, the Manage
+-- Recipients key) is the field's last cell: the field's border has no end
+-- cap there and runs on into the cell (Parts.FieldEnd), which wears the art
+-- without its left end (its rim at its top, foot and right) and the rim's
+-- one-unit column at its left, the line between field and key. The options
+-- preview's plates keep their look.
 do
   local BASE = "common-button-tertiary-"
   local NAMES = {
@@ -1383,15 +1438,18 @@ do
   -- The rim's own column, one unit wide, at the right end of a cell with a
   -- cell after it: the metal at rest, the selected art's white beside a lit
   -- cell. Only on a change.
+  -- A cell joined to a field has its line at its own left instead: the
+  -- one-unit column its plate leaves for the divider (Theme.JoinCell).
   local function Line(plate, nxt)
     local art = plate.__pbBlizzSeg
     local D = art.line
-    if not nxt then
+    local field = plate.__pbBlizzJoin == "field"
+    if not (nxt or field) then
       D:Hide()
       art.lineLit = nil
       return
     end
-    local lit = (plate.isSelected or nxt.isSelected) and true or false
+    local lit = (plate.isSelected or (nxt and nxt.isSelected)) and true or false
     if art.lineLit ~= lit or art.lineH ~= art.h or art.lineGap ~= art.gap then
       art.lineLit, art.lineH, art.lineGap = lit, art.h, art.gap
       local state = lit and "lit" or "up"
@@ -1399,8 +1457,13 @@ do
       Atlas(D, NAMES[state], false)
       D:SetTexCoord(g.rx / g.w, (g.rx + 1 / g.s) / g.w, g.rt / g.hh, 1 - g.rb / g.hh)
       D:ClearAllPoints()
-      D:SetPoint("TOPLEFT", plate, "TOPRIGHT", art.gap - 1, 0)
-      D:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", art.gap, 0)
+      if field then
+        D:SetPoint("TOPLEFT", plate, "TOPLEFT", 0, 0)
+        D:SetPoint("BOTTOMRIGHT", plate, "BOTTOMLEFT", 1, 0)
+      else
+        D:SetPoint("TOPLEFT", plate, "TOPRIGHT", art.gap - 1, 0)
+        D:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", art.gap, 0)
+      end
     end
     D:Show()
   end
@@ -1446,6 +1509,8 @@ do
         if plate == first then return "first", -1, last, nil end
         if plate == last then return "last", -1, nil, first end
       end
+    elseif kind == "field" then
+      return "last", 0, nil, nil
     elseif kind == "clock" then
       if plate._joined then return "first", -1, plate.__pbBlizzSides[1], nil end
     elseif kind == "side" then
@@ -1541,7 +1606,23 @@ do
 
   -- The ring a joined row draws round its plates today (a texture of the
   -- row's own, under them) is faded: the strip's art is the ring now.
+  -- A field's cell shown or hidden: the field's end follows it.
+  local function FieldMoved(plate)
+    local wrap = plate.__pbJoinWrap
+    if wrap then Parts.FieldEnd(wrap, plate) end
+  end
+
   local function Join(plate)
+    local wrap = plate.__pbJoinWrap
+    if wrap then
+      -- Its divider is the art's own line now.
+      plate.__pbBlizzJoin = "field"
+      Fade(plate.__pbDivider)
+      plate:HookScript("OnShow", FieldMoved)
+      plate:HookScript("OnHide", FieldMoved)
+      Parts.FieldEnd(wrap, plate)
+      return
+    end
     local p = plate:GetParent()
     if not p then return end
     local cells = p.ringCells
@@ -1591,7 +1672,7 @@ do
   -- (Theme.JoinCell), not the options preview's, not the Send tab's Sent
   -- clock (Send mail's cell), not one another look already owns.
   function Parts.IsSeg(c)
-    if not IsPlate(c) or c.__pbDivider or c.__setSelectedOverride then return false end
+    if not IsPlate(c) or c.__setSelectedOverride then return false end
     local p = c:GetParent()
     if p and (p.Segs or p.SentClock == c) then return false end
     return true
