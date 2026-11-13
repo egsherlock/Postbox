@@ -1279,8 +1279,10 @@ do
 
   -- The three pieces for `state` on `frame` (h units tall), cut for its
   -- `role` in a strip ("alone", "first", "middle", "last"); an inner end
-  -- runs `gap` past the frame's right edge, to the next cell's left.
-  local function Lay(art, frame, state, role, gap, h)
+  -- runs `gap` past the frame's right edge, to the next cell's left. An
+  -- outer end stands on `leftTo` / `rightTo` where given (a bar's own edge,
+  -- the field's above it), else on the frame.
+  local function Lay(art, frame, state, role, gap, h, leftTo, rightTo)
     local g = Geo(state, h)
     local name = NAMES[state]
     local L, M, R = art[1], art[2], art[3]
@@ -1294,8 +1296,8 @@ do
       L:SetTexCoord(0, g.capU, 0, 1)
       L:ClearAllPoints()
       L:SetWidth(g.capW)
-      L:SetPoint("TOPLEFT", frame, "TOPLEFT", -g.outX, g.outT)
-      L:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -g.outX, -g.outB)
+      L:SetPoint("TOPLEFT", leftTo or frame, "TOPLEFT", -g.outX, g.outT)
+      L:SetPoint("BOTTOMLEFT", leftTo or frame, "BOTTOMLEFT", -g.outX, -g.outB)
       L:Show()
       M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
     else
@@ -1307,8 +1309,8 @@ do
       R:SetTexCoord(1 - g.capU, 1, 0, 1)
       R:ClearAllPoints()
       R:SetWidth(g.capW)
-      R:SetPoint("TOPRIGHT", frame, "TOPRIGHT", g.outX, g.outT)
-      R:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", g.outX, -g.outB)
+      R:SetPoint("TOPRIGHT", rightTo or frame, "TOPRIGHT", g.outX, g.outT)
+      R:SetPoint("BOTTOMRIGHT", rightTo or frame, "BOTTOMRIGHT", g.outX, -g.outB)
       R:Show()
       M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
     else
@@ -1433,7 +1435,12 @@ do
     if type(h) ~= "number" or h <= 0 then h = 24 end
     if art.state ~= state or art.role ~= role or art.gap ~= gap or art.h ~= h then
       art.state, art.role, art.gap, art.h = state, role, gap, h
-      Lay(art, plate, state, role, gap, h)
+      -- A bar's outer ends stand on the bar's own edges, which are the
+      -- field's above it: a strip is exactly as wide as that field, though
+      -- a bar's last tile may stop short of its end (Manage Recipients').
+      local bar = plate.__pbBlizzBar
+      local owner = bar and bar.owner
+      Lay(art, plate, state, role, gap, h, owner, owner)
     end
     art.next = nxt
     Line(plate, nxt)
@@ -1515,7 +1522,7 @@ do
     local bar = p.__pbBlizzCells
     if not bar then
       local T = ns.Theme
-      bar = { gap = (T and T.Metrics and T.Metrics.space and T.Metrics.space.hair) or 2 }
+      bar = { gap = (T and T.Metrics and T.Metrics.space and T.Metrics.space.hair) or 2, owner = p }
       for i = 1, select("#", p:GetChildren()) do
         local c = select(i, p:GetChildren())
         if IsPlate(c) and (c._isStar or c._starTile) then bar[#bar + 1] = c end
