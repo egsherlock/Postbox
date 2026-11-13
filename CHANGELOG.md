@@ -159,6 +159,8 @@
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
+- **Options > Window: the Preview shows each item's name whole**, with AH
+  at the left of its row and your own gold as your name and the amount.
 - **Test mail** has its own switch over the options' Preview, and reads
   **Testing** while it is on, with a ring and tint of your accent so it is
   easy to spot.
