@@ -3902,7 +3902,7 @@ local function Figures(mail, now, fs)
   -- arrangement), made for `fs`, the rows' figures' font.
   if R then
     money, moneyKind = R.MoneyText(hasCOD, mail.money or 0, mail.cod or 0, mail.paid, true, nil,
-      R.RowCoins and R.RowCoins(nil, fs) or nil)
+      R.RowCoins and R.RowCoins(nil, fs) or nil, "row")
   end
   -- The slot count in the quiet tone, and as the player chose it written, as
   -- the Mail tab has it: in the words when it goes to the tooltip (below).
@@ -3910,7 +3910,7 @@ local function Figures(mail, now, fs)
   if (mail.items or 0) > 0 then
     local onRow = not R or R.Shows("slots")
     local text = (R and R.SlotsText) and R.SlotsText(mail.items, onRow) or ns.Plural("COUNT_SLOTS", mail.items)
-    slots = T.Colorize("textSecondary", text)
+    slots = T.Colorize("textSecondary", text, "row")
   end
 
   -- Mail sent the box since its last visit (MM.SentRowsInto): nothing
@@ -3941,12 +3941,12 @@ local function Figures(mail, now, fs)
   end
   local expiry
   if expired then
-    expiry = fate and R.FateText(expiryText, fate, fs) or T.Colorize("warning", expiryText)
+    expiry = fate and R.FateText(expiryText, fate, fs, "row") or T.Colorize("warning", expiryText, "row")
   elseif R then
     local show, warn = R.ExpiryState(left / 86400, hasCOD)
     if show then
-      expiry = (warn and fate) and R.FateText(expiryText, fate, fs)
-        or T.Colorize(warn and "warning" or "textSecondary", expiryText)
+      expiry = (warn and fate) and R.FateText(expiryText, fate, fs, "row")
+        or T.Colorize(warn and "warning" or "textSecondary", expiryText, "row")
     end
   end
 
@@ -3985,7 +3985,7 @@ local function RowTexts(mail, now, fs)
   if mail.header or mail.note then return texts end
   if mail.pending then
     local last = LastShownFigure(R)
-    if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"]) end
+    if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"], "row") end
     return texts
   end
   texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now, fs)
@@ -4058,7 +4058,7 @@ do
     for i = 1, #rows do
       local mail = rows[i]
       if not (mail.header or mail.note) and cols.sender < cap then
-        local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
+        local label = R.OutcomeSender(mail.kind, "row") or R.DisplaySender(mail.sender) or ""
         cols.sender = math.min(math.max(cols.sender, Width(widths, owner, R, sample.Sender, label) + 2), cap)
       end
       local texts = RowTexts(mail, now, sample.ColTime)
@@ -4114,6 +4114,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local R = Rules()
   local T = ns.Theme
   T.StyleMailRow(row, position, false)
+  -- The ground the look lays under its mail rows, where it has one; a
+  -- character's heading and a line of words are not mail and stand on none.
+  T.RowGround(row, (not (mail.header or mail.note)) and position or nil)
   -- A line of words is not a row of the list: no band of its own.
   if row._bg then row._bg:SetShown(not mail.note) end
   row.onHeader = onHeader
@@ -4294,7 +4297,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   row.stuck = stuck
   local read = mail.read and not mail.pending
   if R and R.PaintDot then
-    R.PaintDot(row.Indicator, read, stuck)
+    R.PaintDot(row.Indicator, read, stuck, "row")
   else
     T.SetColor(row.Indicator, read and "read" or "unread")
   end
@@ -4314,7 +4317,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local trail = 6
 
   local named = (mail.sender ~= "" and mail.sender) or nil
-  local outcome = R and R.OutcomeSender(mail.kind) or nil
+  local outcome = R and R.OutcomeSender(mail.kind, "row") or nil
   local senderText = (R and (outcome or R.DisplaySender(named)))
     or named or L["MEMORY_SENDER_UNKNOWN"]
   -- On Forever, the first name alone where no other sender listed shares it
@@ -4325,7 +4328,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   row.tipShort = named ~= nil and not outcome and senderText ~= named
   -- A player the address book knows the class of, in its colour, as on the
   -- Mail tab.
-  if R and R.PaintSender then R.PaintSender(row.Sender, not outcome and named or nil, realm) end
+  if R and R.PaintSender then R.PaintSender(row.Sender, not outcome and named or nil, realm, "row") end
   local subject = (ns.Helpers and ns.Helpers.ShortSubject) and ns.Helpers.ShortSubject(mail.subject or "")
     or (mail.subject or "")
   -- The crafting quality mark: on the icon's corner, after the name, both,

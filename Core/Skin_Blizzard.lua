@@ -41,8 +41,10 @@ local _, ns = ...
 -- tile (one strip where they are joined, and a field's last cell joined to
 -- its field), the Sent clock as a cell of Send mail, the dropdowns and their
 -- lists, the options' tabs, checkboxes, heading rules, Find box and footer
--- buttons, and the lit Test mail switches and Arrange key. Other bands, the
--- options preview and the mail rows draw as they did.
+-- buttons, and the lit Test mail switches and Arrange key; the mail rows
+-- stand on the ground Row texture chooses (the game's letter paper by
+-- default), with inks of their own. Other bands and the options preview
+-- draw as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -2485,6 +2487,272 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- Row texture: what the mail rows stand on
+-------------------------------------------------------------
+
+-- Options > Window > Row texture (MailboxUI.GetRowTexture), for the mail
+-- rows of the main window (Inbox, Done, History's Received and Sent, the
+-- search) in both row sizes, and Mail Memory's list (each binder calls
+-- Theme.RowGround):
+--   light  each row a strip of the game's letter paper (the file the game's
+--          Send Mail page is written on, Interface\Stationery\StationeryTest1,
+--          by path: a UI pack that replaces it restyles the rows), a
+--          different band of the page per row so neighbours do not repeat;
+--          the row's text in dark ink, drawn clean (no shadow), every
+--          coloured word moved to a dark ink of its own hue;
+--   dark   the same paper shaded in code (vertex 0.30), the light inks with
+--          their shadows, a colour moved lighter where it reads under 4.5:1;
+--   none   the dark list, the rows as they were.
+-- The inks are worked out once per setting, by the rule the measured inks
+-- were made with (.dev/design/native-skin/scripts/inks.py): a colour keeps
+-- its hue and moves only as far as 4.6:1 needs (4.5 and a margin), toward
+-- black on the paper against its darker grain, toward white on the shaded
+-- paper against its brighter grain as the pointer lights it. They reach the
+-- rows' texts through the "row" ground (Theme.SetRowInks); the window's
+-- other texts keep the palette.
+--
+-- One paper texture per row, made once, under the row's own stripe; a bind
+-- sets its band and the row's text colours from the inks resolved, and
+-- makes nothing. The stripe is none on paper (each row is its own band of
+-- it) and the pointer's wash is white, lighter on the shaded paper.
+do
+  local PAPER = "Interface\\Stationery\\StationeryTest1"
+  -- The page's grain, clear of its left edge's red wash, in texels of its 256.
+  local PX0, PY0, PX1, PY1, SIZE = 40, 6, 250, 250, 256
+  -- A row's band: 1.15 texels a unit of its height, at least 10, and each
+  -- row's 37 texels further down the page than the last.
+  local BAND_K, BAND_MIN, STEP = 1.15, 10, 37
+  local DARK_V = 0.30
+  -- Luminance, measured from the rendered rows on both clients (the same):
+  -- the paper's darker grain (its darkest tenth), and the shaded paper's
+  -- brighter grain (its brightest tenth).
+  local LIGHT_LO, DARK_HI = 0.299, 0.043
+  -- The pointer's wash on each (white).
+  local HOVER = { light = 0.16, dark = 0.08 }
+  local TARGET = 4.6
+  -- On the paper the game's own dark ink (QuestFont's, MailTextFontNormal's)
+  -- stands for the white and the greys, and dark gold for the gold; 0-255.
+  local LIGHT_BASE = {
+    textPrimary = { 46, 31, 15 }, textSecondary = { 96, 72, 44 }, textPlaceholder = { 96, 72, 44 },
+    accent = { 120, 82, 0 }, accentText = { 120, 82, 0 }, accentBright = { 120, 82, 0 },
+  }
+
+  local R = { mode = false, light = false, ground = 0 }
+  Parts.Rows = R
+
+  local function Lin(c)
+    if c <= 0.04045 then return c / 12.92 end
+    return ((c + 0.055) / 1.055) ^ 2.4
+  end
+  local function Lum(r, g, b) return 0.2126 * Lin(r / 255) + 0.7152 * Lin(g / 255) + 0.0722 * Lin(b / 255) end
+  local function Ratio(a, b)
+    if a < b then a, b = b, a end
+    return (a + 0.05) / (b + 0.05)
+  end
+
+  -- The fitting ground of the shaded paper: its brighter grain under the
+  -- pointer's wash.
+  local function DarkGround()
+    local s = 1.055 * DARK_HI ^ (1 / 2.4) - 0.055
+    local w = HOVER.dark
+    return Lin(s * (1 - w) + w)
+  end
+
+  -- r, g, b (0-255) on `bg` (a luminance): itself where it reads 4.6:1, else
+  -- moved toward black (`down`) or white a hundredth at a time until it
+  -- does, hue kept. 0-255 out.
+  local floor = math.floor
+  local function Fit(r, g, b, bg, down)
+    if Ratio(Lum(r, g, b), bg) >= TARGET then return r, g, b end
+    for t = 1, 100 do
+      local f = t / 100
+      local cr, cg, cb
+      if down then
+        cr, cg, cb = floor(r * (1 - f) + 0.5), floor(g * (1 - f) + 0.5), floor(b * (1 - f) + 0.5)
+      else
+        cr, cg, cb = floor(r + (255 - r) * f + 0.5), floor(g + (255 - g) * f + 0.5), floor(b + (255 - b) * f + 0.5)
+      end
+      if Ratio(Lum(cr, cg, cb), bg) >= TARGET then return cr, cg, cb end
+    end
+    if down then return 0, 0, 0 end
+    return 255, 255, 255
+  end
+
+  -- token -> { r, g, b, a, hex = "rrggbb", mode = ... }: written in place
+  -- when the setting moves, made once per token.
+  local inks = {}
+  function R.Ink(token)
+    local mode = R.mode
+    if mode ~= "light" and mode ~= "dark" then return nil end
+    local e = inks[token]
+    if e and e.mode == mode then return e end
+    local T = ns.Theme
+    local c = T and T.Colors and T.Colors[token]
+    if type(c) ~= "table" then return nil end
+    local base = mode == "light" and LIGHT_BASE[token]
+    local r, g, b
+    if base then
+      r, g, b = base[1], base[2], base[3]
+    else
+      r, g, b = floor(c[1] * 255 + 0.5), floor(c[2] * 255 + 0.5), floor(c[3] * 255 + 0.5)
+    end
+    r, g, b = Fit(r, g, b, R.ground, mode == "light")
+    if not e then
+      e = {}
+      inks[token] = e
+    end
+    e[1], e[2], e[3] = r / 255, g / 255, b / 255
+    -- On the paper a mark is as solid as the words; on the shaded paper
+    -- it keeps its own strength (the read dot's quiet).
+    e[4] = (mode == "light") and 1 or (c[4] or 1)
+    e.hex = ("%02x%02x%02x"):format(r, g, b)
+    e.mode = mode
+    return e
+  end
+
+  -- A colour that is no token (a class colour, 0-1) on the rows: a ring of
+  -- answers, written in place.
+  local ring, ringN, ringAt = {}, 0, 0
+  function R.RGB(r, g, b)
+    local mode = R.mode
+    if mode ~= "light" and mode ~= "dark" then return r, g, b end
+    for i = 1, ringN do
+      local m = ring[i]
+      if m.r == r and m.g == g and m.b == b and m.mode == mode then return m[1], m[2], m[3] end
+    end
+    local fr, fg, fb = Fit(floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5), R.ground, mode == "light")
+    ringAt = (ringAt % 24) + 1
+    if ringAt > ringN then ringN = ringAt end
+    local m = ring[ringAt]
+    if not m then
+      m = {}
+      ring[ringAt] = m
+    end
+    m.r, m.g, m.b, m.mode = r, g, b, mode
+    m[1], m[2], m[3] = fr / 255, fg / 255, fb / 255
+    return m[1], m[2], m[3]
+  end
+
+  -- The setting, read and put in force: the rows' inks published (none on
+  -- the dark list, whose rows take the palette's), the fitting ground set.
+  function R.Resolve()
+    local UI = ns.MailboxUI
+    local mode = UI and type(UI.GetRowTexture) == "function" and UI.GetRowTexture() or "light"
+    R.mode = mode
+    R.light = mode == "light"
+    R.ground = (mode == "light") and LIGHT_LO or DarkGround()
+    local T = ns.Theme
+    if T and type(T.SetRowInks) == "function" then T.SetRowInks((mode ~= "none") and R or nil) end
+  end
+
+  -- The row's texts whose colour is their role's (the rest are painted per
+  -- bind through the "row" ground): key, token.
+  local STATIC = {
+    "Subject", "textPrimary", "Detail", "textSecondary", "ColTime", "textSecondary",
+    "ColMoney", "textSecondary", "ColSlots", "textSecondary", "Age", "textSecondary", "Money", "textSecondary",
+  }
+  local SHADOWED = { "Sender", "Subject", "Detail", "ColTime", "ColMoney", "ColSlots", "Age", "Money" }
+
+  -- A text's shadow off (clean, on the paper) or back as its font gave it,
+  -- read once from the string.
+  local function Shadow(fs, clean)
+    if not (fs and fs.SetShadowColor) then return end
+    if fs.__pbShA == nil then
+      local r, g, b, a = fs:GetShadowColor()
+      fs.__pbShR, fs.__pbShG, fs.__pbShB, fs.__pbShA = r or 0, g or 0, b or 0, a or 1
+    end
+    if clean then
+      fs:SetShadowColor(0, 0, 0, 0)
+    else
+      fs:SetShadowColor(fs.__pbShR, fs.__pbShG, fs.__pbShB, fs.__pbShA)
+    end
+  end
+
+  -- The row's own texts and marks in the rows' inks (`ground` "row"), or,
+  -- with `ground` nil, back in the palette's.
+  local function Texts(row, ground, clean)
+    local T = ns.Theme
+    for i = 1, #STATIC, 2 do
+      local fs = row[STATIC[i]]
+      if fs then T.SetColor(fs, STATIC[i + 1], ground) end
+    end
+    for i = 1, #SHADOWED do Shadow(row[SHADOWED[i]], clean) end
+    if row.Warning then T.SetColor(row.Warning, "warning", ground) end
+    local dot = row.Indicator
+    local shade = dot and dot.__pbShade
+    if shade then shade:SetAlpha(clean and 0 or 1) end
+  end
+
+  -- The stripe and the pointer's wash on a row with paper (Theme's
+  -- StyleMailRow hands them over): none at rest, white under the pointer.
+  local function Wash(row, _, hovered)
+    local bg = row._bg
+    if not (bg and row.__pbPaperOn) then return end
+    if hovered then
+      bg:SetColorTexture(1, 1, 1, HOVER[R.mode] or 0.16)
+    else
+      bg:SetColorTexture(0, 0, 0, 0)
+    end
+  end
+
+  -- Theme.RowGround: the row bound at displayed `position` (nil: not a
+  -- mail, a heading in Mail Memory's list).
+  function Skin.RowGround(row, position)
+    if not R.mode then R.Resolve() end
+    local mode = R.mode
+    local paper = row.__pbPaper
+    if position == nil or mode == "none" then
+      if row.__pbGround then
+        row.__pbGround, row.__pbPaperOn = nil, nil
+        if paper then paper:Hide() end
+        Texts(row, nil, false)
+        -- The sender's colour is painted again by the binder.
+        if row.Sender then row.Sender.__pbClass = nil end
+        -- The palette's stripe back.
+        local T = ns.Theme
+        if T and T.StyleMailRow then T.StyleMailRow(row, row._rowIndex, row._hovered) end
+      end
+      return
+    end
+    if not paper then
+      paper = row:CreateTexture(nil, "BACKGROUND", nil, -2)
+      paper:SetTexture(PAPER)
+      paper:SetAllPoints(row)
+      row.__pbPaper = paper
+      row.__pbRowPaint = Wash
+    end
+    local h = row:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local band = floor(h * BAND_K + 0.5)
+    if band < BAND_MIN then band = BAND_MIN end
+    local span = (PY1 - PY0) - band
+    local top = PY0 + ((tonumber(position) or 0) * STEP) % span
+    paper:SetTexCoord(PX0 / SIZE, PX1 / SIZE, top / SIZE, (top + band) / SIZE)
+    if row.__pbGround ~= mode then
+      row.__pbGround, row.__pbPaperOn = mode, true
+      local v = (mode == "dark") and DARK_V or 1
+      paper:SetVertexColor(v, v, v, 1)
+      paper:Show()
+      if row.Sender then row.Sender.__pbClass = nil end
+    end
+    -- Each bind: a re-fonted or re-roled string comes back in its ink.
+    Texts(row, "row", R.light)
+    Wash(row, nil, row._hovered)
+  end
+
+  -- The setting changed (Options > Window): the inks put in force and every
+  -- mail list bound again, the message box laid on its new ground.
+  function Skin.RowTextureChanged()
+    R.Resolve()
+    if Parts.MessageGrounds then Parts.MessageGrounds() end
+    local UI = ns.MailboxUI
+    if UI and type(UI.RefreshCollectRowLayout) == "function" then pcall(UI.RefreshCollectRowLayout) end
+    local memory = ns.MailMemory
+    if memory and type(memory.Refresh) == "function" then pcall(memory.Refresh) end
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
   if c.SlimBar and c.SlimBar.__pbBlizzBar == nil and c:IsObjectType("ScrollFrame") then Parts.ScrollBar(c.SlimBar) end
@@ -2585,6 +2853,8 @@ function Skin.Apply(frame)
   frame.__pbBlizzWindow = true
   -- The shared claim record the other skins and the debug report read.
   ns.SkinAppliedBy = "blizzard"
+  -- The rows' ground (Options > Window > Row texture) in force.
+  if not Parts.Rows.mode then Parts.Rows.Resolve() end
 
   -- Without the metal (a client missing a piece), the template's own thin
   -- frame stays: a window is never left without a frame.

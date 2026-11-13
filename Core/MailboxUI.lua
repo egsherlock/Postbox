@@ -759,6 +759,35 @@ function UI.SetStyleChoice(style)
   profile.styleHostAware = true
 end
 
+-- Two settings of the Blizzard style alone (Core/Skin_Blizzard.lua), each a
+-- string with its own accessors, nil on the profile meaning the default:
+--   Row texture (`blizzRows`): what the mail rows stand on -- "light" (the
+--     game's letter paper, the default), "dark" (the same paper shaded) or
+--     "none" (the dark list);
+--   Buttons (`blizzButtons`): which push buttons wear the game's red
+--     button -- "red" (all of them, the default), "mailred" (those that
+--     collect or send mail; the rest the small dark button) or "dark" (none).
+-- The skin reads them when it dresses and again when one changes; every
+-- other look keeps them and never reads them.
+function UI.GetRowTexture()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.blizzRows")
+  if stored == "dark" or stored == "none" then return stored end
+  return "light"
+end
+function UI.SetRowTexture(choice)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.blizzRows = (choice == "dark" or choice == "none") and choice or nil end
+end
+function UI.GetButtonLook()
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.blizzButtons")
+  if stored == "mailred" or stored == "dark" then return stored end
+  return "red"
+end
+function UI.SetButtonLook(choice)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if profile then profile.blizzButtons = (choice == "mailred" or choice == "dark") and choice or nil end
+end
+
 -- The gate both host skins consult before claiming. Kept here rather than
 -- duplicated in each: they claim through different handshakes (EllesmereUI
 -- defers behind a watchdog, ElvUI behind a timer) and the one thing they must
