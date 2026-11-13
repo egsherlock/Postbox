@@ -5784,6 +5784,8 @@ do
     local T = ns.Theme
     T.SetColor(head.Text, head.off and "textDisabled" or "accent")
     T.FillColor(head.Rule, head.off and "textDisabled" or "accent")
+    -- A skin's own rule beside the heading (the Blizzard style's) follows.
+    if head.__pbPaintRule then head.__pbPaintRule(head) end
   end
 
   -- Greyed in colour and alpha together, and not clickable; its motion

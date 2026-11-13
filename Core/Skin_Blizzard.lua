@@ -2110,6 +2110,18 @@ do
     line:SetPoint("TOPRIGHT", rule, "TOPRIGHT", 0, 0)
     Fade(rule)
     head.__pbBlizzHeading = line
+    head.__pbPaintRule = Parts.PaintRule
+    Parts.PaintRule(head)
+  end
+
+  -- A grayed group (`head.off`, Rows.PaintGroup) grays its rule with its
+  -- words: the divider without its colour, at the disabled words' strength.
+  function Parts.PaintRule(head)
+    local line = head.__pbBlizzHeading
+    if not line then return end
+    local off = head.off and true or false
+    line:SetDesaturated(off)
+    line:SetAlpha(off and 0.45 or 1)
   end
 end
 
