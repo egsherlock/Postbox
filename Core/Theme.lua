@@ -5214,6 +5214,9 @@ Theme.AtlasSets = {
 --     unit of clear moat either side of it: a thing shown and a thing
 --     hidden (the arrange mode's switches and chips, its cards and pegs,
 --     Character Groups' hidden buttons).
+--   eye-16, eye-off-16  Phosphor's bold eye and eye-slash, outlines at 16
+--     units: Manage Recipients' hide / show mark on each row, a name shown
+--     and a name hidden. Fitted by icons-r13's generator.
 --   people, people-on  one figure, 14 units, and one with another behind
 --     it, 16: the search box's every-character toggle (Theme.CreateSearchBox),
 --     the pair while it is on. The two share a centre; Theme.SetGlyphArt
@@ -5304,6 +5307,8 @@ do
       large = { from = 21, file = MEDIA .. "glyph-recipients-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     note = { file = MEDIA .. "glyph-note-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true },
     search = { file = MEDIA .. "glyph-search-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },

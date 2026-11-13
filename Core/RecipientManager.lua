@@ -1224,7 +1224,9 @@ local function PaintMarks(row)
     MarkTone(note.Glyph, over == note and "textPrimary" or "textDisabled")
   end
 
-  local art = entry.hidden and "eye-off" or "eye"
+  -- The outline eye, and crossed while the name is hidden (Phosphor's eye
+  -- and eye-slash at 16; the arrange mode's small eyes are other files).
+  local art = entry.hidden and "eye-off-16" or "eye-16"
   if eye._art ~= art then
     eye._art = art
     Theme.SetGlyphArt(eye.Glyph, art)
@@ -1497,9 +1499,9 @@ local function BuildRow(parent)
   -- The marks, right to left from the row's end.
   row.CrossMark = BuildMark(row, "x", 16)
   row.CrossMark:SetPoint("RIGHT", row, "RIGHT", -ROW.MARK_EDGE, 0)
-  row.EyeMark = BuildMark(row, "eye", 8)
+  row.EyeMark = BuildMark(row, "eye-16", 16)
   row.EyeMark:SetPoint("RIGHT", row.CrossMark, "LEFT", -ROW.MARK_GAP, 0)
-  row.EyeMark._art = "eye"
+  row.EyeMark._art = "eye-16"
   row.NoteMark = BuildMark(row, "note", 16)
   row.NoteMark:SetPoint("RIGHT", row.EyeMark, "LEFT", -ROW.MARK_GAP, 0)
 
