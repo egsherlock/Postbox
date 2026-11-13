@@ -1701,7 +1701,7 @@ do
   -- Inside: the Mail and Send tabs, two equal halves of the content's
   -- width, each caption centred, the Mail tab lit; three mail rows on the
   -- list's stripes -- the read dot, the sender in an auction outcome's tone
-  -- or a character's class colour, the subject, the gold; the totals band;
+  -- or a character's class colour, an auction's item, the gold; the totals band;
   -- and the All mail button.
   --
   -- Every part is painted by the code that paints the window: the Postbox
@@ -1719,8 +1719,8 @@ do
   -- it is set, so a tab, a row, the band and the button are each as tall as
   -- their line needs and never less than their scaled height: the drawing
   -- grows with the text size (Ctx.Height measures it from the fonts), and
-  -- no caption or sender in it is cut; only an item's name too long for the
-  -- subject's room is shortened, as the list shortens it. Built once; a
+  -- no caption in it is cut; only a name too long for its room is
+  -- shortened, as the list shortens it (MW.PaintRows). Built once; a
   -- paint lays out again only when a height moved, and makes nothing.
   --
   -- One window, two drawings: the Window tab's, as above, and the Mail
@@ -1749,11 +1749,11 @@ do
     -- gold from one of your characters, read. `kind` is the auction
     -- outcome (none: the character), `fig` the figure's place in the
     -- figures (MW.Figures), `tone` its colour, `item` the one it names
-    -- (SAMPLE_ITEMS): Mana Lily, Azeroot, Evercore.
+    -- (SAMPLE_ITEMS): Mana Lily, Azeroot; the gold names none.
     SAMPLES = {
       { kind = "sold", read = false, fig = 1, tone = "positive", item = 236778 },
       { kind = "bought", read = false, fig = 2, tone = "negative", item = 236775 },
-      { read = true, fig = 3, tone = "positive", item = 243582 },
+      { read = true, fig = 3, tone = "positive" },
     },
     -- The heights in force (MW.Heights), the tabs' columns
     -- (Theme.ColumnEdges), and the blocks stacked under the tabs with their
@@ -2087,6 +2087,7 @@ do
       MW.Dot(row):SetPoint("CENTER", row, "LEFT", MW.DOT_X, 0)
       row.Sender = T.CreateText(row, "label")
       row.Sender:SetPoint("LEFT", row, "LEFT", MW.SENDER_X, 0)
+      row.Sender:SetJustifyH("LEFT")
       row.Subject = T.CreateText(row, "value")
       row.Subject:SetJustifyH("LEFT")
       row.Gold = T.CreateText(row, "secondary")
@@ -2311,20 +2312,22 @@ do
 
   -- The rows, by the list's own rules: the stripe of the row's place, the
   -- read dot, the sender (an auction outcome in its tone; your character,
-  -- in its class colour), the gold in its tone. The sender's column is
-  -- one width for every row, as the list's is, and never sized by a long
-  -- name: as wide as the auction outcomes' senders, and wider only by what
-  -- the item names leave whole -- your name stands whole where it fits
-  -- beside them, and is cut short where it does not (the full name a
-  -- character has on WoW Forever), the item names keeping their room. The
-  -- subject has the rest, and a long one is shortened by the house
-  -- fitter, as the list shortens it.
+  -- in its class colour), the gold in its tone. Laid out as the Mail tab's
+  -- drawing lays its auctions out: the auctions' senders in a column as
+  -- wide as they are, set at its start, the item's name after it with the
+  -- rest of the room up to the gold. Your gold has no item: its row is your
+  -- name and the gold, the name given the item's room too and cut short by
+  -- the house fitter only where even that is too little (the full name a
+  -- character has on WoW Forever). Nothing is sized by a long name, and
+  -- nothing by an item's name, which may still be loading on the first
+  -- paint: the senders are measured whole, a width a fit earlier set let go
+  -- first, so the column follows the Text size and the face as they change.
   function MW.PaintRows(win)
     local T = ns.Theme
     local R = ns.CollectTab and ns.CollectTab.RowRules
     local figs = MW.Figures()
     local rows = win.List.Rows
-    local senderW, auctionW, itemW, goldW = 0, 0, 0, 0
+    local auctionW, goldW = 0, 0
     for i = 1, #rows do
       local row, s = rows[i], MW.SAMPLES[i]
       T.StyleMailRow(row, i, false)
@@ -2335,32 +2338,32 @@ do
       sender:SetWidth(0)
       if s.kind then
         MW.PaintOutcome(sender, s.kind)
+        auctionW = math.max(auctionW, T.TextWidth(sender))
       else
         MW.PaintMe(sender)
       end
       row.Gold:SetText(T.Colorize(s.tone, figs[s.fig]))
-      local w = T.TextWidth(sender)
-      senderW = math.max(senderW, w)
-      if s.kind then auctionW = math.max(auctionW, w) end
-      row.Subject:SetText(SampleItem(s.item) or "")
-      itemW = math.max(itemW, T.TextWidth(row.Subject))
       goldW = math.max(goldW, T.TextWidth(row.Gold))
     end
-    -- The room the sender and the subject share, then the column.
+    -- The room the sender and the subject share, then the auctions' column.
     local both = (win.inner or 0) - 2 * MW.h.pad - MW.SENDER_X - 2 * MW.COL_GAP - math.ceil(goldW) - MW.ROW_END
-    local col = math.ceil(math.max(auctionW, math.min(senderW, both - math.ceil(itemW))))
+    local col = math.ceil(auctionW)
     local x = MW.SENDER_X + col + MW.COL_GAP
-    local room = both - col
     for i = 1, #rows do
-      local sender = rows[i].Sender
-      T.FitText(sender, math.max(1, col), sender:GetText() or "")
-      local subject = rows[i].Subject
-      if subject.x ~= x then
-        subject.x = x
-        subject:ClearAllPoints()
-        subject:SetPoint("LEFT", rows[i], "LEFT", x, 0)
+      local row, s = rows[i], MW.SAMPLES[i]
+      local sender, subject = row.Sender, row.Subject
+      if s.item then
+        T.FitText(sender, math.max(1, col), sender:GetText() or "")
+        if subject.x ~= x then
+          subject.x = x
+          subject:ClearAllPoints()
+          subject:SetPoint("LEFT", row, "LEFT", x, 0)
+        end
+        T.FitText(subject, math.max(1, both - col), SampleItem(s.item) or "")
+      else
+        T.FitText(sender, math.max(1, both + MW.COL_GAP), sender:GetText() or "")
+        subject:SetText("")
       end
-      T.FitText(subject, math.max(1, room), SampleItem(MW.SAMPLES[i].item) or "")
     end
   end
 
