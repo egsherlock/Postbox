@@ -676,7 +676,8 @@ end
 -- skin's claim -- which is why a change needs a /reload and why these accessors
 -- never repaint anything themselves.
 --   host      the installed host UI's skin (EllesmereUI, or ElvUI)
---   blizzard  the built-in warm-stone Blizzard-native look
+--   blizzard  the game's own window art (Core/Skin_Blizzard.lua), the look
+--             the game's own UI wears
 --   postbox   Postbox's own flat look (Core/Skin_Postbox.lua), the look the
 --             EllesmereUI skin wears, with no EllesmereUI needed
 --
@@ -687,11 +688,12 @@ end
 --
 -- "host" is the default wherever a host is installed, so nothing changes for
 -- anyone who does not go looking for this. With none, the default is the
--- Postbox style, for every profile, however old (UI.DefaultStyle). A saved
--- "host" with no host installed wears that default too, and is kept: the
--- host's look comes back by itself when the host is installed again. Only a
--- saved "blizzard" (or a creative key) is a look the player chose that
--- outranks the default; UI.SetStyleChoice is the only writer of `style`.
+-- Blizzard style, the game's own look beside the game's own windows, for
+-- every profile, however old (UI.DefaultStyle). A saved "host" with no host
+-- installed wears that default too, and is kept: the host's look comes back
+-- by itself when the host is installed again. A saved "postbox" (or
+-- "blizzard", or a creative key) is a look the player chose and outranks the
+-- default; UI.SetStyleChoice is the only writer of `style`.
 -- (profile.installStyle, once a profile's own default, means nothing now;
 -- a stale one is left alone and cleared by the next Reset to defaults.)
 --
@@ -716,9 +718,9 @@ end
 UI.HostInstalled = HostInstalled
 
 -- The look of a profile that has not chosen one: the host's where a host UI
--- is installed, the Postbox style everywhere else.
+-- is installed, the Blizzard style on the game's own UI.
 function UI.DefaultStyle()
-  return HostInstalled() and "host" or "postbox"
+  return HostInstalled() and "host" or "blizzard"
 end
 
 function UI.GetStyleChoice()
@@ -742,7 +744,7 @@ function UI.GetStyleChoice()
   -- A saved "host" with no host to wear falls to the default below, and
   -- stays saved for the day the host is back.
   if IsStyleKey(stored) and (host or stored ~= "host") then return stored end
-  return host and "host" or "postbox"
+  return UI.DefaultStyle()
 end
 
 function UI.SetStyleChoice(style)
@@ -780,7 +782,7 @@ end
 -- runs after this (Postbox.lua, section 4b) and clears every setting but
 -- its keep list -- the Modern keys, `style`, the values carried from them
 -- and pbFromModern among them -- so that profile starts on the defaults,
--- the Postbox style on a plain UI (UI.DefaultStyle). What is carried over here
+-- the Blizzard style on a plain UI (UI.DefaultStyle). What is carried over here
 -- lasts only where no reset follows: a profile already on 1.50 that an
 -- older Postbox has since put on Modern. pbFromModern marks the copy as
 -- made, so a Postbox value the player later resets is not copied over again.

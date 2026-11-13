@@ -344,7 +344,7 @@ end
 -- recipients, character groups, hidden characters, Mail Memory, History and
 -- how long it keeps mail, whether the minimap icon is on, the characters.
 -- The reset clears the saved style with the rest, so the look is the
--- default one: the Postbox style on a plain UI, the host's under a host UI
+-- default one: the Blizzard style on a plain UI, the host's under a host UI
 -- (MailboxUI, UI.DefaultStyle).
 -- The mail window says so the first time it opens, until the notice is
 -- answered (Core/WhatsNew.lua).
