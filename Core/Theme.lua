@@ -6235,6 +6235,15 @@ function Theme.SetRowInks(inks)
   Theme._rowInks = inks
 end
 
+-- A mail row's dim (a finished mail sitting back, a remembered mail past
+-- its date): `alpha` as asked, but none where a look gives its rows a ground
+-- and inks of their own (Theme.SetRowInks), whose inks are held at the
+-- contrast they need on that ground and would fall under it dimmed.
+function Theme.RowDim(alpha)
+  if Theme._rowInks then return 1 end
+  return alpha
+end
+
 -- A mail row was bound (the Mail tab's list, History and Sent, the search,
 -- Mail Memory's list) at displayed `position`: the look lays its ground,
 -- where it has one. Nothing otherwise.

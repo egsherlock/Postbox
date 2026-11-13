@@ -2799,7 +2799,8 @@ do
   local function Shadow(fs, clean)
     if not (fs and fs.SetShadowColor) then return end
     if fs.__pbShA == nil then
-      local r, g, b, a = fs:GetShadowColor()
+      local r, g, b, a
+      if type(fs.GetShadowColor) == "function" then r, g, b, a = fs:GetShadowColor() end
       fs.__pbShR, fs.__pbShG, fs.__pbShB, fs.__pbShA = r or 0, g or 0, b or 0, a or 1
     end
     if clean then
@@ -2894,7 +2895,7 @@ do
   -- dressed and again when the setting changes; the box's own font set
   -- again (the text size) takes the ink again.
   local BEVEL = 3
-  local SELECT_LIGHT = { 0.45, 0.33, 0.12, 0.35 }
+  local SELECT_LIGHT = { 0.55, 0.42, 0.18, 0.30 }
   local grounds = setmetatable({}, { __mode = "k" })
 
   local function Highlight(box, light)
