@@ -1,4 +1,4 @@
-Drawn from Phosphor Icons (bold): glyph-people-14, glyph-people-on-16, glyph-sort-list-16, glyph-sort-list-turned-16, glyph-groups-16, glyph-groups-large, glyph-recipients-16 and glyph-recipients-large (.tga) in this folder.
+Drawn from Phosphor Icons (bold): glyph-people-14, glyph-people-on-16, glyph-sort-list-16, glyph-sort-list-turned-16, glyph-groups-16, glyph-groups-large, glyph-recipients-16, glyph-recipients-large, glyph-note-16 and glyph-x-16 (.tga) in this folder.
 
 MIT License
 
