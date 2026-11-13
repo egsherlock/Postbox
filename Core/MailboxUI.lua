@@ -474,6 +474,8 @@ local function ApplyResetLive(partial)
   -- The Send button's keys, with Ctrl+Enter sends back on.
   local send = ns.SendTab
   if send then ResetStep(send.RefreshSendHint) end
+  -- And the recipient pin, back on.
+  if send then ResetStep(send.ApplyPinOption) end
 end
 
 -- What stops a reset now: "collect" while Postbox is taking mail out of the
@@ -1650,6 +1652,21 @@ function UI.SetAfterSendKeep(mode)
   if not profile then return end
   profile.afterSendKeep = AFTER_SEND_KEEP[mode] and mode or nil
   profile.keepRecipient = nil
+end
+
+-- The Send tab's recipient pin offered (Options > Send tab, Recipient pin):
+-- on unless switched off, stored only as `false`. A setting, so under
+-- profile and account-wide; the pins themselves are the root's
+-- `recipientPin`, per character, which this never touches. Off, the pin is
+-- not drawn and no pinned name fills the To box (SendTab, 19a).
+function UI.GetShowRecipientPin()
+  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
+  return not (type(profile) == "table" and profile.showRecipientPin == false)
+end
+function UI.SetShowRecipientPin(on)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  if not profile then return end
+  if on then profile.showRecipientPin = nil else profile.showRecipientPin = false end
 end
 
 -- Warn about: what the expiring-mail warnings speak of, both of them -- the

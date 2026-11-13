@@ -8359,6 +8359,17 @@ function Pages.send(col)
     get = function() return ns.MailboxUI.GetAfterSendKeep and ns.MailboxUI.GetAfterSendKeep() or "nothing" end,
     set = function(id) if ns.MailboxUI.SetAfterSendKeep then ns.MailboxUI.SetAfterSendKeep(id) end end,
   })
+  -- The pin in the Recipient box, offered or not: off, it is hidden and no
+  -- pinned name fills the box; the pins stay saved. Shown at once on an
+  -- open Send tab.
+  Rows.Check(col, {
+    title = L["OPT_RECIPIENT_PIN_TITLE"], text = L["OPT_RECIPIENT_PIN_DESC"],
+    get = function() return not ns.MailboxUI.GetShowRecipientPin or ns.MailboxUI.GetShowRecipientPin() end,
+    set = function(on)
+      if ns.MailboxUI.SetShowRecipientPin then ns.MailboxUI.SetShowRecipientPin(on) end
+      if ns.SendTab and ns.SendTab.ApplyPinOption then ns.SendTab.ApplyPinOption() end
+    end,
+  })
   -- Ctrl+Enter in the draft's fields, named in the client's own words for
   -- the keys, as the Send button's hint names them (SendTab, 8b).
   local keys = (ns.SendTab and ns.SendTab.SendKeys) and ns.SendTab.SendKeys() or "Ctrl+Enter"

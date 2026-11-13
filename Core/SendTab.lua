@@ -6468,7 +6468,7 @@ do
   -- (or `force`), and its tooltip while the pointer is on it.
   function Pin.Paint(panel, force)
     local key = panel and panel.PinKey
-    if not key then return end
+    if not key or key.off then return end
     local saved, f = Pin.Forms()
     local text = panel.ToBox:GetText() or ""
     local i, j = Bounds(text)
@@ -6544,6 +6544,9 @@ do
   -- as a picked name is; the key follows either way.
   function Pin.Fill(panel)
     if not (panel and panel.ToBox) then return end
+    -- With the pin switched off (Options > Send tab, Recipient pin) no
+    -- pinned name fills the box; the pins themselves stay saved.
+    if not Pin.On() then return end
     local saved = Pin.Forms(true)
     if saved and FieldText(panel.ToBox) == "" then ST.SetRecipient(panel, saved) end
     Pin.Paint(panel, true)
@@ -6567,10 +6570,44 @@ do
     key:SetScript("OnEnter", Pin.Enter)
     key:SetScript("OnLeave", Pin.Leave)
     panel.PinKey = key
-    -- The box ends M.gap in from the wrap (CreateFieldRow).
-    panel.ToBox:SetTextInsets(0, IN + endW + SIZE + GAP - M.gap, 0, 0)
-    Pin.Paint(panel, true)
+    -- The typed text's right inset (the box ends M.gap in from the wrap,
+    -- CreateFieldRow): short of the pin while it is shown; without it, IN
+    -- short of the divider, the room the pin kept from it.
+    key.insetOn = IN + endW + SIZE + GAP - M.gap
+    key.insetOff = max(0, IN + endW - M.gap)
+    Pin.Apply(panel)
   end
+
+  -- Whether the pin is offered (Options > Send tab, Recipient pin): on
+  -- unless switched off.
+  function Pin.On()
+    local UI = ns.MailboxUI
+    if not (UI and type(UI.GetShowRecipientPin) == "function") then return true end
+    return UI.GetShowRecipientPin()
+  end
+
+  -- The key shown or put away as the option says, the text's room with it.
+  -- Off, the key neither paints nor fills; the saved pins are not touched.
+  function Pin.Apply(panel)
+    local key = panel and panel.PinKey
+    if not key then return end
+    local on = Pin.On()
+    key.off = not on
+    key:SetShown(on)
+    panel.ToBox:SetTextInsets(0, on and key.insetOn or key.insetOff, 0, 0)
+    if on then
+      Pin.Paint(panel, true)
+    elseif GameTooltip:IsOwned(key) then
+      GameTooltip:Hide()
+    end
+  end
+end
+
+-- The option's switch on the Send tab on screen, at once (the options
+-- panel and the resets call it).
+function ST.ApplyPinOption()
+  local panel = ActivePanel()
+  if panel then ST.Pin.Apply(panel) end
 end
 
 -------------------------------------------------------------
