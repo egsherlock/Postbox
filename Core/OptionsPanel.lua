@@ -5007,9 +5007,9 @@ do
   -- N 0.6, 1 2.0 at 13).
   -- Every glyph here is drawn from its own master at its own size, pixel
   -- for pixel: Arrange's layout mark at 12, the box; the openers' groups
-  -- (12 by 10 of ink, on 14 by 12 with its clear unit round it) and
-  -- recipients (10 of ink, on 12) from their -10 masters, the 12s
-  -- simplified, so they weigh no more than the 13-unit caption. Upright,
+  -- (14 by 10 of ink, on 16 by 12 with its clear unit round it) and
+  -- recipients (10 of ink, on 12) from their -10 masters, all three 10
+  -- tall, so they weigh no more than the 13-unit caption. Upright,
   -- each stands with its middle on the middle of the caption's capitals
   -- (Rows.IconTop), not of its line: the line's room for descenders set an
   -- icon centred on the button high against the words.

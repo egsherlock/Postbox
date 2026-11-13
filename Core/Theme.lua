@@ -5203,13 +5203,16 @@ Theme.AtlasSets = {
 --     push-pin in its bold construction (round 23's drawing) and fitted by
 --     icons-r13's rules: the quarter-unit offset with the most ink in
 --     whole pixels.
---   groups-10, recipients-10  the busts and the address book again, the
---     12s simplified to 10 units tall (the busts 12 wide, so the two behind
---     keep shoulders two units wide to the glyph's edges): the options'
---     Character Groups and Manage Recipients buttons only, beside their
---     13-unit captions. Their ink reaches the art's edges, so each is
---     cropped with the clear unit the canvas has round it (14 by 12 and 12
---     by 12, the ink 12 by 10 and 10 by 10 a unit in): a quad whose edges
+--   groups-10, recipients-10  the busts and the address book again, 10
+--     units tall: the options' Character Groups and Manage Recipients
+--     buttons only, beside their 13-unit captions, with Arrange's layout
+--     mark (10 tall too). recipients-10 is the 12 simplified; groups-10 is
+--     Phosphor's users-three bold drawn 10 tall, its outline widened back
+--     to the set's 1.5-unit stroke, moved sideways a quarter unit at a time
+--     for the most ink in whole pixels (.dev/design/round26-build/
+--     gen_groups10.py). Their ink reaches the art's edges, so each is
+--     cropped with the clear unit the canvas has round it (16 by 12 and 12
+--     by 12, the ink 14 by 10 and 10 by 10 a unit in): a quad whose edges
 --     stand a fraction of a pixel off the grid (the quarter pixel PX.Put
 --     adds, a client that does not snap) then loses only clear texels at
 --     its edges, never the outer busts' or the spine's last column.
@@ -5319,8 +5322,8 @@ do
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
-    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 14, h = 12, l = 0, r = 0.875, t = 0, b = 0.75, px = true,
-      ink = { 1, 13 } },
+    ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 16, h = 12, l = 0, r = 1, t = 0, b = 0.75, px = true,
+      ink = { 1, 15 } },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true,
       ink = { 1, 11 } },
     ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
