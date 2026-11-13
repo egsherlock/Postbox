@@ -33,8 +33,9 @@ local _, ns = ...
 -- dressed once and tagged; a walk over a window finds work only where
 -- something new was tagged since the last one.
 --
--- Milestone 1: the window frame and the sunken panels. Bands, plates, tabs,
--- buttons, fields, dropdowns, rows and the scroll bar draw as they did.
+-- Dressed so far: the window frame, the sunken panels, and the main
+-- window's Mail and Send tabs. The options' tabs, other plates, buttons,
+-- fields, bands, dropdowns, rows and the scroll bar draw as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -119,6 +120,47 @@ end
 
 local function Fade(region)
   if region and type(region.SetAlpha) == "function" then region:SetAlpha(0) end
+end
+
+-- The controls this skin dresses, one entry per kind (the Mail and Send
+-- tabs, push buttons, the totals strip, fields, scroll bars), each made in
+-- a section of its own below and called by the walk at call time. One table,
+-- so the sections add no chunk locals.
+local Parts = {}
+
+-- An atlas's own size in units, asked once per name and kept: art is laid
+-- by the client's own size for it (a bronze twin can differ), never by
+-- retail's numbers. nil where the client does not have it.
+do
+  local widths, heights = {}, {}
+  function Parts.Size(name)
+    local w = widths[name]
+    if w == nil then
+      w, heights[name] = false, false
+      local get = C_Texture and C_Texture.GetAtlasInfo
+      if type(get) == "function" then
+        local ok, info = pcall(get, name)
+        if ok and type(info) == "table" and type(info.width) == "number" and info.width > 0
+           and type(info.height) == "number" and info.height > 0 then
+          w, heights[name] = info.width, info.height
+        end
+      end
+      widths[name] = w
+    end
+    if not w then return nil end
+    return w, heights[name]
+  end
+end
+
+-- A game font's colour: GameFontNormal's gold, GameFontHighlight's white,
+-- as the client (or a UI pack) has them, else the stock values given.
+function Parts.FontRGB(name, r, g, b)
+  local font = _G[name]
+  if font and type(font.GetTextColor) == "function" then
+    local fr, fg, fb = font:GetTextColor()
+    if type(fr) == "number" and type(fg) == "number" and type(fb) == "number" then return fr, fg, fb end
+  end
+  return r, g, b
 end
 
 -------------------------------------------------------------
@@ -262,6 +304,139 @@ local function SinkPanel(c)
 end
 
 -------------------------------------------------------------
+-- The Mail and Send tabs
+-------------------------------------------------------------
+
+-- The game's tab art turned to open downward, as PanelTopTabButtonTemplate
+-- turns it (the Macro window, the Auction House), laid as textures on
+-- Postbox's own plate: the template itself is never made (its mixin sizes
+-- the tab to its text; Core/Theme.lua, section 7). The closed tab is the
+-- client's own (bronze on WoW Forever), the open one the gold.
+--
+-- Laid by its rim, not its texture box (measured from both clients' art,
+-- the same on each): the closed end carries 7 units of soft shadow past its
+-- rim, the sides 3 and 7 (closed) or 2 and 8 (open), the template's own -3 /
+-- +7 offsets. So the rim meets the plate's top and sides, the shadow falls
+-- outside it, and the joining end is trimmed at the plate's foot: the art
+-- shows its closed end and the plate's height of its body, nothing more.
+-- The plate keeps its size, its hit rectangle and its clicks.
+do
+  local SHADOW = 7
+  local SETS = {
+    rest = { "uiframe-tab-left", "_uiframe-tab-center", "uiframe-tab-right", l = 3, r = 7 },
+    open = { "uiframe-activetab-left", "_uiframe-activetab-center", "uiframe-activetab-right", l = 2, r = 8 },
+  }
+  -- The game's Settings rule, across the window under the tabs: they stand
+  -- on it. Eight units past the tabs at each end, as the mock-ups drew it.
+  local DIVIDER, DIVIDER_RUN = "Options_HorizontalDivider", 8
+
+  -- Three pieces in `layer`, or nil (and nothing made) where the client
+  -- lacks one.
+  local function Lay(tab, set, layer)
+    for i = 1, 3 do
+      if not HasAtlas(set[i]) then return nil end
+    end
+    local plateH = tab:GetHeight()
+    if type(plateH) ~= "number" or plateH <= 0 then plateH = 28 end
+    local keep = plateH + SHADOW
+    local pieces = {}
+    for i = 1, 3 do
+      local t = tab:CreateTexture(nil, layer)
+      Atlas(t, set[i], false)
+      -- Turned over (the closed end on top) and trimmed at the joining end
+      -- to the plate's height plus the shadow, as a share of the art's own.
+      local _, h = Parts.Size(set[i])
+      local cut = h and (1 - keep / h) or 0
+      if cut < 0 then cut = 0 end
+      t:SetTexCoord(0, 1, 1, cut)
+      pieces[i] = t
+    end
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    L:SetWidth(Parts.Size(set[1]) or 35)
+    L:SetPoint("TOPLEFT", tab, "TOPLEFT", -set.l, SHADOW)
+    L:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", -set.l, 0)
+    R:SetWidth(Parts.Size(set[3]) or 37)
+    R:SetPoint("TOPRIGHT", tab, "TOPRIGHT", set.r, SHADOW)
+    R:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", set.r, 0)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    return pieces
+  end
+
+  local function ShowAll(list, on)
+    for i = 1, #list do list[i]:SetShown(on) end
+  end
+
+  -- The tab's whole look for its state, as the skin's selection override
+  -- (Theme.SetPlateSelected hands it over and retires the plate's own
+  -- art): the open art or the closed with its hover glow, and the caption
+  -- in the game's gold at rest, white on the open tab. The dot mark rides
+  -- in the caption's own colour escape and keeps its colour.
+  local function PaintTab(tab, selected)
+    local art = tab.__pbBlizzTab
+    if not art then return end
+    selected = selected and true or false
+    ShowAll(art.open, selected)
+    ShowAll(art.rest, not selected)
+    ShowAll(art.glow, not selected)
+    local text = tab.Text
+    if text and type(text.SetTextColor) == "function" then
+      if selected then
+        text:SetTextColor(Parts.FontRGB("GameFontHighlight", 1, 1, 1))
+      else
+        text:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+      end
+    end
+  end
+
+  -- The main window's two tabs and the line under them, once.
+  function Parts.Tabs(frame)
+    local tabs = frame.TabButtons
+    if type(tabs) ~= "table" or frame.__pbBlizzTabs then return end
+    frame.__pbBlizzTabs = true
+    local T = ns.Theme
+    local dressed = false
+    for _, tab in pairs(tabs) do
+      if tab and not tab.__pbBlizzTab and type(tab.CreateTexture) == "function" then
+        local rest = Lay(tab, SETS.rest, "BACKGROUND")
+        local open = rest and Lay(tab, SETS.open, "BACKGROUND")
+        if rest and open then
+          -- The game's hover: the closed art again, added at 0.4.
+          local glow = Lay(tab, SETS.rest, "HIGHLIGHT") or {}
+          for i = 1, #glow do
+            glow[i]:SetBlendMode("ADD")
+            glow[i]:SetAlpha(0.4)
+          end
+          tab.__pbBlizzTab = { rest = rest, open = open, glow = glow }
+          tab.__setSelectedOverride = PaintTab
+          if T and type(T.SetPlateSelected) == "function" then
+            T.SetPlateSelected(tab, tab.isSelected)
+          else
+            PaintTab(tab, tab.isSelected)
+          end
+          dressed = true
+        elseif rest then
+          ShowAll(rest, false)
+        end
+      end
+    end
+    local bar = frame.TabBar
+    if not (dressed and bar and HasAtlas(DIVIDER)) then return end
+    local line = frame:CreateTexture(nil, "ARTWORK")
+    if not Atlas(line, DIVIDER, false) then return end
+    local _, h = Parts.Size(DIVIDER)
+    h = h or 1
+    -- At least a screen pixel, so the line shows at any UI scale.
+    local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
+    if px > h then h = px end
+    line:SetHeight(h)
+    line:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", -DIVIDER_RUN, 0)
+    line:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", DIVIDER_RUN, 0)
+    frame.__pbBlizzTabLine = line
+  end
+end
+
+-------------------------------------------------------------
 -- The pass over tagged content
 -------------------------------------------------------------
 
@@ -349,6 +524,8 @@ function Skin.Apply(frame)
     if frame.Inset.NineSlice then frame.Inset.NineSlice:SetAlpha(0) end
   end
   LayGround(frame)
+  -- The main window's Mail and Send tabs (no other window has TabButtons).
+  Parts.Tabs(frame)
   Skin.Refresh(frame)
 end
 
