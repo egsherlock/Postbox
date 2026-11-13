@@ -4489,6 +4489,15 @@ do
     return col.top - y
   end
 
+  -- A row's name, live: the neutral ink wherever a style dresses the
+  -- window (the Postbox style, EllesmereUI's, ElvUI's), the accent being
+  -- for the headings, their rules and the values chosen in the controls;
+  -- the accent in the Blizzard look, whose names keep the game's gold.
+  -- Grey rows take the disabled ink in every look (Rows.SetEnabled).
+  function Rows.LabelInk()
+    return ns.Skin and "textPrimary" or "accent"
+  end
+
   -- Makes `cell` (a row, or half of one, `width` wide) a place the pointer
   -- rests: its wash, its name, its entry. Motion only: a click passes on,
   -- so the panel still drags from anywhere on the list.
@@ -4499,6 +4508,7 @@ do
     T.FillChrome(wash, WASH_A)
     wash:Hide()
     local name = T.CreateText(cell, role or "label")
+    if not role then T.SetColor(name, Rows.LabelInk()) end
     name:SetPoint("LEFT", cell, "LEFT", NAME_X, 0)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
@@ -4553,9 +4563,10 @@ do
     local row = Rows.New(col, spec.master and MASTER_H or ROW_H)
     Rows.Cell(col, row, ROW_W, spec.title, spec.text)
     if spec.master then
-      -- A feature's switch reads a step up from the rows it governs.
+      -- A feature's switch reads a step up from the rows it governs, in
+      -- the rows' ink.
       if _G.GameFontNormal then row.Name:SetFontObject(ns.Theme.HostFont(_G.GameFontNormal)) end
-      ns.Theme.SetColor(row.Name, "accent")
+      ns.Theme.SetColor(row.Name, Rows.LabelInk())
     end
     if spec.entryTitle then row.entry.title = spec.entryTitle end
     AddCheck(row, spec)
@@ -5524,6 +5535,7 @@ do
     cb:SetSize(CHECK_H, CHECK_H)
     cb:SetPoint("RIGHT", frame, "RIGHT", -NAME_GAP, 0)
     local name = T.CreateText(frame, "label")
+    T.SetColor(name, Rows.LabelInk())
     name:SetPoint("RIGHT", cb, "LEFT", -SIDE_GAP, 0)
     name:SetJustifyH("RIGHT")
     name:SetWordWrap(false)
@@ -5576,7 +5588,7 @@ do
     local side = cell and cell.side
     if not side then return end
     side.check:SetEnabled(on)
-    ns.Theme.SetColor(side.name, on and "accent" or "textDisabled")
+    ns.Theme.SetColor(side.name, on and Rows.LabelInk() or "textDisabled")
     local entry = side.entry
     local text = on and entry.onText or (entry.offText or entry.onText)
     if entry.text ~= text then
@@ -5699,7 +5711,7 @@ do
     local more = cell.more
     if more and more.SetEnabled then more:SetEnabled(on) end
     if cell.kind ~= "note" and cell.Name then
-      ns.Theme.SetColor(cell.Name, on and "accent" or "textDisabled")
+      ns.Theme.SetColor(cell.Name, on and Rows.LabelInk() or "textDisabled")
     end
     Rows.Say(cell, on)
   end
