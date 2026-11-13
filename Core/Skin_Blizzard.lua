@@ -1030,32 +1030,29 @@ end
 -- Fields
 -------------------------------------------------------------
 
--- Every field (an input wrap: Recipient, Subject, the message, the gold
--- boxes, the group name, the bug report's address) wears the game's input
--- border, by the file the game's own Send Mail names
--- (Interface\Common\Common-Input-Border); every search box
--- (Theme.CreateSearchBox) the game's search border with its magnifier at
--- the left, and its words moved right by what the magnifier takes. Art only,
--- on Postbox's own frames: the game's InputBoxTemplate and SearchBoxTemplate
+-- Every one-line field (an input wrap: Recipient, Subject, the gold boxes,
+-- Character Groups' name, the bug report's address, the options' words
+-- boxes) wears the game's newer box border, the one its search boxes wear
+-- (common-search-border-*: bronze on WoW Forever, grey on retail), without
+-- the magnifier, its words where they stood; every search box
+-- (Theme.CreateSearchBox) the same border with its magnifier at the left,
+-- and its words moved right by what the magnifier takes. Art only, on
+-- Postbox's own frames: the game's InputBoxTemplate and SearchBoxTemplate
 -- are never made (their scripts would take the box's focus, hint and clear
 -- button over). The field's own fill, line and grain are faded under the
--- art.
+-- art. The older Common-Input-Border is not drawn anywhere.
 --
--- The input file has no margin round its rim (measured), so it is laid on
--- the field's box. It is cut in nine by its own corners (8 units) so the
--- message box, many lines tall, keeps a thin even border: on a one-line box
--- that is the game's own three pieces. The search art (also measured) is
--- laid on the box too, its ends scaled with its height.
+-- The border is art for one line (its ends 16 x 40, its middle 224 x 40,
+-- measured: the rim stands on the art's own edges), laid on the field's box,
+-- its ends scaled with its height. A field many lines tall (the Send tab's
+-- Message box) is not stretched into it: it is sunk into the window as the
+-- lists are, the game's inset bevel round it, and its ground inside is the
+-- rows' (Row texture: the paper, the shaded paper, or the dark ground the
+-- lists keep; Parts.MessageGround).
 --
--- A cell joined to a field (the Manage Recipients key, the sort) draws as
--- it did, over the field's art at its end: a later step gives it its own.
+-- A cell joined to a field (the Manage Recipients key, the sort) is the
+-- field's last cell (Parts.FieldEnd).
 do
-  local INPUT = "Interface\\Common\\Common-Input-Border"
-  -- The file's corners and middles: 8 units in from each end and from its
-  -- top, 8 up from its foot, of its 20-unit art.
-  local U = { 0, 0.0625, 0.9375, 1 }
-  local V = { 0, 0.25, 0.375, 0.625 }
-  local CORNER = 8
   local SEARCH = { "common-search-border-left", "common-search-border-middle", "common-search-border-right" }
   local GLASS = "common-search-magnifyingglass"
   -- SearchBoxTemplate's own layout, per its 20-unit box from the art's left
@@ -1068,35 +1065,11 @@ do
     Fade(wrap.pbSurfaceTexture)
   end
 
-  local function LayInput(wrap)
-    local h = wrap:GetHeight()
-    local corner = CORNER
-    if type(h) == "number" and h > 0 and h < 2 * CORNER then corner = h / 2 end
-    -- Each column's left and right, each row's top and foot: the point on
-    -- the wrap and the offset from it.
-    local cols = { { "LEFT", 0, "LEFT", corner }, { "LEFT", corner, "RIGHT", -corner }, { "RIGHT", -corner, "RIGHT", 0 } }
-    local rows = { { "TOP", 0, "TOP", -corner }, { "TOP", -corner, "BOTTOM", corner }, { "BOTTOM", corner, "BOTTOM", 0 } }
-    local pieces = {}
-    for r = 1, 3 do
-      local row = rows[r]
-      for c = 1, 3 do
-        local col = cols[c]
-        local t = wrap:CreateTexture(nil, "BORDER", nil, 1)
-        t:SetTexture(INPUT)
-        t:SetTexCoord(U[c], U[c + 1], V[r], V[r + 1])
-        t:SetPoint("TOPLEFT", wrap, row[1] .. col[1], col[2], row[2])
-        t:SetPoint("BOTTOMRIGHT", wrap, row[3] .. col[3], col[4], row[4])
-        pieces[#pieces + 1] = t
-      end
-    end
-    pieces.corner = corner
-    return pieces
-  end
-
   -- The search border and its magnifier on `wrap` (h units tall), as the
   -- template lays them, grown with the box: the three pieces, and the
-  -- magnifier as the fourth where the client has it. Art only.
-  function Parts.SearchArt(wrap, h)
+  -- magnifier as the fourth where the client has it (none where `bare`: a
+  -- field). Art only.
+  function Parts.SearchArt(wrap, h, bare)
     for i = 1, 3 do
       if not HasAtlas(SEARCH[i]) then return nil end
     end
@@ -1119,7 +1092,7 @@ do
     M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
     -- The magnifier, as the template places it, grown with the box.
     local k = h / BOX_H
-    if HasAtlas(GLASS) then
+    if not bare and HasAtlas(GLASS) then
       local glass = wrap:CreateTexture(nil, "ARTWORK")
       if Atlas(glass, GLASS, false) then
         glass:SetSize(GLASS_SIZE * k, GLASS_SIZE * k)
@@ -1182,32 +1155,17 @@ do
   -- field is whole again. Anchors only; nothing is made.
   function Parts.FieldEnd(wrap, cell)
     local pieces = wrap.__pbBlizzField
-    if not pieces then return end
+    if not pieces or pieces.tall then return end
     local joined = (cell and cell.__pbBlizzSeg and cell:IsShown()) and true or false
     if pieces.joined == joined then return end
     pieces.joined = joined
-    if #pieces == 9 then
-      local corner = pieces.corner or CORNER
-      local rows = { { "TOP", -corner }, { "BOTTOM", corner }, { "BOTTOM", 0 } }
-      for r = 1, 3 do
-        local mid, tail = pieces[(r - 1) * 3 + 2], pieces[(r - 1) * 3 + 3]
-        local row = rows[r]
-        if joined then
-          mid:SetPoint("BOTTOMRIGHT", cell, row[1] .. "LEFT", 0, row[2])
-        else
-          mid:SetPoint("BOTTOMRIGHT", wrap, row[1] .. "RIGHT", -corner, row[2])
-        end
-        tail:SetShown(not joined)
-      end
+    local M, R = pieces[2], pieces[3]
+    if joined then
+      M:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", 0, 0)
     else
-      local M, R = pieces[2], pieces[3]
-      if joined then
-        M:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", 0, 0)
-      else
-        M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-      end
-      R:SetShown(not joined)
+      M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
     end
+    R:SetShown(not joined)
   end
 
   function Parts.Field(wrap)
@@ -1217,8 +1175,18 @@ do
     local pieces
     if type(search) == "table" then
       pieces = LaySearch(wrap, search)
+    elseif wrap._scroll then
+      -- Many lines tall: sunk, with the rows' ground inside (above). The
+      -- lists' own dark ground stays under it for the dark list.
+      SinkPanel(wrap)
+      wrap.__pbBlizzField = { tall = true }
+      Fade(wrap.pbSurfaceTexture)
+      if Parts.MessageGround then Parts.MessageGround(wrap) end
+      return
     else
-      pieces = LayInput(wrap)
+      local h = wrap:GetHeight()
+      if type(h) ~= "number" or h <= 0 then h = 24 end
+      pieces = Parts.SearchArt(wrap, h, true)
     end
     if not pieces then return end
     wrap.__pbBlizzField = pieces
