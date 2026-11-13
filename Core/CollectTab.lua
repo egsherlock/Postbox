@@ -6755,7 +6755,9 @@ function AV.Paint(panel)
   panel._picking = picking
   -- The cap always: the picker in the plate that names the box, before that
   -- plate is measured, so the crest's room is part of the plate in every
-  -- state (MailMemory.HostPick), and that box's class icon on it.
+  -- state (MailMemory.HostPick), and that box's class icon on it. With the
+  -- Class icons option on None, no cap and no room for it: the picker still
+  -- covers the plate, so its click and tooltip are the same.
   panel.Picker:Show()
   local box = panel.ViewToggle
   local MM = ns.MailMemory

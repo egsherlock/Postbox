@@ -2493,13 +2493,19 @@ do
     WARRIOR = 0, PALADIN = 1, HUNTER = 2, ROGUE = 3, PRIEST = 4, DEATHKNIGHT = 5, SHAMAN = 6, MAGE = 7,
     WARLOCK = 8, MONK = 9, DRUID = 10, DEMONHUNTER = 11, EVOKER = 12,
   }
-  -- The order the option lists them in; EllesmereUI's after these.
-  Icons.ORDER = { "game", "round", "painted", "pixel", "comic", "glyphs" }
+  -- The order the option lists them in; EllesmereUI's after these. None,
+  -- the last of Postbox's own: no class icon anywhere, the names in their
+  -- class colours alone, and every place that kept the icon's room gives it
+  -- back (Icons.Off).
+  Icons.ORDER = { "game", "round", "painted", "pixel", "comic", "glyphs", "none" }
   Icons.NAMES = {
     game = "CLASS_ICONS_GAME", round = "CLASS_ICONS_ROUND",
     painted = "CLASS_ICONS_PAINTED", pixel = "CLASS_ICONS_PIXEL", comic = "CLASS_ICONS_COMIC",
-    glyphs = "CLASS_ICONS_GLYPHS",
+    glyphs = "CLASS_ICONS_GLYPHS", none = "CLASS_ICONS_NONE",
   }
+  -- None's item in the option's list: no art, its square kept empty, so
+  -- its name starts where the others' names do (Lib/UI/Dropdown.lua).
+  local NONE_SPEC = { blank = true }
 
   -- The game's art. The portraits' sheet and the class icons' folder (Game);
   -- a class icon is cropped as an item's icon is (MM.CREST_CROP), its own
@@ -2610,7 +2616,7 @@ do
   local function Current()
     local UI = ns.MailboxUI
     local id = UI and UI.GetClassIcons and UI.GetClassIcons() or "game"
-    if SHEETS[id] or id == "round" then return id end
+    if SHEETS[id] or id == "round" or id == "none" then return id end
     local style = EUI.StyleOf(id)
     if style then
       local _, kit = EUI.Get()
@@ -2620,6 +2626,12 @@ do
     return "game"
   end
   Icons.Current = Current
+
+  -- Whether None is chosen: no class icon anywhere, and no room kept for
+  -- one (the plates' cap, the character list's rows).
+  function Icons.Off()
+    return Current() == "none"
+  end
 
   -- style id, class file -> how that class is drawn in that style:
   --   "atlas", atlas
@@ -2664,10 +2676,24 @@ do
   -- colour is the cap's to paint, MM.PaintPickIcon, which multiplies in the
   -- tint kept here); "muted", a hidden character's row (a tinted style
   -- white, so the row's grey reads as grey). Builds nothing.
+  -- Returns whether there is an icon to show: false with None, which leaves
+  -- the texture empty and holding nothing a later style could trip on (no
+  -- file or atlas kept, no colour), for its caller to hide.
   function Icons.Apply(tex, token, size, how)
-    if not tex then return end
+    if not tex then return false end
     if token == "" then token = nil end
     local id, euiStyle, euiFile = Current()
+    if id == "none" then
+      tex.__pbIconFile, tex.__pbAtlas = nil, nil
+      tex:SetTexture(nil)
+      if how == "cap" then
+        tex.__pbTintR, tex.__pbTintG, tex.__pbTintB = 1, 1, 1
+      elseif tex.__pbIconTinted then
+        tex.__pbIconTinted = nil
+        tex:SetVertexColor(1, 1, 1)
+      end
+      return false
+    end
     local kind, file, l, r, t, b, tinted = Resolve(id, token, euiStyle, euiFile)
     local tr, tg, tb = 1, 1, 1
     if kind == "atlas" then
@@ -2703,6 +2729,7 @@ do
       tex.__pbIconTinted = nil
       tex:SetVertexColor(1, 1, 1)
     end
+    return true
   end
 
   -- texture -> another painter is about to draw on it (a row that was a
@@ -2758,6 +2785,7 @@ do
   -- id, class file -> the art a dropdown item shows for that style
   -- (Lib/UI/Dropdown.lua: texture or atlas, coords, color).
   function Icons.Spec(id, token)
+    if id == "none" then return NONE_SPEC end
     local style = EUI.StyleOf(id)
     local _, kit = EUI.Get()
     local path = style and kit and EUI.Path(style, kit) or nil
@@ -2786,16 +2814,19 @@ do
 end
 
 -- texture, realm, name [, size [, how]] -> that character's class icon on
--- the texture, in the chosen style (MM.Icons.Apply).
+-- the texture, in the chosen style (MM.Icons.Apply). -> whether it has one
+-- to show (false with None).
 function MM.PaintClassIcon(tex, realm, name, size, how)
-  MM.Icons.Apply(tex, ClassOf(realm, name), size, how)
+  return MM.Icons.Apply(tex, ClassOf(realm, name), size, how)
 end
 
 -- picker, realm, name -> the picker's cap wears that character's class icon
--- (nil, nil: the generic figure), painted with the cap's own colour.
+-- (nil, nil: the generic figure), painted with the cap's own colour; with
+-- None, no cap (its room is given back where the plate is hosted,
+-- MM.HostPick).
 function MM.PaintCap(zone, realm, name)
   if not (zone and zone.Icon) then return end
-  MM.Icons.Apply(zone.Icon, realm and ClassOf(realm, name) or nil, zone.lead, "cap")
+  zone.Icon:SetShown(MM.Icons.Apply(zone.Icon, realm and ClassOf(realm, name) or nil, zone.lead, "cap"))
   MM.PaintPickIcon(zone)
 end
 
@@ -3450,8 +3481,10 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     row.expiryTip, row.stuck = nil, nil
     row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
     row.headerRealm, row.headerName = mail.realm, mail.name
-    -- The character's class icon, in the chosen style (MM.Icons).
-    MM.PaintClassIcon(row.Icon, mail.realm, mail.name, ROW_ICON)
+    -- The character's class icon, in the chosen style (MM.Icons); with None,
+    -- none, and its column kept empty, as a mail without an icon keeps it,
+    -- so the heading's name starts on the line the names under it start on.
+    local crest = MM.PaintClassIcon(row.Icon, mail.realm, mail.name, ROW_ICON)
     -- A heading, not a mail: a quiet band of its own and a hairline above it,
     -- neutral (the name's class colour is the only colour it needs).
     if not row.HeaderWash then
@@ -3466,7 +3499,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     end
     row.HeaderWash:Show()
     row.HeaderRule:Show()
-    row.Icon:Show()
+    row.Icon:SetShown(crest)
     row.Indicator:Hide()
     if row.Indicator.__pbShade then row.Indicator.__pbShade:Hide() end
     row.Warning:Hide()
@@ -4150,9 +4183,14 @@ local function PaintPicker(list)
       row.realm, row.charName, row.isMe = st.realm, st.name, st.me
       row.reason = (not st.hidden) and st.text or nil
       row.Rule:Hide()
-      MM.PaintClassIcon(row.Crest, st.realm, st.name, PICK_CREST, st.hidden and "muted" or nil)
-      row.Crest:Show()
-      row.Name:SetPoint("LEFT", row.Crest, "RIGHT", MM.PICK_GAP, 0)
+      -- With None, no crest: the name starts where the crest did.
+      if MM.PaintClassIcon(row.Crest, st.realm, st.name, PICK_CREST, st.hidden and "muted" or nil) then
+        row.Crest:Show()
+        row.Name:SetPoint("LEFT", row.Crest, "RIGHT", MM.PICK_GAP, 0)
+      else
+        row.Crest:Hide()
+        row.Name:SetPoint("LEFT", row, "LEFT", MM.PICK_LEAD, 0)
+      end
       if st.hidden then
         -- A step back: no class colour, the name in the disabled grey (at
         -- full strength: a text dimmed by its alpha reads on whatever it
@@ -4202,9 +4240,10 @@ local function PaintPicker(list)
   end
 
   -- The row's width: its contents with the gutters; the card's, the rows
-  -- and the padding either side, as a menu's.
+  -- and the padding either side, as a menu's. With None, no crest's room.
   local inner = MM.PICK_LEAD
-  local width = inner + PICK_CREST + MM.PICK_GAP + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
+  local crest = MM.Icons.Off() and 0 or (PICK_CREST + MM.PICK_GAP)
+  local width = inner + crest + math.ceil(nameW) + 20 + math.ceil(countW) + PICK_GUTTER
   width = math.max(width, inner + math.ceil(footW) + PICK_GUTTER)
   for i = 1, shown do
     local row = list.rows[i]
@@ -4860,10 +4899,22 @@ end
 -- plate's caption makes room for the cap (`plate.lead`, which its owner
 -- adds to its width), the cap fills the plate's left end inside its ring,
 -- and the picker's click and tooltip cover the whole plate. Only on a
--- change, but for its level over the plate.
+-- change, but for its level over the plate. With None (MM.Icons.Off) there
+-- is no cap: the plate keeps no room for it, its caption centred as a
+-- plain plate's, and the picker still covers it whole, so its click, its
+-- tooltip and its hover are the same. A change of style changes the room
+-- on the plate already hosted; its owner measures and lays it out after.
 function MM.HostPick(zone, plate)
   local old = zone.host
-  if old ~= plate then
+  if old == plate then
+    if plate then
+      local room = MM.Icons.Off() and 0 or (zone.room or zone.lead)
+      if plate.lead ~= room then
+        plate.lead = room
+        PlaceCaption(plate)
+      end
+    end
+  else
     if old then
       if zone.__pbOver then
         ns.Theme.SetPlateHover(old, false)
@@ -4874,7 +4925,7 @@ function MM.HostPick(zone, plate)
     end
     zone.host = plate
     if plate then
-      plate.lead = zone.room or zone.lead
+      plate.lead = MM.Icons.Off() and 0 or (zone.room or zone.lead)
       PlaceCaption(plate)
       zone.Icon:ClearAllPoints()
       zone.Icon:SetPoint("TOPLEFT", plate, "TOPLEFT", 1, -1)

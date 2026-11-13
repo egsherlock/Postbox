@@ -624,11 +624,15 @@ function Dropdown.Create(parent, opts)
   end
 
   -- The art an item carries ({ texture= or atlas=, aspect= }, or { glyph= },
-  -- one of the addon theme's glyphs), or nil.
+  -- one of the addon theme's glyphs), or nil. { blank = true } is an item
+  -- with no art in a list of items that have it: nothing on the toggle.
   local function ArtOf(id)
     for i = 1, #items do
       local item = items[i]
-      if item.id == id then return type(item.icon) == "table" and item.icon or nil end
+      if item.id == id then
+        local spec = item.icon
+        return (type(spec) == "table" and not spec.blank) and spec or nil
+      end
     end
     return nil
   end
@@ -1061,11 +1065,16 @@ function Dropdown.Create(parent, opts)
         -- line up: ART.X in where the items carry art, else a gutter more
         -- unless the list is trimmed (PlaceRows, which anchors them).
         -- `_artX`, `_textX0`: where each starts, the gutter left out.
+        -- { blank = true }: no art, its square kept empty, so its words
+        -- start where the other items' words do (the options' Class icons'
+        -- None).
         local textOffset = LIST_PADDING
         if type(item.icon) == "table" then
           local size = rowHeight - 4
           local g = GlyphOf(item.icon)
-          if g then
+          if item.icon.blank then
+            row._art = nil -- the square stays empty
+          elseif g then
             -- A glyph at its own size, centred in the art's square, in the
             -- caption's ink (painted on each open).
             local art = ns.Theme.Glyph(row, item.icon.glyph, nil, "ARTWORK")
