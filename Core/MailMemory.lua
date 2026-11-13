@@ -4296,6 +4296,9 @@ local function NewPickList(anchor)
     end
   end)
   anchor.__pbPickList = list
+  -- One Escape closes it before the window (Helpers.RegisterEscPopup);
+  -- after its own OnShow and OnHide, which are set above.
+  ns.Core.UI.Helpers.RegisterEscPopup(list)
   -- The skins' pass, from the button: they walk a frame's children.
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, anchor) end
   -- A new frame starts SHOWN, so the Show below would not fire OnShow and

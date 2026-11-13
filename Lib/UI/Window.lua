@@ -92,6 +92,26 @@ function Helpers.RegisterEscClose(frame)
   return true
 end
 
+-- The popups of Postbox's own that one Escape closes before any window: a
+-- select's list and the menus (Lib/UI/Dropdown.lua), the Send tab's
+-- contact picker and its type-ahead list, the character list. Each
+-- registers itself once, as it is made, and its show and hide reach What's
+-- new's Escape (Core/WhatsNew.lua, section 4) as a window's do; the press
+-- closes the highest one shown, by `close(frame)` where the popup gives one
+-- (what else its close must do), else by its Hide. Never put in
+-- UISpecialFrames: in combat, where that frame stands down, Escape is the
+-- client's pass as before. Weak-keyed, so a list let go is forgotten.
+Helpers.ESC_POPUPS = setmetatable({}, { __mode = "k" })
+
+function Helpers.RegisterEscPopup(frame, close)
+  local popups = Helpers.ESC_POPUPS
+  if not frame or popups[frame] or type(frame.HookScript) ~= "function" then return end
+  popups[frame] = true
+  if type(close) == "function" then frame.__pbEscClose = close end
+  frame:HookScript("OnShow", EscWindowChanged)
+  frame:HookScript("OnHide", EscWindowChanged)
+end
+
 -------------------------------------------------------------
 -- Geometry
 -------------------------------------------------------------

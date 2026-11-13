@@ -953,6 +953,18 @@ end
 -- Every window registered by Helpers.RegisterEscClose calls ESC.Sync as it
 -- shows and hides (Lib/UI/Window.lua); counting reads a handful of
 -- frames and makes nothing.
+--
+-- Before any window, an open popup of ours: a select's list or a menu (the
+-- Mail tab's sort and filter, the options' selects), the Send tab's contact
+-- picker and its type-ahead list, a character list (the Inbox button's,
+-- Mail Memory's). While one is up the frame is up too, out of combat, and
+-- one press closes it alone, the highest first; the next press is the
+-- window's, by the order above. Each registers itself as it is made
+-- (Helpers.RegisterEscPopup) and calls ESC.Sync as it shows and hides, as
+-- the windows do. A popup is never in UISpecialFrames: in combat Escape is
+-- the client's pass, which closes the mailbox and its popups in one press,
+-- as before. The frame looks further only at a press of a key that can be
+-- the game-menu key (AR.MENU_KEYS); every other key passes untouched.
 -------------------------------------------------------------
 
 -- Every Postbox window Escape closes, by name; the first three are the
@@ -1000,9 +1012,33 @@ function ESC.Top()
   return ESC.Up("PostboxOptionsFrame") or ESC.Up("PostboxMailMemoryFrame")
 end
 
--- What one press closes: What's new, else the notice, else -- outside the
--- arrange mode, with two or more windows up -- the top window. Reads only.
+-- The popup one press closes, or nil: of the popups of ours on screen (a
+-- select's list or a menu, the Send tab's contact picker or type-ahead
+-- list, a character list; each registered as it is made, Helpers.
+-- RegisterEscPopup), the one standing highest. Reads a handful of frames.
+function ESC.Popup()
+  local helpers = ns.Core and ns.Core.UI and ns.Core.UI.Helpers
+  local popups = helpers and helpers.ESC_POPUPS
+  if not popups then return nil end
+  local T = ns.Theme
+  local best, bestLevel
+  for f in pairs(popups) do
+    if f:IsVisible() then
+      local level = T and T.LevelOf and T.LevelOf(f) or 0
+      if not best or level > bestLevel then best, bestLevel = f, level end
+    end
+  end
+  return best
+end
+
+-- What one press closes: an open popup first, wherever it is (innermost
+-- first: a list or a menu is closed before the window it opens from, the
+-- arrange mode's layers included); else What's new, else the notice, else
+-- -- outside the arrange mode, with two or more windows up -- the top
+-- window. Reads only.
 function ESC.Target()
+  local popup = ESC.Popup()
+  if popup then return popup end
   if win and win:IsVisible() then return win end
   if card and card:IsVisible() then return card end
   local AR = ns.Arrange
@@ -1025,6 +1061,9 @@ function ESC.Close(target)
   end
   if target == card then
     Answer(false)
+  elseif target.__pbEscClose then
+    -- A popup whose close does more than its Hide (Helpers.RegisterEscPopup).
+    target.__pbEscClose(target)
   else
     target:Hide()
   end
@@ -1052,11 +1091,19 @@ function ESC.KeyAnswer(self)
 end
 
 function ESC.KeyDown(self, pressed)
+  local AR = ns.Arrange
+  -- Any key that cannot be the game-menu key (the arrange mode's cached
+  -- set, AR.MENU_KEYS, read as the frame is shown) passes at once, with
+  -- nothing asked: the same answer AR.EscapeReachesAddOns gives it.
+  local keys = AR and AR.MENU_KEYS
+  if keys and not keys[pressed] then
+    ESC.Pass(self)
+    return
+  end
   if InCombatLockdown() then
     self:Hide()
     return
   end
-  local AR = ns.Arrange
   local ours = false
   if AR and type(AR.EscapeReachesAddOns) == "function" then
     local ok, yes = pcall(AR.EscapeReachesAddOns, pressed)
@@ -1148,6 +1195,7 @@ end
 -- at all.
 function ESC.Sync()
   local up = (win and win:IsVisible()) or (card and card:IsVisible()) or ESC.Count() >= 2
+    or ESC.Popup() ~= nil
   local key = ESC.key
   if not up then
     if key then

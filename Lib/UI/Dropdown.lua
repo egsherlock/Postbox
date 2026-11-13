@@ -85,6 +85,14 @@ local function PressAnywhere()
   end
 end
 
+-- A list or menu made: one Escape closes it before any window (Lib/UI/
+-- Window.lua, Helpers.RegisterEscPopup). After its own OnHide is set, which
+-- a SetScript would otherwise put over the hook. Resolved at call time.
+local function EscPopup(list)
+  local helpers = Core.UI.Helpers
+  if helpers and type(helpers.RegisterEscPopup) == "function" then helpers.RegisterEscPopup(list) end
+end
+
 -- Listens while a list is open, and stops when the last one closes.
 local function Watch()
   local open = AnyListShown()
@@ -1055,6 +1063,7 @@ function Dropdown.Create(parent, opts)
 
     list:SetScript("OnHide", ListHidden)
     lists[list] = true
+    EscPopup(list)
     return list
   end
 
@@ -1583,6 +1592,7 @@ function Dropdown.Menu(owner, items, opts)
       if opts.onClose then opts.onClose() end
     end)
     lists[list] = true
+    EscPopup(list)
     -- The skins' pass, from the owner: they walk a frame's children.
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, owner) end
   end

@@ -330,6 +330,14 @@ client's pass as before, which closes everything in one press. The windows' own 
 hide (hooked on Postbox's frames in `Helpers.RegisterEscClose`) keep it in step; nothing
 of Blizzard's is read beyond what `AR.EscapeReachesAddOns` already reads.
 
+Before any window, the same frame closes an open popup of Postbox's own (1.70): a
+select's list or a menu, the Send tab's contact picker and type-ahead list, a character
+list. It is up, out of combat, while one is shown, and a kept press hides the highest
+one alone. Each popup registers itself as it is made (`Helpers.RegisterEscPopup`, a
+hook on its own show and hide); none is put in `UISpecialFrames`, so in combat Escape
+is the client's pass as before. The frame looks no further than the key's name for any
+key that cannot be the game-menu key (`AR.MENU_KEYS`).
+
 `Postbox.lua`: the error trap calls `seterrorhandler`. **Not a taint source.** The
 error handler is a plain global function reference, not a frame and not a secure
 capability: replacing it does not touch anything protected, and it is what every

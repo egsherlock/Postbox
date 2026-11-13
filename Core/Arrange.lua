@@ -1273,6 +1273,9 @@ do
   -- key and the client would reach the addons' windows with it. What's new
   -- asks it too (Core/WhatsNew.lua, section 4), after AR.ReadMenuKeys.
   AR.ReadMenuKeys = ReadMenuKeys
+  -- The set itself, filled in place (never replaced), so What's new's key
+  -- frame can let every other key pass without asking anything.
+  AR.MENU_KEYS = menuKeys
 
   function AR.EscapeReachesAddOns(pressed)
     if not menuKeys[pressed] then return false end

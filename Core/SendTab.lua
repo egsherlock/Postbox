@@ -3100,6 +3100,8 @@ local function EnsureContactPicker(panel)
     f._showHidden = false
     RefreshContactBar(panel)
   end)
+  -- One Escape closes it before the window (Helpers.RegisterEscPopup).
+  ns.Core.UI.Helpers.RegisterEscPopup(f)
 
   panel.ContactPicker = f
   return f
@@ -4010,6 +4012,15 @@ function ST.Curate.SuggestStarClick(self, button)
   end
 end
 
+-- The type-ahead list closed by an Escape that reached it (the To box not
+-- focused; a focused box has its own, RecipientEscapePressed): the
+-- debounced pass cancelled with it, so it does not reopen a moment later.
+function ST.CloseSuggestions(sf)
+  local panel = sf:GetParent()
+  if panel then panel._suggestToken = (panel._suggestToken or 0) + 1 end
+  sf:Hide()
+end
+
 local function CreateSuggestionPopup(panel)
   local sf = CreateFrame("Frame", nil, panel, "BackdropTemplate")
   sf:SetPoint("TOPLEFT", panel.ToWrap, "BOTTOMLEFT", 0, -1)
@@ -4069,6 +4080,8 @@ local function CreateSuggestionPopup(panel)
     btn:Hide()
     sf.buttons[i] = btn
   end
+  -- One Escape closes it before the window (Helpers.RegisterEscPopup).
+  ns.Core.UI.Helpers.RegisterEscPopup(sf, ST.CloseSuggestions)
 
   return sf
 end
