@@ -22,7 +22,7 @@ local _, ns = ...
 --    guild.
 --
 -- 3. A row is one line in columns -- the star, the name, Category, Class,
---    Level, Played, Mailed, then three marks (note, eye, delete) -- and
+--    Level, Played, Mailed, Note, then three marks (note, eye, delete) -- and
 --    every width is measured from the fonts in use. A keystroke, a scroll
 --    tick and a row bind make nothing: the list is sorted once per collect
 --    or sort change, the filter keeps that order in a reused table, and
@@ -92,6 +92,10 @@ local ROW = {
   MARK = 22, MARK_GAP = 2, MARK_EDGE = 6, MARK_AIR = 4,
   GUTTER = 2 * M.gap,
   NAME_MIN = 140,
+  -- The Note column: never narrower than this (an empty one is still a
+  -- place to click), wider as far as its longest note asks where the
+  -- window has the room (RM.Layout).
+  NOTE_MIN = 100,
   -- The unlit star under the pointer: an outline in a light gold, the lit
   -- star's family a step lighter, drawn as the game's own unlit star's shape
   -- (its art masks a fill of this colour: the art itself is a dark grey no
@@ -110,11 +114,15 @@ local COLS = {
   { id = "level",    key = "RM_COL_LEVEL",    field = "levelText",  right = true },
   { id = "played",   key = "RM_COL_PLAYED",   field = "playedText", right = true },
   { id = "mailed",   key = "RM_COL_MAILED",   field = "mailedText", right = true },
+  -- The player's own words: a cell of its own that a click edits (the note
+  -- mark's editor), as wide as RM.Layout can give it, NOTE_MIN at least.
+  { id = "note",     key = "RM_BTN_NOTE",     field = "note",       flex = true },
 }
 -- What leaves first when the window narrows: Class (the name's class colour
--- and the tooltip say it), then Level, then Played, then Mailed. Category
+-- and the tooltip say it), then Level, then Played, then Mailed, then the
+-- Note (the width floor keeps it: this is only a font's edge case). Category
 -- stays. Decided on the measured widths, never per row.
-local DROP = { "class", "level", "played", "mailed" }
+local DROP = { "class", "level", "played", "mailed", "note" }
 
 -- THE VERTICAL CHAIN, top to bottom. Named once because two places read it:
 -- the anchors in Build and the height floor (HeightBounds), which have to agree
@@ -140,9 +148,10 @@ local FOOT_PAD    = 10
 local GRIP_CLEAR  = 26
 
 -- The width a window nobody has resized opens at: what the content asks for,
--- every column with a name of DEFAULT_NAME beside them, measured
--- (DefaultWidth), and held between DEFAULT_W and DEFAULT_MAX_W.
-local DEFAULT_W, DEFAULT_MAX_W, DEFAULT_NAME = 640, 760, 186
+-- every column with a name of DEFAULT_NAME beside them and the Note as wide
+-- as its longest note, measured (DefaultWidth), and held between DEFAULT_W
+-- and DEFAULT_MAX_W. With no notes the content asks 756 on stock fonts.
+local DEFAULT_W, DEFAULT_MAX_W, DEFAULT_NAME = 740, 900, 186
 -- The bounds, of which only these are chosen; the section "Size bounds" below
 -- measures the rest. The narrowest width is the Postbox window's own, so the
 -- two windows stop at the same place, and it gives way only where this
@@ -968,13 +977,18 @@ end
 -- collect): the row's and the column names' heights, and each column's
 -- width -- its widest cell over every entry, or its name. RM.Layout then
 -- decides, for the row width the list has, which columns stand and where:
--- every column while the name keeps NAME_MIN, otherwise DROP's order,
--- re-decided on resize and never per row. A change of either moves
+-- every column while the name keeps NAME_MIN and the Note NOTE_MIN,
+-- otherwise DROP's order, then the room past that to the name (up to its
+-- longest), the Note (up to its longest) and the name again; re-decided on
+-- resize and never per row. A change of either moves
 -- RM._lay.gen, and a row re-anchors its cells only when its gen is old.
 -------------------------------------------------------------
+-- `w` is each column's measured width, `lw` the width the layout gives it
+-- (the same, but the Note's, which takes what room there is), `nameWant`
+-- the longest name's, up to DEFAULT_NAME.
 local LAY = {
-  gen = 0, rowW = 0, nameW = 0,
-  shown = {}, x = {}, w = {},
+  gen = 0, rowW = 0, nameW = 0, nameWant = 0,
+  shown = {}, x = {}, w = {}, lw = {},
   rowH = ROW.MIN_H, headH = ROW.HEAD_MIN,
   seen = {},           -- string -> its measured width, for one measuring pass
 }
@@ -998,6 +1012,7 @@ function RM.Measure(frame)
     local cell = frame.HeadCells and frame.HeadCells[col.id]
     local width = math.ceil(Theme.TextWidth(cell))
     local field = col.field
+    local flex = col.flex
     for i = 1, #entries do
       local s = entries[i][field]
       if s then
@@ -1008,11 +1023,30 @@ function RM.Measure(frame)
           seen[s] = sw
         end
         if sw > width then width = sw end
+        -- A note's own width: where the cell is narrower, it was cut, and
+        -- the row's tooltip carries it whole.
+        if flex then entries[i]._noteW = sw end
+      elseif flex then
+        entries[i]._noteW = nil
       end
     end
     w[col.id] = width
   end
   probe:SetText("")
+
+  -- The longest name, up to DEFAULT_NAME: the room the name is given first
+  -- when the window has more than the least (RM.Layout).
+  local nameProbe, nameWant = frame.NameProbe, 0
+  for i = 1, #entries do
+    local s = entries[i].display
+    if s and nameWant < DEFAULT_NAME then
+      nameProbe:SetText(s)
+      local sw = math.ceil(Theme.TextWidth(nameProbe))
+      if sw > nameWant then nameWant = sw end
+    end
+  end
+  nameProbe:SetText("")
+  LAY.nameWant = math.min(math.max(nameWant, ROW.NAME_MIN), DEFAULT_NAME)
 
   LAY.rowH, LAY.headH = rowH, headH
   -- The next Layout decides again from these widths, whatever the row width.
@@ -1025,25 +1059,37 @@ function RM.Layout(rowW)
   rowW = math.floor(tonumber(rowW) or 0)
   if rowW <= 0 or rowW == LAY.rowW then return false end
   LAY.rowW = rowW
-  local shown, w, x = LAY.shown, LAY.w, LAY.x
+  local shown, w, x, lw = LAY.shown, LAY.w, LAY.x, LAY.lw
+  -- Every column at its measured width, the Note at its least.
   local need = ROW.NAME_X + ROW.END_W
   for c = 1, #COLS do
-    local id = COLS[c].id
+    local col = COLS[c]
+    local id = col.id
     shown[id] = true
-    need = need + (w[id] or 0) + ROW.GUTTER
+    lw[id] = col.flex and ROW.NOTE_MIN or (w[id] or 0)
+    need = need + lw[id] + ROW.GUTTER
   end
   local d = 1
   while rowW - need < ROW.NAME_MIN and DROP[d] do
     local id = DROP[d]
     shown[id] = false
-    need = need - (w[id] or 0) - ROW.GUTTER
+    need = need - lw[id] - ROW.GUTTER
     d = d + 1
+  end
+  -- The room past the least: the name first, up to its longest; then the
+  -- Note, up to its longest; then the name again.
+  if shown.note then
+    local spare = rowW - need - ROW.NAME_MIN
+    spare = spare - math.min(spare, math.max(0, LAY.nameWant - ROW.NAME_MIN))
+    if spare > 0 then
+      lw.note = lw.note + math.min(spare, math.max(0, (w.note or 0) - ROW.NOTE_MIN))
+    end
   end
   local right = rowW - ROW.END_W
   for c = #COLS, 1, -1 do
     local id = COLS[c].id
     if shown[id] then
-      right = right - (w[id] or 0)
+      right = right - lw[id]
       x[id] = right
       right = right - ROW.GUTTER
     end
@@ -1053,20 +1099,22 @@ function RM.Layout(rowW)
   return true
 end
 
--- The row width the content asks for with Category alone beside a name of
--- NAME_MIN: what the window's width floor stands on.
+-- The row width the content asks for with Category and the Note at its
+-- least beside a name of NAME_MIN: what the window's width floor stands on.
 function RM.LeastRowWidth()
-  return ROW.NAME_X + ROW.NAME_MIN + ROW.GUTTER + (LAY.w.category or 0) + ROW.END_W
+  return ROW.NAME_X + ROW.NAME_MIN + ROW.GUTTER + (LAY.w.category or 0)
+    + ROW.GUTTER + ROW.NOTE_MIN + ROW.END_W
 end
 
--- One font string of a row or of the column names, placed as the layout says.
+-- One font string of a row or of the column names (or the Note's cell),
+-- placed as the layout says.
 local function PlaceCell(fs, parent, id)
   local shown = LAY.shown[id]
   fs:SetShown(shown and true or false)
   if not shown then return end
   fs:ClearAllPoints()
   fs:SetPoint("LEFT", parent, "LEFT", LAY.x[id], 0)
-  fs:SetWidth(LAY.w[id])
+  fs:SetWidth(LAY.lw[id])
 end
 
 local function PlaceRowCells(row)
@@ -1075,8 +1123,10 @@ local function PlaceRowCells(row)
   row.Name:SetWidth(LAY.nameW)
   for c = 1, #COLS do
     local id = COLS[c].id
-    PlaceCell(row.Cells[id], row, id)
+    -- The Note's text fills its cell, and the cell is what is placed.
+    PlaceCell(id == "note" and row.NoteCell or row.Cells[id], row, id)
   end
+  row.NoteCell:SetHeight(LAY.rowH)
   row._lgen = LAY.gen
 end
 
@@ -1227,7 +1277,8 @@ local function PaintMarks(row)
   if entry.note then
     MarkTone(note.Glyph, "accent")
   else
-    MarkTone(note.Glyph, over == note and "textPrimary" or "textDisabled")
+    -- Lit with its cell, too: the cell and the mark are one control.
+    MarkTone(note.Glyph, (over == note or row._overNote) and "textPrimary" or "textDisabled")
   end
 
   -- The outline eye, and crossed while the name is hidden (Phosphor's eye
@@ -1345,7 +1396,9 @@ function RM.RowTip(row, owner)
   if not shown.played then Theme.TipFact(L["RM_FACT_PLAYED"], entry.playedText) end
   if not shown.mailed then Theme.TipFact(L["RM_FACT_MAILED"], entry.mailedText) end
   Theme.TipFact(L["RM_FACT_GROUPS"], GroupsOf(entry))
-  if entry.note then
+  -- The note where the row does not show it whole: its column gone, or the
+  -- cell narrower than the note.
+  if entry.note and not (shown.note and (entry._noteW or 0) <= (LAY.lw.note or 0)) then
     Theme.TipFact(L["RM_FACT_NOTE"], Theme.TipTone("muted", "\"" .. entry.note .. "\""))
   end
   -- One of the player's own characters with nothing recorded yet: the row's
@@ -1355,17 +1408,20 @@ function RM.RowTip(row, owner)
     GameTooltip:AddLine(L["RM_TIP_ALT_UNRECORDED"], muted, muted, muted, true)
   end
   if entry.stale then Theme.TipLine(Theme.TipTone("warning", L["RM_TIP_STALE"])) end
-  -- The click as the row stands: on a favorite it takes the star away.
+  -- The double-click as the row stands: on a favorite it takes the star
+  -- away; on a hidden name it favorites it and so shows it.
   Theme.TipHint(L[entry.hidden and "RM_HINT_ROW_HIDDEN" or (entry.fav and "RM_HINT_ROW_FAV") or "RM_HINT_ROW"])
   GameTooltip:Show()
 end
 
--- A mark's tooltip: what it is, what it does, and its click.
-function RM.MarkTip(mark)
+-- A mark's tooltip: what it is, what it does, and its click. `owner`, where
+-- the tooltip stands, is the mark unless given (the Note's cell shows its
+-- mark's).
+function RM.MarkTip(mark, owner)
   local row = mark._row
   local entry = row and row._entry
   if not entry then return end
-  Theme.TipBegin(mark, "ANCHOR_RIGHT")
+  Theme.TipBegin(owner or mark, "ANCHOR_RIGHT")
   if mark == row.NoteMark then
     Theme.TipTitle(L["RM_BTN_NOTE"])
     Theme.TipLine(L["RM_TIP_NOTE"])
@@ -1395,24 +1451,38 @@ function RM.MarkTip(mark)
   GameTooltip:Show()
 end
 
--- The shared handlers. A row's click: favourite; right-click: hide (or show
--- a hidden name); Shift and Ctrl select, as on the Mail tab. A right-click
--- with a modifier is a right-click.
+-- The shared handlers. A row's double-click: favourite (a hidden name is
+-- shown with it, as a favourite cannot be hidden); right-click: hide (or
+-- show a hidden name); Shift and Ctrl select, as on the Mail tab. A plain
+-- single click changes nothing, so a click meant for something else never
+-- favourites a name. A right-click with a modifier is a right-click.
+--
+-- The client sends a double-click's second press to OnDoubleClick in place
+-- of OnClick, so a part of the row with a click of its own (the star, the
+-- Note's cell, the marks) swallows it there (ROWS.PartDoubleClick): two
+-- quick clicks on it are one click, and never the row's double-click.
 local ROWS = {}
 
-function ROWS.Click(row, button)
+-- The row's right-click and its selection clicks; true where it was one.
+function ROWS.Modified(row, button)
   local entry = row._entry
-  if not entry then return end
+  if not entry then return true end
   if button == "RightButton" then
     RM.ToggleHidden(entry)
-    return
+    return true
   end
-  if IsShiftKeyDown() then RM.SelectRange(row) return end
-  if IsControlKeyDown() then RM.SelectToggle(row) return end
-  RM.ToggleFavorite(entry)
+  if IsShiftKeyDown() then RM.SelectRange(row) return true end
+  if IsControlKeyDown() then RM.SelectToggle(row) return true end
+  return false
 end
 
-function ROWS.RowClick(self, button) ROWS.Click(self, button) end
+function ROWS.RowClick(self, button) ROWS.Modified(self, button) end
+-- The second press of a double-click: the plain one favourites; a right or
+-- modified one is what its single press would be.
+function ROWS.RowDoubleClick(self, button)
+  if ROWS.Modified(self, button) then return end
+  RM.ToggleFavorite(self._entry)
+end
 function ROWS.RowEnter(self)
   RowHover(self, true)
   RM.RowTip(self)
@@ -1422,8 +1492,17 @@ function ROWS.RowLeave(self)
   GameTooltip:Hide()
 end
 
--- The star is the row's: its click is the row's, the right-click included.
-function ROWS.StarClick(self, button) ROWS.Click(self._row, button) end
+-- A part's second press: a right or modified one is the row's, a plain one
+-- is swallowed.
+function ROWS.PartDoubleClick(self, button) ROWS.Modified(self._row, button) end
+
+-- The star's click: favourite. Its right-click and selection clicks are
+-- the row's.
+function ROWS.StarClick(self, button)
+  local row = self._row
+  if ROWS.Modified(row, button) then return end
+  RM.ToggleFavorite(row._entry)
+end
 -- Its own tooltip, the Send tab's star's words (SendTab's Curate.StarTip):
 -- what a favorite is, then the click.
 function ROWS.StarEnter(self)
@@ -1448,10 +1527,7 @@ function ROWS.MarkClick(self, button)
   local row = self._row
   local entry = row._entry
   if not entry then return end
-  if button == "RightButton" or IsShiftKeyDown() or IsControlKeyDown() then
-    ROWS.Click(row, button)
-    return
-  end
+  if ROWS.Modified(row, button) then return end
   GameTooltip:Hide()
   if self == row.NoteMark then
     RM.EditNote(entry.key, entry.display, entry.note)
@@ -1461,19 +1537,53 @@ function ROWS.MarkClick(self, button)
     RM.ConfirmDelete(entry.key, entry.display, entry.unlisted)
   end
 end
+
+-- The Note's text and its mark are one control: the pointer on either
+-- lights both (the text a step brighter, the mark as under the pointer).
+function ROWS.NoteLit(row, on)
+  row._overNote = on and true or false
+  local entry = row._entry
+  if entry then
+    Ink(row.Cells.note, entry.hidden and "textDisabled" or (on and "textPrimary") or "textSecondary")
+  end
+  PaintMarks(row)
+end
+
 function ROWS.MarkEnter(self)
   local row = self._row
   RowHover(row, true)
   self.Plate:Show()
   row._overMark = self
-  PaintMarks(row)
+  if self == row.NoteMark then ROWS.NoteLit(row, true) else PaintMarks(row) end
   RM.MarkTip(self)
 end
 function ROWS.MarkLeave(self)
   local row = self._row
   self.Plate:Hide()
   row._overMark = nil
-  PaintMarks(row)
+  if self == row.NoteMark then ROWS.NoteLit(row, false) else PaintMarks(row) end
+  RowHover(row, false)
+  GameTooltip:Hide()
+end
+
+-- The Note's cell: its click edits the note, as its mark's does; its
+-- tooltip is its mark's (the note whole, and the click).
+function ROWS.NoteClick(self, button)
+  local row = self._row
+  local entry = row._entry
+  if not entry or ROWS.Modified(row, button) then return end
+  GameTooltip:Hide()
+  RM.EditNote(entry.key, entry.display, entry.note)
+end
+function ROWS.NoteEnter(self)
+  local row = self._row
+  RowHover(row, true)
+  ROWS.NoteLit(row, true)
+  RM.MarkTip(row.NoteMark, self)
+end
+function ROWS.NoteLeave(self)
+  local row = self._row
+  ROWS.NoteLit(row, false)
   RowHover(row, false)
   GameTooltip:Hide()
 end
@@ -1491,6 +1601,7 @@ local function BuildMark(row, glyph, size)
   mark.Glyph = Theme.Glyph(mark, glyph, size, "ARTWORK") or mark:CreateTexture(nil, "ARTWORK")
   mark.Glyph:SetPoint("CENTER", mark, "CENTER", 0, 0)
   mark:SetScript("OnClick", ROWS.MarkClick)
+  mark:SetScript("OnDoubleClick", ROWS.PartDoubleClick)
   mark:SetScript("OnEnter", ROWS.MarkEnter)
   mark:SetScript("OnLeave", ROWS.MarkLeave)
   return mark
@@ -1531,6 +1642,7 @@ local function BuildRow(parent)
     end
   end
   row.Fav:SetScript("OnClick", ROWS.StarClick)
+  row.Fav:SetScript("OnDoubleClick", ROWS.PartDoubleClick)
   row.Fav:SetScript("OnEnter", ROWS.StarEnter)
   row.Fav:SetScript("OnLeave", ROWS.StarLeave)
 
@@ -1543,6 +1655,18 @@ local function BuildRow(parent)
   row.NoteMark = BuildMark(row, "note", 16)
   row.NoteMark:SetPoint("RIGHT", row.EyeMark, "LEFT", -ROW.MARK_GAP, 0)
 
+  -- The Note's cell: a button the width of the column (PlaceRowCells), so a
+  -- click anywhere on the note, or where an empty one would be, edits it.
+  local noteCell = CreateFrame("Button", nil, row)
+  noteCell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  noteCell:SetHeight(LAY.rowH)
+  noteCell._row = row
+  noteCell:SetScript("OnClick", ROWS.NoteClick)
+  noteCell:SetScript("OnDoubleClick", ROWS.PartDoubleClick)
+  noteCell:SetScript("OnEnter", ROWS.NoteEnter)
+  noteCell:SetScript("OnLeave", ROWS.NoteLeave)
+  row.NoteCell = noteCell
+
   row.Name = Theme.CreateText(row, "bodySmall")
   row.Name:SetJustifyH("LEFT")
   row.Name:SetWordWrap(false)
@@ -1552,13 +1676,15 @@ local function BuildRow(parent)
   row.Cells = {}
   for c = 1, #COLS do
     local col = COLS[c]
-    local fs = Theme.CreateText(row, "secondary")
+    local fs = Theme.CreateText(col.flex and noteCell or row, "secondary")
     fs:SetJustifyH(col.right and "RIGHT" or "LEFT")
     fs:SetWordWrap(false)
+    if col.flex then fs:SetAllPoints(noteCell) end
     row.Cells[col.id] = fs
   end
 
   row:SetScript("OnClick", ROWS.RowClick)
+  row:SetScript("OnDoubleClick", ROWS.RowDoubleClick)
   row:SetScript("OnEnter", ROWS.RowEnter)
   row:SetScript("OnLeave", ROWS.RowLeave)
   return row
@@ -1595,6 +1721,8 @@ local function FillRow(row, entry, position)
         token = "textDisabled"
       elseif col.id == "category" and entry.stale then
         token = "warning"
+      elseif col.flex and row._overNote then
+        token = "textPrimary"
       end
       Ink(fs, token)
     end
@@ -1838,7 +1966,7 @@ end
 --
 -- With nothing selected: Add recipient, then "Hide all listed" and "Show all
 -- listed", evened to the longest caption. With rows selected the bulk pair
--- gives way to "Favorite N", "Hide N selected" and "Delete N selected",
+-- gives way to "Favorite N selected", "Hide N selected" and "Delete N selected",
 -- which act on the selection; Add recipient keeps its width.
 -------------------------------------------------------------
 local FOOT = {}
@@ -2116,7 +2244,9 @@ function RM.EditNote(key, display, note)
 end
 
 -- The note written, and the entry that shows it told: a note moves no row
--- and no count, so the list keeps its place and its selection.
+-- and no count, so the list keeps its place and its selection. The Note
+-- column is measured again (its longest note may have changed) and the
+-- rows laid out for it.
 function RM.SetNote(key, text)
   local R = Recipients()
   if not R or not key then return end
@@ -2128,7 +2258,13 @@ function RM.SetNote(key, text)
       break
     end
   end
-  if RM._frame then UpdateVisibleRows() end
+  local frame = RM._frame
+  if not frame then return end
+  RM.Measure(frame)
+  if frame:IsShown() then
+    Relayout(frame)
+    UpdateVisibleRows()
+  end
 end
 
 -- Keys in the current filtered set that the action would actually change.
@@ -2306,9 +2442,9 @@ end
 --
 -- The width floor protects what does not narrow gracefully: the category
 -- tiles (their captions are centred and unconstrained), the action bar at
--- rest, and the table -- a name of NAME_MIN beside Category, with the star
--- and the marks. Everything else gives way by design: the columns leave in
--- DROP's order.
+-- rest, and the table -- a name of NAME_MIN beside Category and a Note of
+-- NOTE_MIN, with the star and the marks. Everything else gives way by
+-- design: the columns leave in DROP's order.
 --
 -- A floor above the size the player chose is a LOAN (RM._loanW, RM._loanH),
 -- as it is on the Postbox window: the window stands on the floor, the saved
@@ -2402,7 +2538,13 @@ end
 -- with the list's insets and the scroll bar's gutter, as measured now.
 local function DefaultWidth()
   local row = ROW.NAME_X + DEFAULT_NAME + ROW.END_W
-  for c = 1, #COLS do row = row + (LAY.w[COLS[c].id] or 0) + ROW.GUTTER end
+  for c = 1, #COLS do
+    local col = COLS[c]
+    local w = LAY.w[col.id] or 0
+    -- The Note as wide as its longest note, NOTE_MIN at least.
+    if col.flex then w = math.max(w, ROW.NOTE_MIN) end
+    row = row + w + ROW.GUTTER
+  end
   local width = math.ceil(row + 2 * PAD + LIST_INSET + M.scrollGutter)
   return math.min(math.max(width, DEFAULT_W), DEFAULT_MAX_W)
 end
