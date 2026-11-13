@@ -5154,6 +5154,8 @@ Theme.AtlasSets = {
 --     mark, a check knocked out of a disc, an open letter, an empty tray.
 --     Drawn on whole pixels and shown at their own size, so each is crisp
 --     at one pixel per unit.
+--   tray-28  Phosphor's tray at 28 units: the options' summary card when no
+--     mail is waiting (OptionsPanel's Dash), in muted chrome.
 --   cap  a quarter of a disc 13 units in radius: the island's round ends
 --     (the bar over finished mail in the Island look, Core/DividerNotch.lua),
 --     four to a capsule, mirrored by their coordinates, each a ring as wide
@@ -5270,6 +5272,7 @@ do
     ["check-circle"] = { file = MEDIA .. "glyph-check-circle.tga", w = 9, h = 9, l = 0.03125, r = 0.59375, t = 0.03125, b = 0.59375 },
     ["letter-open"] = { file = MEDIA .. "glyph-letter-open.tga", w = 10, h = 9, l = 0.03125, r = 0.65625, t = 0.03125, b = 0.59375 },
     tray = { file = MEDIA .. "glyph-tray.tga", w = 11, h = 7, l = 0.03125, r = 0.71875, t = 0.0625, b = 0.9375 },
+    ["tray-28"] = { file = MEDIA .. "glyph-tray-28.tga", w = 28, h = 28, l = 0.03125, r = 0.90625, t = 0.03125, b = 0.90625, px = true },
     cap = { file = MEDIA .. "glyph-cap.tga", w = 13, h = 13, l = 0.03125, r = 0.84375, t = 0.03125, b = 0.84375 },
     ["sort-list"] = { file = MEDIA .. "glyph-sort-list-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["sort-list-turned"] = { file = MEDIA .. "glyph-sort-list-turned-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },

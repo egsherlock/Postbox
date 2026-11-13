@@ -6212,6 +6212,89 @@ do
     return f
   end
 
+  -- No mail waiting on any character (Fill): a quiet state in place of the
+  -- table, centred in the list's side under the strip (Build's `quiet`):
+  -- Phosphor's tray at 28 in muted chrome, "Nothing waiting", and under it
+  -- one muted fact from the characters Mail Memory has already listed
+  -- (MailMemory.Characters, the list the summary was made from; the hidden
+  -- left out): with several boxes seen, how many and the most recent, when
+  -- and on whom (the name in its class colour, as the lines have it); with
+  -- one, when alone; with none, no fact, and the mark and the line close up
+  -- round the middle. The fact keeps to one line, cut by the house fit rule
+  -- with the whole in a tooltip. Anchored again only when the fact comes or
+  -- goes; painted from tokens, so a palette or look change repaints it.
+  --   W     the list's side less a unit, even, so the middle is on a whole unit
+  --   H     the card under the strip, inside its edges
+  --   Y     each part's middle above the area's, with the fact and without
+  local Quiet = { MARK = 28, W = SPLIT_X - 2, H = Dash.H - 2 - HEAD_H,
+    Y = { [true] = { 22, -6, -26 }, [false] = { 12, -16 } } }
+  Quiet.TEXT_W = Quiet.W - 2 * NAME_X
+
+  function Quiet.Enter(self)
+    if Rows.Held(self, Quiet.Enter) then return end
+    Rows.Hover(self)
+    if self.__pbOverflowText then
+      local T = ns.Theme
+      T.TipBegin(self, "ANCHOR_TOP")
+      T.TipTitle(self.__pbOverflowText)
+      GameTooltip:Show()
+    end
+  end
+
+  function Quiet.Leave(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    if Rows.HeldLeave(self) then return end
+    Rows.Unhover(self)
+  end
+
+  -- -> the fact's words, or nil when no box has been seen.
+  function Quiet.Words()
+    local MM = ns.MailMemory
+    local all = MM and type(MM.Characters) == "function" and MM.Characters() or nil
+    local CT = ns.CollectTab
+    local age = CT and CT.HistoryAge
+    if not (all and age) then return nil end
+    local count, last, realm, name = 0, 0, nil, nil
+    for i = 1, #all do
+      local st = all[i]
+      local at = st.seenAt
+      if at and not st.hidden then
+        count = count + 1
+        if at > last then last, realm, name = at, st.realm, st.name end
+      end
+    end
+    if count == 0 then return nil end
+    local ago = age(time() - last, "plain")
+    if count == 1 then return L("OPT_DASH_QUIET_LAST", ago) end
+    local shown = MM.ClassName and MM.ClassName(realm, name) or name
+    return ns.Plural("OPT_DASH_QUIET_FACT", count, ago, shown)
+  end
+
+  function Quiet.Fill(q)
+    local T = ns.Theme
+    local words = Quiet.Words()
+    local has = words ~= nil
+    if q.hasFact ~= has then
+      q.hasFact = has
+      local y = Quiet.Y[has]
+      if q.Mark then
+        q.Mark:ClearAllPoints()
+        q.Mark:SetPoint("CENTER", q, "CENTER", 0, y[1])
+      end
+      q.Line:ClearAllPoints()
+      q.Line:SetPoint("CENTER", q, "CENTER", 0, y[2])
+      q.Fact:ClearAllPoints()
+      if has then q.Fact:SetPoint("CENTER", q, "CENTER", 0, y[3]) end
+      q.Fact:SetShown(has)
+    end
+    T.FitText(q.Line, Quiet.TEXT_W, L["OPT_DASH_QUIET"])
+    if has then
+      T.FitText(q.Fact, Quiet.TEXT_W, words, q)
+    else
+      q.__pbOverflowText = nil
+    end
+  end
+
   -- The list's line `i`, made the first time the list reaches it: in its
   -- place on the scroll child for good, on the stripe its place gives it.
   local function NewLine(i)
@@ -6369,6 +6452,23 @@ do
     if msg.Text.SetSpacing then msg.Text:SetSpacing(2) end
     msg:Hide()
 
+    -- With no mail waiting anywhere: the quiet state (Quiet), across the
+    -- list's side under the strip, the tray in muted chrome over its line
+    -- and the fact under that.
+    local quiet = Spot(card, "Frame", Quiet.H)
+    quiet:SetFrameLevel(level + 2)
+    quiet:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + HEAD_H))
+    quiet:SetWidth(Quiet.W)
+    quiet:SetScript("OnEnter", Quiet.Enter)
+    quiet:SetScript("OnLeave", Quiet.Leave)
+    quiet.Mark = T.Glyph(quiet, "tray-28", Quiet.MARK, "ARTWORK")
+    if quiet.Mark then T.SetColor(quiet.Mark, "textDisabled") end
+    quiet.Line = Text(quiet, "body", "CENTER")
+    quiet.Fact = Text(quiet, "secondary", "CENTER")
+    T.SetColor(quiet.Fact, "textSecondary")
+    quiet.hasFact = nil
+    quiet:Hide()
+
     -- The list's side and the tiles' apart: a hairline down between them
     -- the card's whole height inside its edges, the strip ending at it.
     -- The list's slim bar stands left of it, in the list's own area
@@ -6398,7 +6498,7 @@ do
 
     S.dash = { card = card, h = Dash.H, top = false, rows = {}, head = head, cols = cols, more = false,
       total = total, msg = msg, area = area, scroll = scroll, child = child, lines = 0, scrolling = false,
-      none = none }
+      none = none, quiet = quiet }
   end
 
   -- Mail Memory's tile: "Every character's box", or Off with its art faint
@@ -6533,24 +6633,31 @@ do
     -- No mailbox seen yet: the table stands, empty, with its one line
     -- (Dash.Build's `none`) and nothing on its foot.
     local unseen = data and data.enabled and not data.recorded
+    -- Boxes seen and none holds mail: the quiet state (Quiet).
+    local quiet = (data and data.enabled and not unseen and data.n == 0) and true or false
     if not (data and data.enabled) then
       words = L["OPT_DASH_OFF"]
-    elseif data.n == 0 and not unseen then
-      words = L["OPT_DASH_EMPTY"]
     end
     d.none:SetShown(unseen and true or false)
     -- The strip's name greys with Mail Memory, as its settings do, and has
     -- the strip to itself, in to where the columns' figures end.
     T.SetColor(head.Title, (data and data.enabled) and "accent" or "textDisabled")
     T.FitText(head.Title, ROW_W - NAME_X - CONTROL_R - 2, L["OPT_DASH_TITLE"])
-    cols:SetShown(not words)
-    d.area:SetShown(not words)
-    total:SetShown(not words)
+    local listed_ = not (words or quiet)
+    cols:SetShown(listed_)
+    d.area:SetShown(listed_)
+    total:SetShown(listed_)
     msg:SetShown(words and true or false)
+    d.quiet:SetShown(quiet)
     if words then
       d.more = false
       msg.Text:SetText(words)
       msg:SetHeight(2 * MSG_PAD + math.ceil(msg.Text:GetStringHeight() or 0))
+      return
+    end
+    if quiet then
+      d.more = false
+      Quiet.Fill(d.quiet)
       return
     end
 
