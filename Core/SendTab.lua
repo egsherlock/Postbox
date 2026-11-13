@@ -2559,7 +2559,8 @@ ST.Curate = {}
 
 -- row -> its star drawn from its state: filled for a favorite; the hollow
 -- outline while the pointer is on the row (`_hot`), in the unlit star's
--- near-white, and in Manage Recipients' light gold while it is on the star
+-- near-white (in Light, the unlit art's near-black, as Manage Recipients'
+-- stars at rest), and in Manage Recipients' light gold while it is on the star
 -- itself (`_starHot`), each drawn solid in the art's shape so it reads on
 -- the row's hover and Tab washes (Theme.PaintStarOutline, row.StarOutline);
 -- nothing otherwise. The row's own fields, so the picker's rows and the

@@ -5923,11 +5923,19 @@ end
 
 -- icon, outline (or nil), gold -> the unlit star shown: the outline in the
 -- near-white, or in the gold with `gold`, the art put away under it; without
--- an outline the art itself takes the colour. Nothing is made.
+-- an outline the art itself takes the colour. In Light the star without the
+-- gold is the unlit art itself (Theme.SetStarArt), the near-black Manage
+-- Recipients' stars wear at rest: the paper's twin of the near-white is
+-- already that dark, so it needs no outline to read. Nothing is made.
 function Theme.PaintStarOutline(icon, outline, gold)
+  Theme.SetStarArt(icon, false)
+  if lightPalette and not gold then
+    if outline then outline:Hide() end
+    icon:Show()
+    return
+  end
   local tint = gold and Theme.STAR_HOVER or STAR_EMPTY_TINT
   local r, g, b = Theme.InkFor(tint[1], tint[2], tint[3])
-  Theme.SetStarArt(icon, false)
   if outline then
     outline:SetColorTexture(r, g, b, 1)
     outline:Show()
