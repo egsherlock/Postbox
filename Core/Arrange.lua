@@ -1023,7 +1023,13 @@ local function ToggleTip(button)
   if AR.host and AR.host.toggle == button then
     T.TipTitle(L()["ARRANGE_DONE"])
     T.TipLine(L()["ARRANGE_DONE_TIP"])
-    T.TipHint(L()["ARRANGE_GESTURE_DONE"])
+    -- Escape finishes only from the overview: with a card chosen it steps
+    -- back to the overview, and Character Groups open closes first (section
+    -- 5's layers), so then the hint names the click alone.
+    local groups = ns.CharacterGroups
+    local layered = (AR.selKind and true)
+      or (groups and type(groups.EditorShown) == "function" and groups.EditorShown())
+    T.TipHint(L()[layered and "ARRANGE_GESTURE_DONE_CLICK" or "ARRANGE_GESTURE_DONE"])
   else
     T.TipTitle(L()["ARRANGE_TITLE"])
     T.TipLine(ns.Summary(L()["ARRANGE_TIP"]))

@@ -1828,19 +1828,27 @@ end
 -------------------------------------------------------------
 
 -- The gestures, in their house order, each on a line of its own, grey;
--- each only while it is TRUE: Mail Memory goes when the option is off, the
--- move goes while the position is locked, and the Alt-click always says
--- which way it toggles. Listed once for each combination and kept (six at
--- most), so a hover builds nothing.
+-- each only while it is TRUE: the click goes when Mail Memory is off, and
+-- at a mailbox it opens the character list (MailMemory, MM.Toggle) and
+-- says so; the move goes while the position is locked, and the Alt-click
+-- always says which way it toggles. Listed once for each combination and
+-- kept (twelve at most), so a hover builds nothing.
 MB._gestureLines = {}
 
-function MB.GestureLines(memory, hostMode, locked)
+-- Whether a mailbox is open, where a click opens the character list.
+function MB.AtMailbox()
+  local UI = ns.MailboxUI
+  local st = UI and UI._state
+  return (st and st.mailboxOpen) and true or false
+end
+
+function MB.GestureLines(memory, hostMode, locked, atBox)
   if hostMode then locked = false end
-  local k = (memory and 1 or 0) + (hostMode and 2 or 0) + (locked and 4 or 0)
+  local k = (memory and 1 or 0) + (hostMode and 2 or 0) + (locked and 4 or 0) + (atBox and 8 or 0)
   local lines = MB._gestureLines[k]
   if not lines then
     lines = {}
-    if memory then lines[#lines + 1] = L["MINIMAP_TIP_MEMORY"] end
+    if memory then lines[#lines + 1] = L[atBox and "MINIMAP_TIP_PICKER" or "MINIMAP_TIP_MEMORY"] end
     lines[#lines + 1] = L["MINIMAP_TIP_OPTIONS"]
     -- Moving and locking are Postbox's to offer only on Postbox's own icon.
     if not hostMode then
@@ -1850,6 +1858,29 @@ function MB.GestureLines(memory, hostMode, locked)
     MB._gestureLines[k] = lines
   end
   return lines
+end
+
+-- The addon compartment's gesture line, by the icon's rules: its click
+-- (Mail Memory, or the character list at a mailbox) only while Mail Memory
+-- is on, then the options. One line, as the compartment shows it
+-- (Theme.TipHint parts it at its dots); made once for each of the three
+-- and kept.
+MB._compartmentHint = {}
+
+function MB.CompartmentHint()
+  local k = MemoryOn() and (MB.AtMailbox() and 2 or 1) or 0
+  local hint = MB._compartmentHint[k]
+  if not hint then
+    if k == 1 then
+      hint = L["COMPARTMENT_TIP"]
+    elseif k == 2 then
+      hint = L["MINIMAP_TIP_PICKER"] .. " · " .. L["MINIMAP_TIP_OPTIONS"]
+    else
+      hint = L["MINIMAP_TIP_OPTIONS"]
+    end
+    MB._compartmentHint[k] = hint
+  end
+  return hint
 end
 
 -- A look at the tooltip is a look at the icon: Mail Memory's warnings move
@@ -2105,7 +2136,7 @@ ShowTooltip = function(button, hostMode)
   -- The gestures as every Postbox tooltip has them (Theme.TipHint): after
   -- the one blank line, one to a line, a size under the facts.
   local locked = (not hostMode) and Settings().lock and true or false
-  local hints = MB.GestureLines(memoryOn, hostMode and true or false, locked)
+  local hints = MB.GestureLines(memoryOn, hostMode and true or false, locked, MB.AtMailbox())
   for i = 1, #hints do ns.Theme.TipHint(hints[i]) end
   GameTooltip:Show()
 end

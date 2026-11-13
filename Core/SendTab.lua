@@ -2090,29 +2090,14 @@ end
 -------------------------------------------------------------
 -- 11. Curation strings
 --
--- ns.L's __index returns the key itself for anything missing, which would put a
--- raw "CONTACT_..." on screen, so probe the table directly and fall back to the
--- client's own (already localised) global strings.
+-- Every key here stands in all seven locales (Core/Locales.lua), so none
+-- needs a fallback of the client's own words.
 -------------------------------------------------------------
 
-local function Localized(key, fallback)
-  local value = rawget(L, key)
-  if type(value) == "string" and value ~= "" then return value end
-  return fallback
-end
-
-local function RightClickText() return KEY_BUTTON2 or "Right Click" end
-
--- "Right Click: Favourites" -- the fallback built only where the key is
--- missing, not on every hover.
-local function FavHintText()
-  return Localized("CONTACT_FAV_HINT") or (RightClickText() .. ": " .. L["CONTACT_FAVORITES"])
-end
-
--- A name's two gestures, favourite and hide, in one grey line of the arrange
--- mode's gesture form.
+-- A name's gesture beyond its click, right-click hides, in one grey line of
+-- the house's gesture form (its star has a tooltip of its own).
 local function RowHintText()
-  return Localized("CONTACT_ROW_TIP") or FavHintText()
+  return L["CONTACT_ROW_TIP"]
 end
 
 -------------------------------------------------------------
@@ -6480,11 +6465,12 @@ local function BuildContactBar(panel)
       Theme.TipLine(L("CONTACT_FAV_COUNT", count))
       Theme.TipHint(L["CONTACT_FAV_OPEN"])
     else
-      -- Says what the empty state is, then how to leave it -- both ways, the
-      -- name's right-click and the manager's star, in one line. Both are
-      -- needed: "no favourites" alone is a dead end.
+      -- Says what the empty state is, then how to leave it -- both ways, a
+      -- name's star here and the manager's, in one sentence: a line of the
+      -- tooltip, not a gesture hint. Both are needed: "no favourites" alone
+      -- is a dead end.
       Theme.TipLine(L["CONTACT_FAV_NONE"])
-      Theme.TipHint(FavHintText())
+      Theme.TipLine(L["CONTACT_FAV_HINT"])
     end
     GameTooltip:Show()
   end)

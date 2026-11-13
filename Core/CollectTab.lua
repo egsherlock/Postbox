@@ -2482,6 +2482,8 @@ function RV.ItemsTooltip(owner, index, items)
   local _, _, _, _, money, cod = GetInboxHeaderInfo(index)
   RV.MoneyFacts(tonumber(money) or 0, tonumber(cod) or 0)
   RV.TipState(Mail().StuckReason(index))
+  -- The icon clicks through to its row, so the open and then the row's
+  -- other gestures, as the one-item icon has them (HINT_ROW_*).
   T.TipHint(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"])
   GameTooltip:Show()
 end

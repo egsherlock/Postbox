@@ -1331,7 +1331,8 @@ function RM.RowTip(row, owner)
     GameTooltip:AddLine(L["RM_TIP_ALT_UNRECORDED"], muted, muted, muted, true)
   end
   if entry.stale then Theme.TipLine(Theme.TipTone("warning", L["RM_TIP_STALE"])) end
-  Theme.TipHint(entry.hidden and L["RM_HINT_ROW_HIDDEN"] or L["RM_HINT_ROW"])
+  -- The click as the row stands: on a favorite it takes the star away.
+  Theme.TipHint(L[entry.hidden and "RM_HINT_ROW_HIDDEN" or (entry.fav and "RM_HINT_ROW_FAV") or "RM_HINT_ROW"])
   GameTooltip:Show()
 end
 

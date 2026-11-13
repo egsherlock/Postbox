@@ -4376,8 +4376,11 @@ local function BuildOptionsButton(frame, theme, onClick)
     T.TipBegin(self, "ANCHOR_RIGHT")
     T.TipTitle(L("OPTIONS_TITLE"))
     -- The gesture, muted after the blank line as the arrange mark's is: the
-    -- title already says what opens.
-    T.TipHint(L("OPTIONS_COG_TOOLTIP"))
+    -- title already says what opens. The click toggles: with the options
+    -- on screen it closes them (OptionsPanel.Toggle; options stepped aside
+    -- for the arrange mode are hidden, and come back).
+    local open = _G.PostboxOptionsFrame
+    T.TipHint(L((open and open:IsShown()) and "OPTIONS_COG_TOOLTIP_CLOSE" or "OPTIONS_COG_TOOLTIP"))
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function(self)
