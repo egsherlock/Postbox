@@ -6337,8 +6337,9 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
     placeholder:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -inset - 2 - endW, 2)
     -- What the box takes either side of its placeholder, for a row that
     -- narrows the box and must leave the placeholder whole: the search's
-    -- own cell's, a joined last cell not counted.
-    wrap.__pbTextChrome = SEARCH_TEXT_INSET + inset + 2
+    -- own cell's, a joined last cell not counted. A look that sets the
+    -- text further in (the Blizzard style's magnifier) names its lead.
+    wrap.__pbTextChrome = (wrap.__pbTextLead or SEARCH_TEXT_INSET) + inset + 2
   end
 
   -- search.Join(cell): a square plate (the sort) as the search's last cell,
@@ -6377,6 +6378,8 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
 
   search.Wrap, search.Box, search.Placeholder = wrap, box, placeholder
   search.All, search.Clear = all, clear
+  -- For a skin's walk, which meets the wrap: the search it belongs to.
+  wrap.__pbSearch = search
   search.endW = 0
   search.PaintToggle(false)
   search.Place(false)

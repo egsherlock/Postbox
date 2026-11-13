@@ -34,9 +34,9 @@ local _, ns = ...
 -- something new was tagged since the last one.
 --
 -- Dressed so far: the window frame, the sunken panels, the main window's
--- Mail and Send tabs, every push button and the Mail tab's totals strip.
--- The options' tabs, other plates, fields, other bands, dropdowns, rows
--- and the scroll bar draw as they did.
+-- Mail and Send tabs, every push button, the Mail tab's totals strip and
+-- every field and search box. The options' tabs, other plates, joined
+-- cells, other bands, dropdowns, rows and the scroll bar draw as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -697,8 +697,134 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- Fields
+-------------------------------------------------------------
+
+-- Every field (an input wrap: Recipient, Subject, the message, the gold
+-- boxes, the group name, the bug report's address) wears the game's input
+-- border, by the file the game's own Send Mail names
+-- (Interface\Common\Common-Input-Border); every search box
+-- (Theme.CreateSearchBox) the game's search border with its magnifier at
+-- the left, and its words moved right by what the magnifier takes. Art only,
+-- on Postbox's own frames: the game's InputBoxTemplate and SearchBoxTemplate
+-- are never made (their scripts would take the box's focus, hint and clear
+-- button over). The field's own fill, line and grain are faded under the
+-- art.
+--
+-- The input file has no margin round its rim (measured), so it is laid on
+-- the field's box. It is cut in nine by its own corners (8 units) so the
+-- message box, many lines tall, keeps a thin even border: on a one-line box
+-- that is the game's own three pieces. The search art (also measured) is
+-- laid on the box too, its ends scaled with its height.
+--
+-- A cell joined to a field (the Manage Recipients key, the sort) draws as
+-- it did, over the field's art at its end: a later step gives it its own.
+do
+  local INPUT = "Interface\\Common\\Common-Input-Border"
+  -- The file's corners and middles: 8 units in from each end and from its
+  -- top, 8 up from its foot, of its 20-unit art.
+  local U = { 0, 0.0625, 0.9375, 1 }
+  local V = { 0, 0.25, 0.375, 0.625 }
+  local CORNER = 8
+  local SEARCH = { "common-search-border-left", "common-search-border-middle", "common-search-border-right" }
+  local GLASS = "common-search-magnifyingglass"
+  -- SearchBoxTemplate's own layout, per its 20-unit box from the art's left
+  -- end: the magnifier 10 square at 6 in and 1 down, the words at 21.
+  local GLASS_X, GLASS_Y, GLASS_SIZE, TEXT_X, BOX_H = 6, -1, 10, 21, 20
+
+  local function Quiet(wrap)
+    Fade(wrap.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(wrap[BACKDROP_EDGES[i]]) end
+    Fade(wrap.pbSurfaceTexture)
+  end
+
+  local function LayInput(wrap)
+    local h = wrap:GetHeight()
+    local corner = CORNER
+    if type(h) == "number" and h > 0 and h < 2 * CORNER then corner = h / 2 end
+    -- Each column's left and right, each row's top and foot: the point on
+    -- the wrap and the offset from it.
+    local cols = { { "LEFT", 0, "LEFT", corner }, { "LEFT", corner, "RIGHT", -corner }, { "RIGHT", -corner, "RIGHT", 0 } }
+    local rows = { { "TOP", 0, "TOP", -corner }, { "TOP", -corner, "BOTTOM", corner }, { "BOTTOM", corner, "BOTTOM", 0 } }
+    local pieces = {}
+    for r = 1, 3 do
+      local row = rows[r]
+      for c = 1, 3 do
+        local col = cols[c]
+        local t = wrap:CreateTexture(nil, "BORDER", nil, 1)
+        t:SetTexture(INPUT)
+        t:SetTexCoord(U[c], U[c + 1], V[r], V[r + 1])
+        t:SetPoint("TOPLEFT", wrap, row[1] .. col[1], col[2], row[2])
+        t:SetPoint("BOTTOMRIGHT", wrap, row[3] .. col[3], col[4], row[4])
+        pieces[#pieces + 1] = t
+      end
+    end
+    return pieces
+  end
+
+  local function LaySearch(wrap, search)
+    for i = 1, 3 do
+      if not HasAtlas(SEARCH[i]) then return nil end
+    end
+    local h = wrap:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local pieces = {}
+    for i = 1, 3 do
+      local t = wrap:CreateTexture(nil, "BORDER", nil, 1)
+      Atlas(t, SEARCH[i], false)
+      pieces[i] = t
+    end
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    local lw, lh = Parts.Size(SEARCH[1])
+    local rw, rh = Parts.Size(SEARCH[3])
+    L:SetWidth(lw and lh and lw * h / lh or h * 0.4)
+    L:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
+    L:SetPoint("BOTTOMLEFT", wrap, "BOTTOMLEFT", 0, 0)
+    R:SetWidth(rw and rh and rw * h / rh or h * 0.4)
+    R:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
+    R:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    -- The magnifier, and the words after it, as the template places them,
+    -- grown with the box.
+    local k = h / BOX_H
+    if HasAtlas(GLASS) then
+      local glass = wrap:CreateTexture(nil, "ARTWORK")
+      if Atlas(glass, GLASS, false) then
+        glass:SetSize(GLASS_SIZE * k, GLASS_SIZE * k)
+        glass:SetPoint("LEFT", wrap, "LEFT", GLASS_X * k, GLASS_Y * k)
+        pieces[4] = glass
+        local lead = math.floor(TEXT_X * k + 0.5)
+        wrap.__pbTextLead = lead
+        if search.Box then search.Box:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
+        if search.Placeholder then search.Placeholder:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead, -2) end
+        -- The words' room, measured again with the new lead.
+        if type(search.Place) == "function" then search.Place(search.toggled) end
+      end
+    end
+    return pieces
+  end
+
+  function Parts.Field(wrap)
+    if wrap.__pbBlizzField ~= nil then return end
+    wrap.__pbBlizzField = false
+    local search = wrap.__pbSearch
+    local pieces
+    if type(search) == "table" then
+      pieces = LaySearch(wrap, search)
+    else
+      pieces = LayInput(wrap)
+    end
+    if not pieces then return end
+    wrap.__pbBlizzField = pieces
+    Quiet(wrap)
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
+  if c.__postboxInputWrap and c.__pbBlizzField == nil then Parts.Field(c) end
   if c.__postboxPanel and not c.__pbBlizzInset and Sinks(c) then SinkPanel(c) end
   if c.__postboxPanel == "band" and c.__pbBlizzBand == nil and Parts.IsTotals(c) then Parts.Totals(c) end
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
