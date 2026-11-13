@@ -5341,6 +5341,11 @@ local function PickerButtonTip(frame)
   local T = ns.Theme
   T.TipBegin(frame.Picker, "ANCHOR_TOPRIGHT")
   T.TipTitle(frame.Who and frame.Who.fullName or L["PICKER_TITLE"])
+  -- The characters the player hid that the list would offer, as its foot
+  -- counts them (the Mail tab's Inbox says the same, AV.PickerTip).
+  local _, hidden = MM.HasOthers()
+  hidden = tonumber(hidden) or 0
+  if hidden > 0 then T.TipLine(T.TipTone("muted", string.format(L["PICKER_HIDDEN"], hidden))) end
   T.TipHint(L["PICKER_SWITCH_HINT"])
   if frame.viewing then T.TipHint(L["PICKER_BACK_HINT"]) end
   GameTooltip:Show()
@@ -5371,8 +5376,8 @@ end
 -- naming the box on screen, its name in its class colour and its count,
 -- the crest of that box its portrait cap, the picker (MM.NewPickCell) over
 -- the whole of it. The plate always names the list on screen, so it is the
--- lit one. With no other box to show the picker steps out and the plate
--- stands as it is.
+-- lit one. With no other box to show and none hidden, the picker steps out
+-- and the plate stands as it is.
 local function BuildHeader(frame)
   local bar = CreateFrame("Frame", nil, frame)
   bar:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, HEADER_Y)
@@ -5547,10 +5552,14 @@ function Refresh(frame)
   -- plate after the picker's cell, as the Mail tab names another box.
   MM.PaintCap(frame.Picker, info.realm, info.name)
   -- The Mail tab's rule: a picker while there is another box with mail to
-  -- show (the list it opens holds only those), or while one is on screen.
-  local others = MM.HasOthers(characters) or v ~= nil
+  -- show (the list it opens holds only those), while one is on screen, or
+  -- while a character the list would offer is hidden (its list then holds
+  -- this character and the Hidden foot). The search of every box only
+  -- while there is another box to search.
+  local others, hiddenN = MM.HasOthers(characters)
+  others = (others and true or false) or v ~= nil
   frame.Search.Place(others)
-  PaintWho(frame, info, others)
+  PaintWho(frame, info, others or (tonumber(hiddenN) or 0) > 0)
   -- The arrange mode's column header stands where this row is.
   if frame._topHidden then MM.HideTopRow(frame) end
 

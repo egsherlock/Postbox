@@ -6397,7 +6397,8 @@ local function LayoutViewToggle(panel)
   local M = T.Metrics
   -- Whose: the other box's plate in the Inbox's place while one is on
   -- screen, and the picker in the left end of whichever names the box,
-  -- while there is another box to pick (MailMemory.HostPick).
+  -- while there is another box to pick or a hidden one to show (AV.Paint,
+  -- MailMemory.HostPick).
   local picker = panel.Picker
   local alt = container.alt
   local named = alt and alt:IsShown() and alt.natW
@@ -6741,10 +6742,15 @@ function AV.Paint(panel)
   local T = Th()
   local M = T.Metrics
   local Memory = AV.Memory()
-  local others = Memory and Memory.HasOthers() or false
+  local others, hidden = false, 0
+  if Memory then others, hidden = Memory.HasOthers() end
   local who = panel._alt
 
-  local picking = others or who ~= nil
+  -- The picker while there is another box to pick, one on screen, or a
+  -- character the list would offer but the player hid: its list then holds
+  -- this character and the Hidden foot, the one way back to them from here.
+  -- A character with no other box at all has no picker.
+  local picking = (others and true or false) or who ~= nil or (tonumber(hidden) or 0) > 0
   panel.Picker:SetShown(picking)
   -- The picker in the plate that names the box, before that plate is
   -- measured: its crest's room is part of the plate (MailMemory.HostPick).
@@ -6757,9 +6763,10 @@ function AV.Paint(panel)
       who and who.name or ns.Helpers.PlayerName())
   end
 
-  -- The every-character toggle shows while there is another box to search,
-  -- and the box says what it searches.
-  AV.PaintSearch(panel, others)
+  -- The every-character toggle shows while there is another box to search
+  -- (a hidden character's is not searched), and the box says what it
+  -- searches.
+  AV.PaintSearch(panel, others and true or false)
 
   -- The other box's name and count, in the Inbox's cell, the picker that
   -- chose it in its left end. No realm -- the list the name was picked from
@@ -6851,6 +6858,14 @@ function AV.PickerTip(picker, panel)
   local name = host and host == (panel.ViewToggle and panel.ViewToggle.alt) and host.fullName
   T.TipBegin(picker, "ANCHOR_TOPRIGHT")
   T.TipTitle(name or (host and host.baseLabel) or L()["VIEW_INBOX"])
+  -- The characters the player hid that the list would offer, as its foot
+  -- counts them: the list keeps them under that foot.
+  local Memory = AV.Memory()
+  if Memory then
+    local _, hidden = Memory.HasOthers()
+    hidden = tonumber(hidden) or 0
+    if hidden > 0 then T.TipLine(T.TipTone("muted", string.format(L()["PICKER_HIDDEN"], hidden))) end
+  end
   -- As the picker's click decides it.
   if not (host and not host.isSelected and host:GetScript("OnClick")) then
     T.TipHint(L()["PICKER_SWITCH_HINT"])
@@ -6905,8 +6920,9 @@ function CT.OpenPicker(panel)
   local perfAt = perf and perf.visit and perf.Mark()
   if not panel.Picker:IsShown() then AV.Paint(panel) end
   if not panel.Picker:IsShown() then
-    -- No other character has a box to show: say so, not a dead click -- and,
-    -- when it is only because the player hid them, where they come back.
+    -- No other character has a box to show: say so, not a dead click. A
+    -- hidden one the list would offer keeps the picker up (AV.Paint), its
+    -- list the way back, so this is said of none at all.
     local _, hidden = Memory.HasOthers()
     ns.Print(L()[(tonumber(hidden) or 0) > 0 and "MEMORY_NO_OTHERS_HIDDEN" or "MEMORY_NO_OTHERS"])
     return
