@@ -1857,9 +1857,12 @@ end
 --     tab's square stays. Through the skin's StyleTabPlate, which the
 --     options call for each tab as it is made; the preview's tabs (made
 --     without the pointer) are left as they are.
---   * every checkbox in it (__postboxCheck) is the Settings checkbox, its
---     box and tick (checkbox-minimal, checkmark-minimal) on the same button,
---     at its size and place;
+--   * every checkbox Postbox makes (__postboxCheck: the options', and C.O.D.
+--     and Character Groups' members outside them) is the Settings
+--     checkbox, its box and tick (checkbox-minimal, checkmark-minimal) on
+--     the same button, at its size and place;
+--   * the footer's Report a bug, What's new? and Reset to defaults wear
+--     the game's gold at rest;
 --   * each group heading's rule is the game's Settings rule
 --     (Options_HorizontalDivider) where the rule stands, never under a
 --     screen pixel; the rule's own line is faded.
@@ -1989,13 +1992,15 @@ do
     line:SetPoint("TOPRIGHT", plate, "BOTTOMRIGHT", DIVIDER_RUN, 0)
   end
 
-  -- A checkbox in the options window: the Settings box and tick.
+  -- Every checkbox Postbox makes (UICheckButtonTemplate, tagged
+  -- __postboxCheck: the options', C.O.D. on the Send tab, Character
+  -- Groups' members), in a window this skin dressed: the Settings box and
+  -- tick.
   local CHECK = { box = "checkbox-minimal", tick = "checkmark-minimal", off = "checkmark-minimal-disabled" }
   function Parts.Check(cb)
     if cb.__pbBlizzCheck ~= nil then return end
     cb.__pbBlizzCheck = false
-    local window = DressedWindowOf(cb)
-    if not (window and window == _G.PostboxOptionsFrame) then return end
+    if not DressedWindowOf(cb) then return end
     if not (HasAtlas(CHECK.box) and HasAtlas(CHECK.tick)) then return end
     local normal = cb.GetNormalTexture and cb:GetNormalTexture()
     local checked = cb.GetCheckedTexture and cb:GetCheckedTexture()
