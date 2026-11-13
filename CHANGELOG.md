@@ -92,8 +92,11 @@
   Recipients button, and the options' search box, Report a bug and Reset
   to defaults, wear the same set.
 - **The sort button's arrow shows the order** (Mail tab, Mail Memory and
-  Manage Recipients): up for the usual order, down while the list runs
-  the other way.
+  Manage Recipients): up for smallest first (A to Z, oldest, least gold),
+  down for largest first (newest, most gold, Z to A). The chosen row in
+  its menu points the same way.
+- **The Icon column is called Item icon** in Arrange and in the options'
+  search.
 - **The every-character toggle** (the Search box on the Mail tab and in
   Mail Memory) shows one figure, and two while every character's mail is
   shown.

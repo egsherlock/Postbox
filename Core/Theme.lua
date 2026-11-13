@@ -5160,8 +5160,8 @@ Theme.AtlasSets = {
 --     as the end and its fill a unit inside it.
 --   sort-list, sort-list-turned  the sort cell (CollectTab's
 --     RV.NewSortButton, MailMemory's MM.NewSortButton): Phosphor's sort
---     mark, three bars and an arrow up for a list in its field's own order,
---     turned while the order runs the other way (Theme.SetGlyphArt swaps
+--     mark, three bars and an arrow up for an ascending order (the
+--     smallest first), the turned one for a descending order (Theme.SetGlyphArt swaps
 --     them on the one texture). The turned one is the same master with only
 --     its arrow turned: the long bar's pixels as they are, the arrow's
 --     pixels mirrored top to bottom in its own rows (its head at the foot),
