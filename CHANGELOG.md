@@ -51,6 +51,11 @@
   stays with Done and leaves the Inbox's alone. Until you pick one, Done
   follows the Inbox.
 
+- **Class icon styles** (Options > General > Class icons): choose the art
+  for your characters on the Inbox button and in its character list: the
+  game's own, Painted, Pixel, Comic, or Glyphs in class colors. With
+  EllesmereUI installed, its sets are offered too.
+
 ### Send tab and Manage Recipients
 
 - **Manage Recipients is a table:** one line per name, in columns

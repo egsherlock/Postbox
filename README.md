@@ -401,4 +401,4 @@ in WoW Forever is under [World of Warcraft: Forever](#world-of-warcraft-forever)
 | `/postbox perf` | Performance recording: off, on or detailed |
 | `/postbox debug` | Report a bug: a copyable report (no character names, no full addon list) |
 
-Licensed under [GPL v3](LICENSE). The fonts in `Media/Fonts/` and the Phosphor and Octicons icons in `Media/` carry their own licenses, in the files beside them.
+Licensed under [GPL v3](LICENSE). The fonts in `Media/Fonts/` and the Phosphor and Octicons icons in `Media/` carry their own licenses, in the files beside them. The Glyphs class icons in `Media/ClassIcons/` are by Lorc and Delapouite ([game-icons.net](https://game-icons.net), CC BY 3.0), recolored.
