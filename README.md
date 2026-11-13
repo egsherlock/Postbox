@@ -249,6 +249,10 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
   and Shift+Tab walk the suggestions, Enter takes the whole name, and the
   realm is added only when it's another realm. Right-click a suggestion to
   hide it; the star at its end favorites it.
+- **Pin a name** with the small pin in the Recipient box and that
+  character starts every mailbox with it: a miner that always mails your
+  banker. Click the pin again to unpin; your other characters are left
+  alone.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.

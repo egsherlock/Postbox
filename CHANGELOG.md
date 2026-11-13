@@ -25,8 +25,8 @@
 - **The bar above the list is three controls:** one for whose mail and
   which list, the History clock with Received and Sent, and one box for
   search and sort. A second click on the clock returns to the Inbox.
-- **Mail tab: Inbox is one button with your class icon at its left end.**
-  Click Inbox while it's on screen to open the character list (your own
+- **Mail tab: Inbox is one button that always wears your class icon at
+  its left end.** Click Inbox while it's on screen to open the character list (your own
   character is always its first row, the way back to your inbox), and
   right-click while another character's mail is on screen to come back to
   your own. Mail Memory's window names its box the same way.
@@ -78,6 +78,9 @@
   delete them together.
 - **Manage Recipients shows each name's note** in a column of its own;
   click a note, or its empty place, to write or change it.
+- **Send tab: pin a name in the Recipient box** and that character
+  starts every mailbox with it, until you click the pin again. Your other
+  characters are left alone.
 - **Send tab: right-click hides a name** in the suggestions under To and
   in the contact list. The star at the end of a name favorites it. Hidden
   names wait under Hidden at the foot of the contact list, Favorites
@@ -122,11 +125,11 @@
   many mails History keeps for each character, 1,000 (as before), 2,500 or
   5,000, Received and Sent each. A larger History makes Postbox's saved
   file bigger, about 1.7 MB per character at 5,000.
-- **What's new says Postbox runs on the other game too:** a small plaque
-  at the left of its title bar, **Now on Forever** (in WoW Forever, **On
-  Retail too**). Its headings stand apart from the lines under them, with a
-  thin rule after each, and wear Postbox's gold when your accent is white
-  or gray. It opens by itself only after an update.
+- **What's new says Postbox runs on Forever too:** the Forever mark and
+  **Now on Forever** at the left of its title bar. Its headings stand apart
+  from the lines under them, with a thin rule after each, and wear
+  Postbox's gold when your accent is white or gray. It opens by itself only
+  after an update.
 - **Every tooltip names its gestures the same way,** one per action:
   `Click: sort · Right-click: reset`.
 - **Reset has its own button** at the foot of the sort menus, lit only

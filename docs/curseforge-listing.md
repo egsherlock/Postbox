@@ -60,7 +60,7 @@
 <h2 style="text-align:center">Sending made easy</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.gif" width="770" alt="A name completing as it is typed, then one click attaching every stack"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Names finish themselves:</span></strong> recent contacts, alts, friends, guild and players you grouped with, favorites first; you choose which (Options &gt; Send tab). Right-click hides a name.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Names finish themselves:</span></strong> recent contacts, alts, friends, guild and players you grouped with, favorites first; you choose which (Options &gt; Send tab). Right-click hides a name, and a pin makes one character always start with the same name.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Right-click to attach,</span></strong> Alt-right-click for every stack. More than 12 items go out in one press.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Gold always asks first,</span></strong> Ctrl+Enter sends, and <strong><span style="color:#e5e5e5">Manage Recipients</span></strong> is a table of every name: double-click to favorite, right-click to hide, a note for each, select several at once.</li>
 </ul>
