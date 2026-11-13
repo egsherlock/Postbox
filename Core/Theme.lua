@@ -5079,6 +5079,10 @@ end
 function Theme.SetPlateHover(plate, hovered)
   if not plate then return end
   plate.__pbHover = hovered and true or false
+  -- A skin that owns the plate's whole look (__setSelectedOverride) and
+  -- draws its own pointed-at state names it here; no other look sets it.
+  local hover = plate.__pbHoverOverride
+  if hover then return hover(plate, plate.__pbHover) end
   PaintPlate(plate)
 end
 

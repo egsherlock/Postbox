@@ -982,6 +982,371 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- The small dark button
+-------------------------------------------------------------
+
+-- Every segment and tile plate (Theme.CreatePlate "segment" / "tile":
+-- Inbox and Done, another character's name, the History clock, Received
+-- and Sent, the Send tab's name row, Manage Recipients' filters, the filter
+-- chips, the bug report's switch, a sort that stands alone) wears the
+-- game's small dark button, the tertiary button of its raid manager and
+-- friend requests: its normal, hover, pressed, selected (a white glow) and
+-- disabled art, on Postbox's own plate. The skin owns the plate's look
+-- through its selection override (Theme.SetPlateSelected retires the
+-- plate's own art once) and its pointed-at state through the hover
+-- override (Theme.SetPlateHover); the plate keeps its size, its hit
+-- rectangle, its clicks and its scripts. The caption is the game's gold at
+-- rest and white on a lit plate, a glyph caption (the clock, a sort) with
+-- it; an empty tile's caption stays dimmed.
+--
+-- Laid by its rim (measured from both clients' art, the same on each): of
+-- the normal art's 46 x 34 the metal rim stands 3 units in from each end, 2
+-- from the top and 4 from the foot; a larger state (retail's selected glow,
+-- 52 x 40) is the same rim with its glow round it. So the art is drawn that
+-- much past the plate's box, scaled to its height, and the rim meets the
+-- box: a row of plates is as wide as the field above it. Sizes come from the
+-- client's own atlas sizes (Parts.Size).
+--
+-- Plates joined today are drawn as one strip: the art's left end on the
+-- first cell, its middle on the inner ones, its right end on the last, the
+-- rim's own column (one unit) between cells, and the lit cell in the same
+-- cut of the selected art. Which plates are joined is read from what joins
+-- them, when the plate is painted: Inbox and Done from their ring
+-- (MailMemory.JoinRing's ring._first / _last), the History clock from
+-- RV.JoinClock (`_joined`) and Received / Sent after it, a bar of tiles (the
+-- Send tab's name row, Manage Recipients' filters) from the shown tiles in
+-- it, two units apart. A plate standing alone is a whole button. Cells
+-- joined to a FIELD (the sort on a search, the Manage Recipients key) keep
+-- the look milestone 2 left them, and so does the options preview.
+do
+  local BASE = "common-button-tertiary-"
+  local NAMES = {
+    up = BASE .. "normal", over = BASE .. "hover", down = BASE .. "pressed",
+    lit = BASE .. "selected", off = BASE .. "disabled",
+  }
+  local LIST = { "up", "over", "down", "lit", "off" }
+  -- The rim, as shares of the normal art's own size, and each end piece's
+  -- share of its width (the end with its rounded corners).
+  local RIM_X, RIM_T, RIM_B, CAP = 3 / 46, 2 / 34, 4 / 34, 11 / 46
+
+  local function HasAll()
+    for i = 1, #LIST do
+      if not HasAtlas(NAMES[LIST[i]]) then return false end
+    end
+    return Parts.Size(NAMES.up) ~= nil
+  end
+
+  -- One state's geometry at plate height `h`, in one table reused by every
+  -- call (nothing is made): `s` units per art unit; `outX`, `outT`, `outB`
+  -- how far the art stands past the box; `capW` an end piece's width and
+  -- `capU` its share of the art; the rim's own place in the art (`rx`, `rt`,
+  -- `rb`) and the art's size (`w`, `hh`).
+  local G = {}
+  local function Geo(state, h)
+    local w0, h0 = Parts.Size(NAMES.up)
+    local w, hh = Parts.Size(NAMES[state])
+    w, hh = w or w0, hh or h0
+    local gx, gy = (w - w0) / 2, (hh - h0) / 2
+    local rx, rt, rb = RIM_X * w0 + gx, RIM_T * h0 + gy, RIM_B * h0 + gy
+    local s = h / (h0 - RIM_T * h0 - RIM_B * h0)
+    local cap = CAP * w0 + gx
+    G.s, G.w, G.hh, G.rx, G.rt, G.rb = s, w, hh, rx, rt, rb
+    G.outX, G.outT, G.outB = rx * s, rt * s, rb * s
+    G.capW, G.capU = cap * s, cap / w
+    return G
+  end
+
+  -- The three pieces for `state` on `frame` (h units tall), cut for its
+  -- `role` in a strip ("alone", "first", "middle", "last"); an inner end
+  -- runs `gap` past the frame's right edge, to the next cell's left.
+  local function Lay(art, frame, state, role, gap, h)
+    local g = Geo(state, h)
+    local name = NAMES[state]
+    local L, M, R = art[1], art[2], art[3]
+    local left = role == "alone" or role == "first"
+    local right = role == "alone" or role == "last"
+    M:ClearAllPoints()
+    Atlas(M, name, false)
+    M:SetTexCoord(g.capU, 1 - g.capU, 0, 1)
+    if left then
+      Atlas(L, name, false)
+      L:SetTexCoord(0, g.capU, 0, 1)
+      L:ClearAllPoints()
+      L:SetWidth(g.capW)
+      L:SetPoint("TOPLEFT", frame, "TOPLEFT", -g.outX, g.outT)
+      L:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -g.outX, -g.outB)
+      L:Show()
+      M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    else
+      L:Hide()
+      M:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, g.outT)
+    end
+    if right then
+      Atlas(R, name, false)
+      R:SetTexCoord(1 - g.capU, 1, 0, 1)
+      R:ClearAllPoints()
+      R:SetWidth(g.capW)
+      R:SetPoint("TOPRIGHT", frame, "TOPRIGHT", g.outX, g.outT)
+      R:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", g.outX, -g.outB)
+      R:Show()
+      M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    else
+      R:Hide()
+      M:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", gap, -g.outB)
+    end
+  end
+
+  -- Three pieces on `frame`, in its BACKGROUND layer over the plate's own
+  -- (faded) art, and the line between cells over them.
+  function Parts.SmallArt(frame)
+    if not HasAll() then return nil end
+    local art = {}
+    for i = 1, 3 do art[i] = frame:CreateTexture(nil, "BACKGROUND", nil, 1) end
+    art.line = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+    art.line:Hide()
+    return art
+  end
+  Parts.LaySmall = Lay
+
+  -- The rim's own column, one unit wide, at the right end of a cell with a
+  -- cell after it: the metal at rest, the selected art's white beside a lit
+  -- cell. Only on a change.
+  local function Line(plate, nxt)
+    local art = plate.__pbBlizzSeg
+    local D = art.line
+    if not nxt then
+      D:Hide()
+      art.lineLit = nil
+      return
+    end
+    local lit = (plate.isSelected or nxt.isSelected) and true or false
+    if art.lineLit ~= lit or art.lineH ~= art.h or art.lineGap ~= art.gap then
+      art.lineLit, art.lineH, art.lineGap = lit, art.h, art.gap
+      local state = lit and "lit" or "up"
+      local g = Geo(state, art.h)
+      Atlas(D, NAMES[state], false)
+      D:SetTexCoord(g.rx / g.w, (g.rx + 1 / g.s) / g.w, g.rt / g.hh, 1 - g.rb / g.hh)
+      D:ClearAllPoints()
+      D:SetPoint("TOPLEFT", plate, "TOPRIGHT", art.gap - 1, 0)
+      D:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", art.gap, 0)
+    end
+    D:Show()
+  end
+
+  -- The plate's state: disabled, lit, pressed, pointed at, at rest.
+  local function StateOf(plate, art)
+    if not plate:IsEnabled() then return "off" end
+    if plate.isSelected then return "lit" end
+    if art.down then return "down" end
+    if plate.__pbHover then return "over" end
+    return "up"
+  end
+
+  -- The caption and a glyph caption in the game's gold, white on a lit
+  -- plate, the disabled gray on a disabled plate or an empty tile (Theme's
+  -- rule). The sort marks' own painters leave a glyph marked lit alone.
+  local function Ink(plate, state)
+    local T = ns.Theme
+    local r, g, b
+    if state == "off" or (T and T.EmptyTile and T.EmptyTile(plate)) then
+      r, g, b = Parts.FontRGB("GameFontDisable", 0.5, 0.5, 0.5)
+    elseif state == "lit" then
+      r, g, b = Parts.FontRGB("GameFontHighlight", 1, 1, 1)
+    else
+      r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    end
+    if plate.Text then plate.Text:SetTextColor(r, g, b) end
+    local glyph = plate.__pbGlyph
+    if glyph then
+      plate.__pbGlyphLit = true
+      glyph:SetVertexColor(r, g, b, 1)
+      glyph:SetAlpha(1)
+    end
+  end
+
+  -- -> role, gap, the cell after, the cell before.
+  function Parts.SegRole(plate)
+    local kind = plate.__pbBlizzJoin
+    if kind == "ring" then
+      local ring = plate.__pbBlizzRing
+      local first, last = ring._first, ring._last
+      if ring._on and first and last and first ~= last then
+        if plate == first then return "first", -1, last, nil end
+        if plate == last then return "last", -1, nil, first end
+      end
+    elseif kind == "clock" then
+      if plate._joined then return "first", -1, plate.__pbBlizzSides[1], nil end
+    elseif kind == "side" then
+      local sides = plate.__pbBlizzSides
+      if plate == sides[1] then return "middle", -1, sides[2], plate.__pbBlizzClock end
+      return "last", -1, nil, sides[1]
+    elseif kind == "bar" then
+      local cells = plate.__pbBlizzBar
+      local prev, nxt, seen = nil, nil, false
+      for i = 1, #cells do
+        local c = cells[i]
+        if c == plate then
+          seen = true
+        elseif c:IsShown() then
+          if seen then
+            nxt = c
+            break
+          end
+          prev = c
+        end
+      end
+      if prev and nxt then return "middle", cells.gap, nxt, prev end
+      if nxt then return "first", cells.gap, nxt, nil end
+      if prev then return "last", cells.gap, nil, prev end
+    end
+    return "alone", 0, nil, nil
+  end
+
+  local Paint
+  Paint = function(plate)
+    local art = plate.__pbBlizzSeg
+    if not art then return end
+    local state = StateOf(plate, art)
+    local role, gap, nxt, prev = Parts.SegRole(plate)
+    local h = plate:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    if art.state ~= state or art.role ~= role or art.gap ~= gap or art.h ~= h then
+      art.state, art.role, art.gap, art.h = state, role, gap, h
+      Lay(art, plate, state, role, gap, h)
+    end
+    art.next = nxt
+    Line(plate, nxt)
+    Ink(plate, state)
+    -- The cell before: its line follows this one's light, and it is laid
+    -- again where it last had another cell after it.
+    local before = prev and prev.__pbBlizzSeg
+    if before then
+      if before.next ~= plate then Paint(prev) else Line(prev, plate) end
+    end
+  end
+  Parts.PaintSeg = Paint
+
+  local function Down(plate)
+    local art = plate.__pbBlizzSeg
+    if art and plate:IsEnabled() then
+      art.down = true
+      Paint(plate)
+    end
+  end
+
+  local function Up(plate)
+    local art = plate.__pbBlizzSeg
+    if art then
+      art.down = false
+      Paint(plate)
+    end
+  end
+
+  -- A tile of a bar shown or hidden: every shown tile of it laid again
+  -- (each only where its place in the strip moved).
+  local function BarMoved(plate)
+    local cells = plate.__pbBlizzBar
+    if plate:IsShown() then Up(plate) end
+    for i = 1, #cells do
+      local c = cells[i]
+      if c ~= plate and c:IsShown() then Paint(c) end
+    end
+  end
+
+  -- What joins the plate, read once: the ring it is a cell of, History's
+  -- switch, or a bar of tiles (its tiles in the order they stand, the star
+  -- first).
+  local function IsPlate(c)
+    local V = ns.Theme and ns.Theme.PlateVariants
+    local v = c and c.__pbVariant
+    return V ~= nil and v ~= nil and (v == V.segment or v == V.tile)
+  end
+
+  -- The ring a joined row draws round its plates today (a texture of the
+  -- row's own, under them) is faded: the strip's art is the ring now.
+  local function Join(plate)
+    local p = plate:GetParent()
+    if not p then return end
+    local cells = p.ringCells
+    if p.segRing and type(cells) == "table" then
+      for i = 1, #cells do
+        if cells[i] == plate then
+          plate.__pbBlizzJoin, plate.__pbBlizzRing = "ring", p.segRing
+          Fade(p.segRing)
+          return
+        end
+      end
+    end
+    if p.history == plate and type(p.sides) == "table" then
+      plate.__pbBlizzJoin, plate.__pbBlizzSides = "clock", p.sides
+      Fade(p.sides.holder and p.sides.holder.Ring)
+      return
+    end
+    local up = p:GetParent()
+    local sides = up and up.sides
+    if type(sides) == "table" and sides.holder == p then
+      plate.__pbBlizzJoin, plate.__pbBlizzSides, plate.__pbBlizzClock = "side", sides, up.history
+      Fade(p.Ring)
+      return
+    end
+    local up2 = up and up:GetParent()
+    if not ((up and (up.ContactBar == p or up.CategoryBar == p)) or (up2 and up2.CategoryBar == p)) then return end
+    local bar = p.__pbBlizzCells
+    if not bar then
+      local T = ns.Theme
+      bar = { gap = (T and T.Metrics and T.Metrics.space and T.Metrics.space.hair) or 2 }
+      for i = 1, select("#", p:GetChildren()) do
+        local c = select(i, p:GetChildren())
+        if IsPlate(c) and (c._isStar or c._starTile) then bar[#bar + 1] = c end
+      end
+      for i = 1, select("#", p:GetChildren()) do
+        local c = select(i, p:GetChildren())
+        if IsPlate(c) and not (c._isStar or c._starTile) then bar[#bar + 1] = c end
+      end
+      p.__pbBlizzCells = bar
+    end
+    plate.__pbBlizzJoin, plate.__pbBlizzBar = "bar", bar
+    plate:HookScript("OnShow", BarMoved)
+    plate:HookScript("OnHide", BarMoved)
+  end
+
+  -- A segment or tile plate this skin dresses: not one joined to a field
+  -- (Theme.JoinCell), not the options preview's, not the Send tab's Sent
+  -- clock (Send mail's cell), not one another look already owns.
+  function Parts.IsSeg(c)
+    if not IsPlate(c) or c.__pbDivider or c.__setSelectedOverride then return false end
+    local p = c:GetParent()
+    if p and (p.Segs or p.SentClock == c) then return false end
+    return true
+  end
+
+  function Parts.Seg(plate)
+    if plate.__pbBlizzSeg ~= nil then return end
+    plate.__pbBlizzSeg = false
+    local art = Parts.SmallArt(plate)
+    if not art then return end
+    art.down = false
+    plate.__pbBlizzSeg = art
+    Join(plate)
+    plate.__setSelectedOverride = Paint
+    plate.__pbHoverOverride = Paint
+    plate:HookScript("OnMouseDown", Down)
+    plate:HookScript("OnMouseUp", Up)
+    if plate.__pbBlizzJoin ~= "bar" then plate:HookScript("OnShow", Up) end
+    plate:HookScript("OnEnable", Paint)
+    plate:HookScript("OnDisable", Paint)
+    plate:HookScript("OnSizeChanged", Paint)
+    -- Its own art retired, and its look painted now.
+    local T = ns.Theme
+    if T and type(T.SetPlateSelected) == "function" then
+      T.SetPlateSelected(plate, plate.isSelected)
+    else
+      Paint(plate)
+    end
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
   if c.SlimBar and c.SlimBar.__pbBlizzBar == nil and c:IsObjectType("ScrollFrame") then Parts.ScrollBar(c.SlimBar) end
@@ -991,6 +1356,7 @@ function Parts.DressOne(c)
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
     Parts.Button(c)
   end
+  if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
 end
 
 -------------------------------------------------------------
