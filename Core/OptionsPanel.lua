@@ -6002,8 +6002,6 @@ do
       local inner = cell.w - NAME_X - CONTROL_R - (cell.playW or 0)
       if kind == "note" then
         T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
-      elseif kind == "hidden" then
-        State.FitHidden()
       else
         local controlW = cell.controlW or 0
         if kind == "dropdown" then
@@ -7661,57 +7659,159 @@ function State.Arrange(cell)
   Rows.PaintCaption(cell.button)
 end
 
--- The characters hidden from the character list (Core/MailMemory.lua, 2b):
--- who they are, and one button that shows them all again. The list's own
--- foot brings them back one at a time; this row is the way back that is
--- always here, even once nobody is left for that list to offer. The names,
--- and the lines the row's tooltip lists, are made here, on open, so a hover
--- only reads them.
-function State.Hidden()
-  local row = S.hiddenRow
-  if not row then return end
+-- Hidden characters (Core/MailMemory.lua, 2b): a dropdown in the row's
+-- control place, as its neighbours have one, whose caption says how many
+-- are hidden ("None", "3 hidden"). Open, it lists every character Postbox
+-- knows but the one being played, by name, each as the character list
+-- writes it (class colour, realm where it is another), marked while it is
+-- hidden: a click hides or shows that one at once and the list stays open
+-- (Dropdown.Menu, keepOpen), and Show all in its foot, gray while none is
+-- hidden, shows them all. It is the way back that is always here, even once
+-- nobody is left for the character list to offer, so a hidden character
+-- Mail Memory no longer holds is listed too.
+--
+-- Its items are made when it opens; the menu is made again only when the
+-- characters it lists have changed (a new alt seen), so an open makes no
+-- frames. What it changed is repainted everywhere once, as it closes
+-- (MM.HiddenChanged), as the character list does it. The row has no
+-- choices of its own: the options search finds it by its name, and Reset
+-- this tab leaves who is hidden alone -- the player made it, it is kept at
+-- the saved variables' root, never in the profile (TabReset.Units reads
+-- the profile only).
+-- Twelve names show before the list scrolls, as a select's long list does,
+-- over Show all in its foot.
+State.HIDDEN_MENU_H = 12 * 20 + 2 * 4 + 26
+
+-- How many are hidden, the character being played aside (it is never
+-- hidden from itself, and its own menu does not list it).
+function State.HiddenCount()
   local Memory = ns.MailMemory
-  local list = (Memory and type(Memory.HiddenCharacters) == "function") and Memory.HiddenCharacters() or {}
-  local names, lines = {}, row.lines
-  local named = Memory and Memory.ClassName
+  if not (Memory and type(Memory.HiddenCharacters) == "function") then return 0 end
+  local H = ns.Helpers
+  local myRealm, myName = H.PlayerRealm(), H.PlayerName()
+  local list, n = Memory.HiddenCharacters(), 0
   for i = 1, #list do
-    local who = list[i]
-    names[i] = named and Memory.ClassName(who.realm, who.name) or who.name
+    if not (list[i].realm == myRealm and list[i].name == myName) then n = n + 1 end
   end
-  for i = #lines, 1, -1 do lines[i] = nil end
-  local shown = math.min(#names, 12)
-  -- The tooltip's lines inked for the tooltip, which stays dark in Light
-  -- mode; the row's for the row.
-  for i = 1, shown do
-    local who = list[i]
-    lines[i] = named and Memory.ClassName(who.realm, who.name, nil, "tooltip") or who.name
-  end
-  row.moreLine = #names > shown and string.format(L["MEMORY_WAITING_MORE"], #names - shown) or nil
-  row.any = #names > 0
-  row.namesText = row.any and table.concat(names, ", ") or L["OPT_HIDDEN_NONE"]
-  row.more:SetShown(row.any)
+  return n
 end
 
--- The names, right-aligned against the button: class colours, the realm
--- where it is not this one, cut short -- the whole list is on hover.
--- Measured on every open: a host skin re-fonts the button after build.
-function State.FitHidden()
-  local row = S.hiddenRow
-  if not row then return end
-  local T = ns.Theme
-  T.SizeToText(row.more, { height = CHECK_H })
-  row.Names:ClearAllPoints()
-  if row.any then
-    row.Names:SetPoint("RIGHT", row.more, "LEFT", -8, 0)
-  else
-    row.Names:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+-- The caption: None, or how many.
+function State.Hidden()
+  local cell = S.hiddenRow
+  if not cell then return end
+  local n = State.HiddenCount()
+  cell.dd:SetText(n > 0 and ns.Plural("OPT_HIDDEN_COUNT", n) or L["OPT_HIDDEN_NONE"])
+end
+
+-- `hid`, the row's own (State.HiddenRow) -> the characters the menu lists,
+-- { realm, name } by name then realm, into hid.who, and the key that says
+-- who they are.
+function State.HiddenWho(hid)
+  local Memory = ns.MailMemory
+  local H = ns.Helpers
+  local myRealm, myName = H.PlayerRealm(), H.PlayerName()
+  local who, seen = {}, {}
+  local function Add(realm, name)
+    if type(realm) ~= "string" or type(name) ~= "string" then return end
+    if realm == myRealm and name == myName then return end
+    local key = realm .. "\001" .. name
+    if seen[key] then return end
+    seen[key] = true
+    who[#who + 1] = { realm = realm, name = name, key = key }
   end
-  T.FitText(row.Name, ROW_W - NAME_X - CONTROL_R, row.nameText, row)
-  local room = ROW_W - NAME_X - CONTROL_R - TextW(row.Name) - NAME_GAP
-    - (row.any and (math.ceil(row.more:GetWidth() or 0) + NAME_GAP) or 0)
-  local cut = T.FitText(row.Names, math.max(room, 20), row.namesText or "")
-  -- What the tooltip is for (HiddenEnter): names the row could not show.
-  row.namesCut = row.any and (cut or row.moreLine ~= nil) or false
+  local chars = Memory.Characters()
+  for i = 1, #chars do Add(chars[i].realm, chars[i].name) end
+  local hidden = Memory.HiddenCharacters()
+  for i = 1, #hidden do Add(hidden[i].realm, hidden[i].name) end
+  table.sort(who, function(a, b)
+    if a.name ~= b.name then return a.name < b.name end
+    return a.realm < b.realm
+  end)
+  local keys = {}
+  for i = 1, #who do keys[i] = who[i].key end
+  return who, table.concat(keys, "\002")
+end
+
+-- The toggle's click: the menu, made for who is listed now, open or shut.
+function State.HiddenToggle(cell)
+  local hid = cell.hid
+  local Memory = ns.MailMemory
+  local Drop = ns.Core.UI.Dropdown
+  if not (Memory and type(Memory.Characters) == "function" and Drop and type(Drop.Menu) == "function") then return end
+  if hid.menu and hid.menu:IsShown() then
+    hid.menu:Close()
+    return
+  end
+  local who, key = State.HiddenWho(hid)
+  if not hid.menu or key ~= hid.key then
+    if hid.menu then hid.menu:Close() end
+    hid.who, hid.key = who, key
+    local items = {}
+    for i = 1, #who do items[i] = { id = i, name = Memory.ClassName(who[i].realm, who[i].name) } end
+    items[#items + 1] = { id = "all", name = L["OPT_HIDDEN_SHOW_ALL"], rule = true, action = true, glyph = "eye" }
+    hid.opts = {
+      keepOpen = true,
+      alignRight = true,
+      maxListHeight = State.HIDDEN_MENU_H,
+      checked = function(id)
+        local w = hid.who[id]
+        return w ~= nil and Memory.IsHidden(w.realm, w.name)
+      end,
+      disabled = function(id) return id == "all" and State.HiddenCount() == 0 end,
+      onPick = function(id)
+        if id == "all" then
+          Memory.ShowAllHidden(true)
+        else
+          local w = hid.who[id]
+          if not w then return end
+          Memory.SetHidden(w.realm, w.name, not Memory.IsHidden(w.realm, w.name))
+        end
+        hid.changed = true
+        State.Hidden()
+      end,
+      -- Show all says what it does; the names need no words of their own.
+      onEnter = function(row, item)
+        if item.id ~= "all" then return end
+        Tip.Begin(row, L["OPT_HIDDEN_SHOW_ALL"], L["OPT_HIDDEN_SHOW_ALL_DESC"])
+        Tip.Show(row)
+      end,
+      onLeave = function() GameTooltip:Hide() end,
+      -- The row holds the panel while it is open, as a select's list does.
+      onOpen = function() Rows.Hold(cell) end,
+      onClose = function()
+        -- Shut for good: a list hidden with the panel would come back
+        -- shown when it opens again.
+        if hid.menu then hid.menu:Close() end
+        Rows.Release(cell)
+        if hid.changed then
+          hid.changed = false
+          Memory.HiddenChanged()
+        end
+      end,
+    }
+    hid.menu = Drop.Menu(cell.control, items, hid.opts)
+  end
+  -- Never narrower than the toggle it opens from.
+  hid.opts.minWidth = cell.control:GetWidth() or 0
+  hid.menu:Toggle()
+end
+
+-- The row, in `col` (General's Characters, last).
+function State.HiddenRow(col)
+  local cell = Rows.Dropdown(col, {
+    title = L["HIDDEN_TITLE"], text = L["HIDDEN_DESC"],
+    items = { { id = "count", name = L["OPT_HIDDEN_NONE"] } },
+    get = function() return "count" end,
+    set = function() end,
+  })
+  -- No choices for the search to list or the refresh to paint: the
+  -- caption is State.Hidden's.
+  cell.items = {}
+  cell.hid = { who = {}, key = false, menu = false, opts = false, changed = false }
+  cell.control:SetScript("OnClick", function() State.HiddenToggle(cell) end)
+  S.hiddenRow = cell
+  return cell
 end
 
 -------------------------------------------------------------
@@ -9243,7 +9343,6 @@ end
 -- icons, the order the character list offers them in and, last, the ones
 -- hidden from Mail Memory's lists.
 function Pages.general(col)
-  local T = ns.Theme
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
   local memory = Rows.Check(col, {
     title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
@@ -9288,48 +9387,9 @@ function Pages.general(col)
   -- there is nothing for it to order.
   State.CharacterOrderRow(block)
 
-  -- Hidden characters: the caption, the names, and Show all.
-  local row = Rows.New(block, ROW_H)
-  Rows.Cell(block, row, ROW_W, L["HIDDEN_TITLE"], L["HIDDEN_DESC"])
-  row.kind = "hidden"
-  local showAll = T.CreateButton(nil, row)
-  showAll:SetHeight(CHECK_H)
-  showAll:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
-  showAll:SetText(L["OPT_HIDDEN_SHOW_ALL"])
-  showAll:SetScript("OnClick", function()
-    local Memory = ns.MailMemory
-    if Memory and type(Memory.ShowAllHidden) == "function" then Memory.ShowAllHidden() end
-  end)
-  showAll.__pbCell = row
-  showAll.__pbEntry = Entry(L["OPT_HIDDEN_SHOW_ALL"], L["OPT_HIDDEN_SHOW_ALL_DESC"])
-  if showAll.SetMotionScriptsWhileDisabled then showAll:SetMotionScriptsWhileDisabled(true) end
-  showAll:HookScript("OnEnter", Rows.ControlEnter)
-  showAll:HookScript("OnLeave", Rows.ControlLeave)
-  showAll:Hide()
-  local names = T.CreateText(row, "secondary")
-  names:SetJustifyH("RIGHT")
-  names:SetWordWrap(false)
-  row.more, row.Names, row.lines = showAll, names, {}
-  -- Where the row cuts its names short, its tooltip lists them under the
-  -- row's name; what the row does is the inspector's.
-  local function HiddenEnter(self)
-    if Rows.Held(self, HiddenEnter) then return end
-    Rows.Hover(self)
-    if not (self.namesCut and #self.lines > 0) then return end
-    local tip = Tip.Begin(self, self.entry.title)
-    -- The names are its facts; the rest counted, muted. No blank line: the
-    -- house keeps that for the hints.
-    local lines = self.lines
-    for i = 1, #lines do tip:AddLine(lines[i], 1, 1, 1) end
-    if self.moreLine then
-      local muted = ns.Theme.TIP_MUTED
-      tip:AddLine(self.moreLine, muted, muted, muted)
-    end
-    Tip.Show(self)
-  end
-  row:SetScript("OnEnter", HiddenEnter)
-  row:SetScript("OnLeave", Rows.LeaveRow)
-  S.hiddenRow = row
+  -- Hidden characters, last: who is left out of Mail Memory's lists, a
+  -- dropdown to hide or show each (State.HiddenRow).
+  State.HiddenRow(block)
   Rows.EndBlock(block)
 end
 

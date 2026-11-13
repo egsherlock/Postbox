@@ -1404,8 +1404,9 @@ function MM.HiddenChanged()
   if Panel and type(Panel.RefreshControls) == "function" then Panel.RefreshControls() end
 end
 
--- Every hidden character shown again.
-function MM.ShowAllHidden()
+-- Every hidden character shown again. `quiet`: the caller repaints
+-- (MM.HiddenChanged), as the options' list does once it closes.
+function MM.ShowAllHidden(quiet)
   local set = HiddenSet(false)
   if set then
     -- Each recipient this list hid comes back with its character.
@@ -1420,7 +1421,7 @@ function MM.ShowAllHidden()
     RecipientsChanged()
   end
   CharactersChanged()
-  MM.HiddenChanged()
+  if not quiet then MM.HiddenChanged() end
 end
 
 -- Postbox just sent mail to `toName`. If that is one of the player's own

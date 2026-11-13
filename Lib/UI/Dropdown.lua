@@ -400,6 +400,102 @@ local function PaintSwatch(swatch, r, g, b)
   swatch:Show()
 end
 
+-- A list's rows on a scroll child inside a fixed height, rather than
+-- running off the screen: a hairline track with a light draggable thumb
+-- carries the position. Deliberately minimal -- no buttons, no Blizzard
+-- scroll templates. `contentHeight` the rows' whole height, `viewport` the
+-- height they show in, `step` a row's (the wheel moves three), `foot` the
+-- room kept under them inside the list's padding (a menu's action row).
+-- Sets list._setOffset, _viewport, _scroll and _content; -> the content
+-- frame the rows go on, as wide as the scroll frame.
+local function Scroller(list, contentHeight, viewport, step, foot)
+  local scroll = CreateFrame("ScrollFrame", nil, list)
+  scroll:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING)
+  scroll:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT",
+    -(LIST_PADDING + SCROLLBAR_INSET + 4), LIST_PADDING + foot)
+
+  local content = CreateFrame("Frame", nil, scroll)
+  content:SetSize(1, contentHeight)
+  scroll:SetScrollChild(content)
+  scroll:SetScript("OnSizeChanged", function(_, width)
+    content:SetWidth(width or 1)
+  end)
+
+  -- The track rides a child frame, not the list itself: the list is a
+  -- tagged panel, and a host skin's repaint fades every texture region
+  -- the panel owns directly (the thumb survives for exactly this reason
+  -- -- its art lives on the thumb frame).
+  local trackHolder = CreateFrame("Frame", nil, list)
+  trackHolder:SetWidth(3)
+  trackHolder:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
+  trackHolder:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING + foot)
+  local track = trackHolder:CreateTexture(nil, "ARTWORK")
+  track:SetAllPoints()
+  -- The chrome ink: white on a dark palette, dark on a light one.
+  local themed = ns.Theme
+  if themed and type(themed.FillChrome) == "function" then
+    themed.FillChrome(track, 0.08)
+  else
+    track:SetColorTexture(1, 1, 1, 0.08)
+  end
+
+  local span = contentHeight - viewport
+  local thumbHeight = math.max(20, viewport * viewport / contentHeight)
+  local thumb = CreateFrame("Frame", nil, list)
+  thumb:SetSize(3, thumbHeight)
+  thumb:EnableMouse(true)
+  local thumbArt = thumb:CreateTexture(nil, "OVERLAY")
+  thumbArt:SetAllPoints()
+  if themed and type(themed.FillChrome) == "function" then
+    themed.FillChrome(thumbArt, 0.35)
+  else
+    thumbArt:SetColorTexture(1, 1, 1, 0.35)
+  end
+
+  local function SetOffset(offset)
+    offset = math.max(0, math.min(span, offset))
+    scroll:SetVerticalScroll(offset)
+    local travel = viewport - thumbHeight
+    thumb:ClearAllPoints()
+    thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET,
+      -LIST_PADDING - (span > 0 and (offset / span) * travel or 0))
+  end
+  SetOffset(0)
+  list._setOffset = SetOffset
+  list._viewport = viewport
+  list._scroll = scroll
+  list._content = content
+
+  local function OnWheel(_, delta)
+    SetOffset(scroll:GetVerticalScroll() - delta * step * 3)
+  end
+  list:EnableMouseWheel(true)
+  list:SetScript("OnMouseWheel", OnWheel)
+  scroll:EnableMouseWheel(true)
+  scroll:SetScript("OnMouseWheel", OnWheel)
+
+  thumb:SetScript("OnMouseDown", function(self)
+    local scale = self:GetEffectiveScale()
+    local _, startY = GetCursorPosition()
+    local startOffset = scroll:GetVerticalScroll()
+    local travel = viewport - thumbHeight
+    self:SetScript("OnUpdate", function()
+      if travel <= 0 then return end
+      local _, cursorY = GetCursorPosition()
+      SetOffset(startOffset + ((startY - cursorY) / scale) * (span / travel))
+    end)
+  end)
+  thumb:SetScript("OnMouseUp", function(self)
+    self:SetScript("OnUpdate", nil)
+  end)
+  -- A list closed mid-drag never sees the mouse come up: the drag ends
+  -- with it, or it would resume following the cursor at the next open.
+  thumb:SetScript("OnHide", function(self)
+    self:SetScript("OnUpdate", nil)
+  end)
+  return content
+end
+
 -- opts.swatchFor(id) -> r, g, b (or nil): a list of colours shows each one,
 -- in a square before its name and on the toggle beside the one chosen.
 -- opts.onList(container, open): the list opened (true) or closed (false),
@@ -867,98 +963,9 @@ function Dropdown.Create(parent, opts)
     list:Hide()
 
     -- Long lists scroll inside a fixed height rather than running off the
-    -- screen: rows go on a scroll child, and a hairline track with a light
-    -- draggable thumb carries the position. Deliberately minimal -- no
-    -- buttons, no Blizzard scroll templates.
+    -- screen (Scroller).
     local rowParent = list
-    if scrolling then
-      local scroll = CreateFrame("ScrollFrame", nil, list)
-      scroll:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING)
-      scroll:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT",
-        -(LIST_PADDING + SCROLLBAR_INSET + 4), LIST_PADDING)
-
-      local content = CreateFrame("Frame", nil, scroll)
-      content:SetSize(1, contentHeight)
-      scroll:SetScrollChild(content)
-      scroll:SetScript("OnSizeChanged", function(_, width)
-        content:SetWidth(width or 1)
-      end)
-
-      -- The track rides a child frame, not the list itself: the list is a
-      -- tagged panel, and a host skin's repaint fades every texture region
-      -- the panel owns directly (the thumb survives for exactly this reason
-      -- -- its art lives on the thumb frame).
-      local trackHolder = CreateFrame("Frame", nil, list)
-      trackHolder:SetWidth(3)
-      trackHolder:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
-      trackHolder:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING)
-      local track = trackHolder:CreateTexture(nil, "ARTWORK")
-      track:SetAllPoints()
-      -- The chrome ink: white on a dark palette, dark on a light one.
-      local themed = ns.Theme
-      if themed and type(themed.FillChrome) == "function" then
-        themed.FillChrome(track, 0.08)
-      else
-        track:SetColorTexture(1, 1, 1, 0.08)
-      end
-
-      local span = contentHeight - viewport
-      local thumbHeight = math.max(20, viewport * viewport / contentHeight)
-      local thumb = CreateFrame("Frame", nil, list)
-      thumb:SetSize(3, thumbHeight)
-      thumb:EnableMouse(true)
-      local thumbArt = thumb:CreateTexture(nil, "OVERLAY")
-      thumbArt:SetAllPoints()
-      if themed and type(themed.FillChrome) == "function" then
-        themed.FillChrome(thumbArt, 0.35)
-      else
-        thumbArt:SetColorTexture(1, 1, 1, 0.35)
-      end
-
-      local function SetOffset(offset)
-        offset = math.max(0, math.min(span, offset))
-        scroll:SetVerticalScroll(offset)
-        local travel = viewport - thumbHeight
-        thumb:ClearAllPoints()
-        thumb:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET,
-          -LIST_PADDING - (span > 0 and (offset / span) * travel or 0))
-      end
-      SetOffset(0)
-      list._setOffset = SetOffset
-      list._viewport = viewport
-      list._scroll = scroll
-      list._content = content
-
-      local function OnWheel(_, delta)
-        SetOffset(scroll:GetVerticalScroll() - delta * rowHeight * 3)
-      end
-      list:EnableMouseWheel(true)
-      list:SetScript("OnMouseWheel", OnWheel)
-      scroll:EnableMouseWheel(true)
-      scroll:SetScript("OnMouseWheel", OnWheel)
-
-      thumb:SetScript("OnMouseDown", function(self)
-        local scale = self:GetEffectiveScale()
-        local _, startY = GetCursorPosition()
-        local startOffset = scroll:GetVerticalScroll()
-        local travel = viewport - thumbHeight
-        self:SetScript("OnUpdate", function()
-          if travel <= 0 then return end
-          local _, cursorY = GetCursorPosition()
-          SetOffset(startOffset + ((startY - cursorY) / scale) * (span / travel))
-        end)
-      end)
-      thumb:SetScript("OnMouseUp", function(self)
-        self:SetScript("OnUpdate", nil)
-      end)
-      -- A list closed mid-drag never sees the mouse come up: the drag ends
-      -- with it, or it would resume following the cursor at the next open.
-      thumb:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
-      end)
-
-      rowParent = content
-    end
+    if scrolling then rowParent = Scroller(list, contentHeight, viewport, rowHeight, 0) end
 
     list._rows = {}
     for i = 1, #items do
@@ -1333,6 +1340,10 @@ local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 -- and tooltip hooks are any row's. Taller than a row by its plate's
 -- margins (H); its plate is SIDE in from the rows' edges, TOP under the
 -- hairline over it and BOTTOM over the menu's padding.
+-- opts.maxListHeight: a menu whose rows would make it taller scrolls its
+-- choices as a select's long list does (Scroller), its action rows kept in
+-- the foot under them; it opens at its top. Without it a menu grows to its
+-- rows, as every menu here always has.
 local ACTION = { H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
 
 function ACTION.Paint(row)
@@ -1502,15 +1513,42 @@ function Dropdown.Menu(owner, items, opts)
     end
     list:Hide()
     rows = {}
-    -- Each row under the last: an action row is taller (ACTION.H).
+    -- Past opts.maxListHeight the choices scroll (Scroller) over the
+    -- action rows, which keep the foot.
+    local bodyH, footH = 0, 0
+    for i = 1, #items do
+      if items[i].action then footH = footH + ACTION.H else bodyH = bodyH + DEFAULT_ROW_HEIGHT end
+    end
+    local maxH = tonumber(opts.maxListHeight)
+    local viewport = maxH and (maxH - 2 * LIST_PADDING - footH) or nil
+    local content
+    if viewport and viewport >= DEFAULT_ROW_HEIGHT and bodyH > viewport then
+      content = Scroller(list, bodyH, viewport, DEFAULT_ROW_HEIGHT, footH)
+    end
+    local parent = content or list
+    -- A choice's row at `at` under the list's top: on the scroll child
+    -- where the choices scroll, else on the list inside its padding.
+    local function Anchor(frame, at)
+      if content then
+        frame:SetPoint("TOPLEFT", content, "TOPLEFT", 0, LIST_PADDING - at)
+        frame:SetPoint("RIGHT", content, "RIGHT", 0, 0)
+      else
+        frame:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -at)
+        frame:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+      end
+    end
+    -- Each row under the last: an action row is taller (ACTION.H). Where
+    -- the choices scroll, the action rows have a cursor of their own, under
+    -- the choices' viewport.
     local y = LIST_PADDING
+    local footY = content and (LIST_PADDING + viewport) or nil
     for i = 1, #items do
       local item = items[i]
       -- A heading: the group's name, quiet, at the rows' edge, as a
       -- select's list draws one (Dropdown.Create); no wash, no click. A
       -- hairline over it where a group stands above.
       if item.action then
-        local row = ACTION.Build(list, item, y, opts)
+        local row = ACTION.Build(list, item, footY or y, opts)
         -- A click as any row's: nothing while at rest, else the pick.
         row:SetScript("OnClick", function(self)
           if self._off then return end
@@ -1519,12 +1557,11 @@ function Dropdown.Menu(owner, items, opts)
           if opts.keepOpen and list:IsShown() then PaintMarks() end
         end)
         rows[i] = row
-        y = y + ACTION.H
+        if footY then footY = footY + ACTION.H else y = y + ACTION.H end
       elseif item.heading then
-        local head = CreateFrame("Frame", nil, list)
+        local head = CreateFrame("Frame", nil, parent)
         head:SetHeight(DEFAULT_ROW_HEIGHT)
-        head:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -y)
-        head:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+        Anchor(head, y)
         local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
         text:SetWordWrap(false)
@@ -1552,10 +1589,9 @@ function Dropdown.Menu(owner, items, opts)
         rows[i] = head
         y = y + DEFAULT_ROW_HEIGHT
       else
-        local row = CreateFrame("Button", nil, list)
+        local row = CreateFrame("Button", nil, parent)
         row:SetHeight(DEFAULT_ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -y)
-        row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+        Anchor(row, y)
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
@@ -1609,7 +1645,7 @@ function Dropdown.Menu(owner, items, opts)
         y = y + DEFAULT_ROW_HEIGHT
       end
     end
-    list:SetHeight(y + LIST_PADDING)
+    list:SetHeight((footY or y) + LIST_PADDING)
     list:SetScript("OnHide", function()
       Watch()
       if opts.onClose then opts.onClose() end
@@ -1643,6 +1679,8 @@ function Dropdown.Menu(owner, items, opts)
       if row._glyph then w = w + ACTION.GLYPH + ACTION.GAP end
       if w > widest then widest = w end
     end
+    -- And the scroll bar's room where the choices scroll.
+    if list._scroll then room = room + SCROLLBAR_INSET + 4 end
     local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER) + room)
     list:SetWidth(width)
     local height = list:GetHeight() or 0
@@ -1688,6 +1726,13 @@ function Dropdown.Menu(owner, items, opts)
     Place()
     list:Show()
     list:Raise()
+    -- A scrolling menu opens at its top, its scroll child as wide as the
+    -- scroll frame now (the first OnSizeChanged can land before the list
+    -- has its geometry).
+    if list._setOffset then
+      list._content:SetWidth(list._scroll:GetWidth() or 1)
+      list._setOffset(0)
+    end
     PaintMarks(true)
     Watch()
     if opts.onOpen then opts.onOpen() end
