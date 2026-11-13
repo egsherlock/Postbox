@@ -7712,7 +7712,7 @@ end
 -------------------------------------------------------------
 
 -- Keep History for: how far back History goes, Received and Sent alike,
--- on General under Memory and history (Pages.general).
+-- on General under Memory and history (Pages.general), after the switch.
 function Pages.historyDays(col)
   -- How far back History goes, or Never, which turns it off (stored as 0):
   -- that clears what History kept on every character, so it is asked
@@ -9132,18 +9132,12 @@ end
 
 -- General: the overview. Over it, on a card of its own across the panel,
 -- every character's mail as each box was last seen and the ways into Mail
--- Memory, Character Groups and Manage Recipients (Dash). Under it, the
--- characters' class icons, then what Postbox remembers: Mail Memory, which the card and the warnings are made
--- from, the characters hidden from its lists, and how far back History
--- goes.
+-- Memory, Character Groups and Manage Recipients (Dash). Under it, what
+-- Postbox remembers: Mail Memory, which the card and the warnings are made
+-- from, and how far back History goes; then the characters: their class
+-- icons and the ones hidden from Mail Memory's lists.
 function Pages.general(col)
   local T = ns.Theme
-  -- Characters: how each one's class is drawn on the Inbox button and in
-  -- the character list. Not Mail Memory's: the button wears it with the
-  -- switch off, so the row is live either way. Its place is these two
-  -- lines; moved to another page, the group goes with them.
-  Rows.Group(col, L["OPT_GROUP_CHARACTERS"])
-  State.ClassIconsRow(col)
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
   local memory = Rows.Check(col, {
     title = L["OPT_MEMORY_SWITCH"], entryTitle = L["OPT_MEMORY_TITLE"],
@@ -9157,6 +9151,19 @@ function Pages.general(col)
   })
   -- The 7-day card's switch is a setting of this tab's too (TabReset.Units).
   memory.moreGets = { function() return ns.MailboxUI.GetWeekScope and ns.MailboxUI.GetWeekScope() or "me" end }
+
+  -- Keep History for: History is this character's own record, Received
+  -- and Sent, and needs no Mail Memory, so it stays live with the switch
+  -- off; with the switch it shares the group's question, what Postbox
+  -- keeps.
+  Pages.historyDays(col)
+
+  -- Characters: how each one's class is drawn on the Inbox button and in
+  -- the character list, and who is left out of Mail Memory's lists. Class
+  -- icons is not Mail Memory's: the button wears it with the switch off, so
+  -- the row is live either way; the heading stays live with it.
+  Rows.Group(col, L["OPT_GROUP_CHARACTERS"])
+  State.ClassIconsRow(col)
 
   -- What the switch governs here, grey with it, saying so: who is left out
   -- of the lists. (The expiring-mail warnings it governs are Alerts'.)
@@ -9206,12 +9213,6 @@ function Pages.general(col)
   row:SetScript("OnLeave", Rows.LeaveRow)
   S.hiddenRow = row
   Rows.EndBlock(block)
-
-  -- Keep History for: History is this character's own record, Received
-  -- and Sent, and needs no Mail Memory, so it stays live with the switch
-  -- off; with the two rows it shares the group's question, what Postbox
-  -- keeps.
-  Pages.historyDays(col)
 end
 
 -- Alerts: what tells you about mail. Expiring mail first -- Warn about, the
