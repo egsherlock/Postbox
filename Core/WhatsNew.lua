@@ -67,7 +67,9 @@ local ONCE = {}
 -- `{ game = "forever" or "retail", lines = key }`: its heading is that
 -- game's mark and one word (section 2c), and its lines say nothing of
 -- which game. Both games' groups show in both clients, as
--- they are. A game's group stands after the shared groups and before Fixed.
+-- they are. A game's group stands last, after every shared group, Fixed
+-- included: its heading opens a section of its own, and a fix listed under
+-- Fixed is one for both games.
 -------------------------------------------------------------
 local KEEP = 3
 
@@ -79,8 +81,8 @@ local function Releases()
       { "WHATSNEW_170_NEW", "WHATSNEW_170_NEW_LINES" },
       { "WHATSNEW_170_LOOKS", "WHATSNEW_170_LOOKS_LINES" },
       { "WHATSNEW_170_OPTIONS", "WHATSNEW_170_OPTIONS_LINES" },
-      { game = "forever", lines = "WHATSNEW_170_FOREVER_LINES" },
       { "WHATSNEW_FIXED", "WHATSNEW_170_FIXED_LINES" },
+      { game = "forever", lines = "WHATSNEW_170_FOREVER_LINES" },
     } },
     { version = "1.60.0", placard = "WHATSNEW_160_PLACARD", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_MAIL", "WHATSNEW_160_MAIL_LINES" },
