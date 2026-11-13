@@ -6108,8 +6108,14 @@ do
   -- a block of their own beside the table: no strip over them (the strip
   -- and its note are the table's, over the list's side alone), 6 apart
   -- (the inspector's drawings keep their 8), the three centred in the
-  -- card's height inside its edges, an odd unit going under.
-  local TILES_X = LIST_W + BODY_GAP + CTX_X
+  -- card's height inside its edges, an odd unit going under, and across
+  -- the column between the hairline that splits the card (SPLIT_X, in the
+  -- middle of the gap between the list and the inspector) and the card's
+  -- right edge, inside it: the same room each side, an odd unit going
+  -- right.
+  local SPLIT_X = LIST_W + BODY_GAP / 2 - 1
+  local CARD_W = LIST_W + BODY_GAP + INSP_W
+  local TILES_X = SPLIT_X + 1 + math.floor((CARD_W - 1 - (SPLIT_X + 1) - CTX_W) / 2)
   local TILE_GAP = 6
   local TILES_TOP = 1 + math.floor((Dash.H - 2 - 3 * TILE_H - 2 * TILE_GAP) / 2)
   -- What the slim bar takes from the lines while it shows: its 6 and 4
@@ -6367,7 +6373,7 @@ do
     -- (Theme.SlimScrollBar).
     local split = lift:CreateTexture(nil, "BORDER")
     split:SetSize(1, Dash.H - 2)
-    split:SetPoint("TOPLEFT", card, "TOPLEFT", LIST_W + BODY_GAP / 2 - 1, -1)
+    split:SetPoint("TOPLEFT", card, "TOPLEFT", SPLIT_X, -1)
     T.FillChrome(split, HAIR_A)
 
     -- The three ways in, one over the other, over the lift: each wears
