@@ -496,7 +496,10 @@ do
   local function Fit(button)
     local art = button.__pbBlizzButton
     if not art then return end
-    local w, h = button:GetWidth(), button:GetHeight()
+    -- The box the art is laid round: the button, or a box of its own (the
+    -- options' footer, Parts.FooterButton).
+    local box = art.box or button
+    local w, h = box:GetWidth(), box:GetHeight()
     if type(w) ~= "number" or type(h) ~= "number" or w <= 0 or h <= 0 then return end
     local set = art.names.up
     local lw, lh = Parts.Size(set[1])
@@ -535,13 +538,13 @@ do
     if art.m ~= m or art.joined ~= joined then
       art.m, art.joined = m, joined
       L:ClearAllPoints()
-      L:SetPoint("TOPLEFT", button, "TOPLEFT", -m, m)
+      L:SetPoint("TOPLEFT", box, "TOPLEFT", -m, m)
       R:ClearAllPoints()
-      R:SetPoint("TOPRIGHT", button, "TOPRIGHT", m, m)
+      R:SetPoint("TOPRIGHT", box, "TOPRIGHT", m, m)
       local M = art[2]
       M:ClearAllPoints()
       if joined then
-        M:SetPoint("TOPLEFT", button, "TOPLEFT", 0, m)
+        M:SetPoint("TOPLEFT", box, "TOPLEFT", 0, m)
       else
         M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
       end
@@ -656,6 +659,130 @@ do
     art[2]:SetShown(on)
     art[3]:SetShown(on)
     return true
+  end
+
+  ---------------------------------------------------------------
+  -- The options' footer: three red buttons on the window's stone
+  ---------------------------------------------------------------
+
+  -- Reset to defaults, Report a bug and What's new? are words (and marks)
+  -- on the footer's band, each a plain frame sized to its words. Here each
+  -- wears the newer red button round its words, standing straight on the
+  -- window's stone: the band's own fill, line and grain are not drawn. The
+  -- button is the band's height (24, the height the words are centred in),
+  -- its face PAD units past the words at each side, as a button of that
+  -- height carries them, except where that would pass the band's own end
+  -- (Reset's left, What's new?'s right): there the face ends where the band
+  -- does, so the outer buttons line up with the panes above. The words, the
+  -- marks and the version line do not move.
+  --
+  -- The art is laid on the frame that owns the words (Reset's and What's
+  -- new?'s buttons, the band for Report a bug), under them, round a box of
+  -- its own (an empty frame anchored to the words), so it follows them when
+  -- the footer is measured again. The frame's pressed state presses it, its
+  -- hover shows the game's glow; each click area is the art (reset and What's
+  -- new? a little larger, the band only where Report a bug's art stands).
+  local PAD = 12
+
+  local function BoxSized(box)
+    local owner = box.__pbOwner
+    if owner then Fit(owner) end
+  end
+
+  -- The art on `owner`, round `box`. -> the art, or nil.
+  local function BoxArt(owner, box)
+    if owner.__pbBlizzButton ~= nil or not Has(RED) then return nil end
+    local art = { names = RED, m = false, box = box }
+    for i = 1, 3 do art[i] = owner:CreateTexture(nil, "BACKGROUND", nil, 1) end
+    art[2]:SetPoint("TOPLEFT", art[1], "TOPRIGHT", 0, 0)
+    art[2]:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMLEFT", 0, 0)
+    owner.__pbBlizzButton = art
+    box.__pbOwner = owner
+    Paint(owner)
+    if pcall(owner.SetHighlightAtlas, owner, RED.highlight) then
+      local glow = owner:GetHighlightTexture()
+      if glow then
+        glow:ClearAllPoints()
+        glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
+        glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+        art.glow = glow
+      end
+    end
+    owner:HookScript("OnMouseDown", Down)
+    owner:HookScript("OnMouseUp", Up)
+    owner:HookScript("OnShow", Up)
+    box:SetScript("OnSizeChanged", BoxSized)
+    return art
+  end
+
+  -- The band's click area: Report a bug's art, measured again each time
+  -- the footer lays its words (Footer.Fit sets the words' place).
+  local function BandHits(text)
+    local f = text.__pbFooterOf
+    local band = f and f.band
+    if not (band and band.__pbBlizzButton) then return end
+    -- The art round the words where they now stand.
+    Fit(band)
+    local _, _, _, x = text:GetPoint(1)
+    local bandW = band:GetWidth()
+    local tw = text:GetStringWidth()
+    if type(x) ~= "number" or type(bandW) ~= "number" or bandW <= 0 or type(tw) ~= "number" then return end
+    local lead = f.bugGlyph and (f.bugMark or 0) + 2 + (f.bugGap or 0) or 0
+    local left = math.max(0, x - lead - PAD)
+    local right = math.max(0, bandW - (x + tw + PAD))
+    band:SetHitRectInsets(left, right, 0, 0)
+  end
+
+  function Parts.FooterButtons(band)
+    local f = band.__pbFooter
+    if type(f) ~= "table" or band.__pbBlizzFootArt ~= nil then return end
+    band.__pbBlizzFootArt = false
+    if not Has(RED) then return end
+    local h = band:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local half = h / 2
+    band.__pbBlizzFootArt = true
+    -- The band itself is not drawn.
+    Fade(band.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(band[BACKDROP_EDGES[i]]) end
+    Fade(band.pbSurfaceTexture)
+    -- Report a bug: on the band, round its mark and words.
+    if f.bugText then
+      local box = CreateFrame("Frame", nil, band)
+      box:SetPoint("TOPLEFT", f.bugGlyph or f.bugText, "LEFT", -PAD, half)
+      box:SetPoint("BOTTOMRIGHT", f.bugText, "RIGHT", PAD, -half)
+      if BoxArt(band, box) then
+        f.bugText.__pbFooterOf = f
+        hooksecurefunc(f.bugText, "SetPoint", BandHits)
+        BandHits(f.bugText)
+      end
+    end
+    -- Reset to defaults: from the band's left end to PAD past its caret.
+    local reset = f.reset
+    if reset and f.resetText then
+      local last = f.resetCaret or f.resetText
+      local box = CreateFrame("Frame", nil, reset)
+      box:SetPoint("TOPLEFT", band, "TOPLEFT", 0, 0)
+      box:SetPoint("BOTTOMRIGHT", last, "RIGHT", PAD, -half)
+      if BoxArt(reset, box) then
+        -- The click area out to the art: the frame stands 4 in from the
+        -- band's end, and ends 18 past its words (4 without a caret).
+        local _, _, _, x = reset:GetPoint(1)
+        local over = (f.resetCaret and 12 or 0) + PAD - (f.resetCaret and 18 or 4)
+        reset:SetHitRectInsets(-(tonumber(x) or 0), -math.max(0, over), 0, 0)
+      end
+    end
+    -- What's new?: from PAD before its words to the band's right end.
+    local news = f.news
+    if news and f.newsText then
+      local box = CreateFrame("Frame", nil, news)
+      box:SetPoint("TOPLEFT", f.newsText, "LEFT", -PAD, half)
+      box:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", 0, 0)
+      if BoxArt(news, box) then
+        local _, _, _, x = news:GetPoint(1)
+        news:SetHitRectInsets(-PAD, -math.max(0, -(tonumber(x) or 0)), 0, 0)
+      end
+    end
   end
 
   ---------------------------------------------------------------
@@ -1998,8 +2125,9 @@ end
 --     and Character Groups' members outside them) is the Settings
 --     checkbox, its box and tick (checkbox-minimal, checkmark-minimal) on
 --     the same button, at its size and place;
---   * the footer's Report a bug, What's new? and Reset to defaults wear
---     the game's gold at rest;
+--   * the footer's Report a bug, What's new? and Reset to defaults are
+--     three red buttons on the window's stone, the band behind them not
+--     drawn (Parts.FooterButtons), their words the game's gold at rest;
 --   * each group heading's rule is the game's Settings rule
 --     (Options_HorizontalDivider) where the rule stands, never under a
 --     screen pixel; the rule's own line is faded.
@@ -2197,6 +2325,8 @@ do
     local f = band.__pbFooter
     if type(f) ~= "table" then return end
     band.__pbBlizzFooter = true
+    -- The three as red buttons on the stone, the band not drawn.
+    Parts.FooterButtons(band)
     band:HookScript("OnLeave", BugRest)
     BugRest(band)
     if f.news then
