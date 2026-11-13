@@ -4468,8 +4468,7 @@ do
   end
 
   -- Stacks `col` again, top down, each frame at the height its item now
-  -- takes, a block from its own rows; a hidden row takes none, as the
-  -- border size's row stands aside (State.BorderSize). Answers the height
+  -- takes, a block from its own rows; a hidden row takes none. Answers the height
   -- used. Run only on a page a pair has changed on (Rows.FitPairs), so a
   -- page nothing moves on is never touched.
   function Rows.Reflow(col)
@@ -8355,6 +8354,11 @@ function Pages.window(col)
       OfferStyleReload()
     end,
   })
+  -- Row stripes are this tab's whichever look is worn: under a host UI or
+  -- the Blizzard look they have no row, yet the Postbox and creative looks
+  -- wear the saved choice when next chosen, so Reset this tab puts it back
+  -- too (TabReset.Units), as it does the looks' own values.
+  S.styleCell.moreGets = { function() return ns.MailboxUI.GetOption("rowStripes") end }
 
   -- The window scale, in every style: every Postbox window, live, each kept
   -- where it stands (MailboxUI.SetWindowScale).
@@ -8419,8 +8423,8 @@ function Pages.window(col)
   -- host it means match that UI, and under Postbox's own it means the
   -- value the skin was authored with.
   local autoName = HostSkinName() and L("OPT_APPEARANCE_MATCH", HostSkinName()) or L["OPT_APPEARANCE_DEFAULT"]
-  -- The opacity, the border, and the border's size last: the one row that
-  -- stands aside (State.BorderSize) moves nothing when it does.
+  -- The opacity, the border, and the border's size last, grey while the
+  -- border has no size (State.BorderSize).
   local opacityItems = { { id = "auto", name = autoName } }
   for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
     opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
@@ -8453,7 +8457,7 @@ function Pages.window(col)
   for _, choice in ipairs(Skin.GetBorderChoices()) do
     borderItems[#borderItems + 1] = { id = choice.key, name = choice.name }
   end
-  local borderRow = Rows.Dropdown(col, {
+  Rows.Dropdown(col, {
     title = L["OPT_BORDER_TITLE"],
     text = (borderAuto and HostSkinName()) and L("OPT_BORDER_DESC_MATCH", HostSkinName()) or L["OPT_BORDER_DESC"],
     items = borderItems,
@@ -8463,14 +8467,15 @@ function Pages.window(col)
     end,
     set = function(id)
       if id == "auto" then Skin.ResetBorder() else Skin.SetBorderStyle(id) end
-      -- A pick sets the style's own size: the size row shows it, if it shows.
+      -- A pick sets the style's own size: the size row shows it, live or grey.
       State.BorderSize()
       Rows.PaintDropdown(S.borderSize.row)
       Ctx.Repaint()
     end,
   })
 
-  -- Border size stands aside while the border has no size (None, Match).
+  -- Border size greys while the border has no size (None, Match), saying
+  -- what gives it one.
   local sizeItems = {}
   for step = 1, 4 do
     sizeItems[#sizeItems + 1] = { id = step, name = string.format(L["OPT_BORDER_SIZE_STEP"], step) }
@@ -8485,16 +8490,14 @@ function Pages.window(col)
       end,
     }),
   }
-  -- While it stands aside, the search leads to the border it follows.
-  S.borderSize.row.findVia = borderRow
+  Rows.Why(S.borderSize.row, "OPT_BORDER_SIZE_WHY")
   S.refresh[#S.refresh + 1] = State.BorderSize
 end
 
--- Border size shown only while the chosen border has a size (the skin's
--- BorderHasSize; a skin without that answer keeps the row). It is the page's
--- last row, so hiding it moves nothing; the page keeps its height, as every
--- page does, the tallest page setting the list's. Run on every open and
--- after a border pick, so it is live.
+-- Border size live only while the chosen border has a size (the skin's
+-- BorderHasSize; a skin without that answer keeps it live), grey with its
+-- reason otherwise. Always built and listed, so the search finds it. Run on
+-- every open and after a border pick, so it is live.
 function State.BorderSize()
   local b = S.borderSize
   if not b then return end
@@ -8503,9 +8506,9 @@ function State.BorderSize()
   if skin and type(skin.BorderHasSize) == "function" then
     sized = skin.BorderHasSize() and true or false
   end
-  if b.shown == sized then return end
-  b.shown = sized
-  b.row:SetShown(sized)
+  if b.on == sized then return end
+  b.on = sized
+  Rows.SetEnabled(b.row, sized, "OPT_BORDER_SIZE_WHY")
 end
 
 -- The Postbox style's own rows, in its groups (spec section 3.1): Colors
@@ -8622,11 +8625,13 @@ do
       get = function() return Skin.GetBorderStyle() end,
       set = function(id)
         Skin.SetBorderStyle(id)
+        -- Border color greys with None, which has no line to colour.
+        State.PostboxBorder()
         Ctx.Repaint()
       end,
     })
     local tones = WithoutCustom(Skin.GetBorderToneChoices(), Skin)
-    Rows.Dropdown(col, {
+    S.pbToneCell = Rows.Dropdown(col, {
       title = L["OPT_BORDER_COLOR_TITLE"], text = L["OPT_BORDER_COLOR_DESC"], items = Items(tones),
       -- The greys' squares are the palette's own, read at each paint: a
       -- light window's gray is lighter.
@@ -8643,6 +8648,8 @@ do
         Ctx.Repaint()
       end,
     })
+    Rows.Why(S.pbToneCell, "OPT_BORDER_COLOR_WHY")
+    S.pbToneOn = nil
     Rows.Dropdown(col, {
       title = L["OPT_CORNERS_TITLE"], text = L["OPT_CORNERS_DESC"], items = Items(Skin.GetCornerChoices()),
       get = function() return Skin.GetCorners() end,
@@ -8688,6 +8695,7 @@ do
       get = function() return Skin.GetOutline() end,
       set = function(id) Skin.SetOutline(id) Ctx.Repaint() end,
     })
+    Rows.Why(S.pbOutlineCell, "OPT_OUTLINE_WHY")
     S.pbOutlineOn = true
     State.WeightRow(col, Skin, Items(Skin.GetWeightChoices()))
   end
@@ -8711,7 +8719,7 @@ function State.ClassIconsRow(col)
     items[#items + 1] = { id = id, name = Icons.Name(id), icon = Icons.Spec(id, token) }
     offered[id] = true
   end
-  return Rows.Dropdown(col, {
+  local cell = Rows.Dropdown(col, {
     title = L["OPT_CLASS_ICONS_TITLE"], text = L["OPT_CLASS_ICONS_DESC"], items = items,
     get = function()
       local id = Icons.Current()
@@ -8719,6 +8727,10 @@ function State.ClassIconsRow(col)
     end,
     set = function(id) UI.SetClassIcons(id) end,
   })
+  -- The style as saved, offered now or not: Reset this tab puts back a
+  -- saved style the row shows as Game too (TabReset.Units).
+  cell.moreGet = UI.GetClassIcons
+  return cell
 end
 
 -- Character order: the order the character list (the Inbox button's, on
@@ -8746,8 +8758,7 @@ end
 -- as a font is (Skin.SetWeight: the copies re-dressed, live). Grey where
 -- the chosen font has no Bold for this client, saying why
 -- (State.PostboxWeight); the saved choice is kept for a font that has one.
--- `col` is the page's column, stacked again when Text style stands aside
--- above it (State.Postbox).
+-- `col` is the page's column.
 function State.WeightRow(col, Skin, items)
   if not Skin.GetWeightChoices then return end
   local cell = Rows.Dropdown(col, {
@@ -8775,13 +8786,14 @@ end
 
 -- Under the Postbox style: the background colour's list is the Mode's, and
 -- shows the Mode's own pick (a flip of the Mode changes the list live); the
--- opacity row shows the value in force (Light keeps 85% or more); and Text
--- outline stands aside while the Mode is Light, whose text is always drawn
--- clean, and comes back with Dark showing Dark's choice, which it keeps.
--- Text weight stands under it in both Modes, so the page is stacked again
--- as it goes and comes (Rows.Restack), leaving no gap.
+-- opacity row shows the value in force (Light keeps 85% or more); Text
+-- style greys while the Mode is Light, whose text is always drawn clean,
+-- saying so, and is live again with Dark showing Dark's choice, which it
+-- keeps; and Border color greys while Window border is None
+-- (State.PostboxBorder). Every row stays where it is, so nothing restacks.
 function State.Postbox()
   State.PostboxWeight()
+  State.PostboxBorder()
   local cell = S.pbSurfaceCell
   local skin = GetSkin()
   if not (cell and skin and skin.GetMode) then return end
@@ -8798,9 +8810,20 @@ function State.Postbox()
   local on = skin.GetMode() ~= "light"
   if outline and S.pbOutlineOn ~= on then
     S.pbOutlineOn = on
-    outline:SetShown(on)
-    if S.pbWeightPage then Rows.Restack({ [S.pbWeightPage] = true }) end
+    Rows.SetEnabled(outline, on, "OPT_OUTLINE_WHY")
   end
+end
+
+-- Border color live while Window border draws a line, grey with its reason
+-- while it is None. On every open and after a border pick.
+function State.PostboxBorder()
+  local cell = S.pbToneCell
+  local skin = GetSkin()
+  if not (cell and skin and skin.GetBorderStyle) then return end
+  local on = skin.GetBorderStyle() ~= "none"
+  if S.pbToneOn == on then return end
+  S.pbToneOn = on
+  Rows.SetEnabled(cell, on, "OPT_BORDER_COLOR_WHY")
 end
 
 -- A creative window style's rows (Core/Skin_Creative.lua): its colour choice
@@ -9016,7 +9039,7 @@ function Pages.minimap(col)
   if Icon and Icon.GetIconSpec then
     for _, item in ipairs(iconItems) do item.icon = Icon.GetIconSpec(item.id) end
   end
-  Rows.Dropdown(block, {
+  local iconRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_ICON_TITLE"], text = L["OPT_MINIMAP_ICON_DESC"], items = iconItems,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
@@ -9091,9 +9114,28 @@ function Pages.minimap(col)
   -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
   -- quiet line says so in their place.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_PLACE"])
+  -- Where the icon was moved to, besides the choice: the spot on the rim a
+  -- shift-drag left (Minimap - custom) and the one on screen (Anywhere on
+  -- screen). Read only by Reset this tab (TabReset.Units).
+  local function MovedTo()
+    local store = ns.Store
+    local prefs = store and store.Get and store.Get("profile.minimap")
+    if type(prefs) ~= "table" then return nil end
+    return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
+  end
   if hostStyled then
     -- One quiet line, not a paragraph: the whole of it is in the inspector.
     Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
+    -- The size, the place and the lock have no rows here, but they are
+    -- still this tab's settings, saved for the icon Postbox draws when
+    -- EllesmereUI's minimap is gone: Reset this tab puts them back too
+    -- (TabReset.Units), as Reset settings does.
+    iconRow.moreGets = {
+      function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      MovedTo,
+    }
   else
     -- Every placement in ONE list -- a mode checkbox beside a position list
     -- gave two controls authority over one fact, and they contradicted
@@ -9115,17 +9157,10 @@ function Pages.minimap(col)
       get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
       set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
     })
-    -- Where the icon was moved to, besides the choice: the spot on the rim a
-    -- shift-drag left (Minimap - custom) and the one on screen (Anywhere on
-    -- screen). Read only by Reset this tab (TabReset.Units), so the tab's
-    -- reset puts them back with Position, as Reset settings does, and a
-    -- later pick of either choice starts from the default spot.
-    placeRow.moreGet = function()
-      local store = ns.Store
-      local prefs = store and store.Get and store.Get("profile.minimap")
-      if type(prefs) ~= "table" then return nil end
-      return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
-    end
+    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
+    -- puts it back with Position, as Reset settings does, and a later pick
+    -- of either choice starts from the default spot.
+    placeRow.moreGet = MovedTo
     Rows.Check(block, {
       title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
       get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
@@ -10320,9 +10355,9 @@ do
       for i = range and range[1] or 1, range and range[2] or 0 do
         local cell = S.cells[i]
         local kind = cell.kind
-        -- A row standing aside for now (Border size, while the border has
-        -- no size) is listed where it names the row that brings it back
-        -- (`findVia`), and a pick leads there (Find.Pick).
+        -- Every row is built and listed, a grey one too. A row hidden for
+        -- now would be listed only where it names the row that brings it
+        -- back (`findVia`), and a pick would lead there (Find.Pick).
         if kind ~= "note" and (Offered(cell, page) or (cell.findVia and Offered(cell.findVia, page))) then
           -- Made again where the row's name or its list of choices has
           -- changed: a select whose list is swapped (State.Postbox's
