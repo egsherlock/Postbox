@@ -2589,23 +2589,27 @@ function ST.Curate.Hide(name)
   R.SetHidden(name, true)
 end
 
--- The sections whose hidden names the foot gathers: the picker's own, but
--- Favorites, which never holds a hidden name (hiding clears the star).
+-- The sections whose hidden names the foot gathers: the picker's own but
+-- Favorites, which holds no hidden name (hiding clears the star) and
+-- records none that was one.
 ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "manual" }
 
 -- picker, filter -> the hidden names of the sections the filter puts on
--- screen, each once, in the picker's two kept tables (unsorted).
+-- screen, each once, in the picker's two kept tables (unsorted). Favorites
+-- gathers every section's, as All does: a hidden name was perhaps a
+-- favorite, and nothing says which, so its foot is All's (shown again, a
+-- name goes back to its own list, unstarred).
 function ST.Curate.HiddenNames(picker, filter)
   local out, seen = picker._hiddenList, picker._hiddenSeen
   for i = #out, 1, -1 do out[i] = nil end
   for key in pairs(seen) do seen[key] = nil end
-  if filter == "favorites" then return out end
   local CS = Contacts()
   if type(CS) ~= "table" or type(CS.HiddenIn) ~= "function" then return out end
+  local every = filter == "all" or filter == "favorites"
   local from = ST.Curate.HIDDEN_FROM
   for i = 1, #from do
     local id = from[i]
-    if filter == "all" or filter == id then CS.HiddenIn(id, out, seen) end
+    if every or filter == id then CS.HiddenIn(id, out, seen) end
   end
   return out
 end
