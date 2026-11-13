@@ -1694,6 +1694,10 @@ end
 --         The compose screen's To: box is free text and always was, so a hidden
 --         name typed out in full is still a perfectly good recipient. What
 --         hiding buys is that the addon stops OFFERING it.
+--         { includeOff = bool } -- defaults to FALSE: a source the options
+--         switched off hands out nothing. The recipient manager passes true,
+--         to know those names and keep them out of its list (CS.INCLUDE_OFF
+--         says this build honours it).
 --
 -- Returns eight array-valued keys. Each one means exactly what it says, and a
 -- recipient appears in EVERY key that describes them:
@@ -1720,6 +1724,8 @@ end
 -- realm, "Name-Realm" everywhere else, never the raw string a collector happened
 -- to return. Callers may therefore put an entry straight into the To: box, and
 -- Recipients.Key on an entry always yields that recipient's key.
+CS.INCLUDE_OFF = true
+
 function CS.BuildSuggestions(text, opts)
   local h = Helpers()
   local clean = h.NormalizeText(text)
@@ -1821,14 +1827,17 @@ function CS.BuildSuggestions(text, opts)
     end
   end
 
-  -- A source switched off leaves its list empty, for every caller (see
-  -- CS.SourceOn).
+  -- A source switched off leaves its list empty (see CS.SourceOn), for every
+  -- caller but one that asks for it with `includeOff`: Manage Recipients,
+  -- which keeps those names out of its own list by them, so a guildmate
+  -- whose source is off is never taken there for a name no list offers.
   ReadOffered()
-  if offered.recent then Emit(results.recent, sources.recent.list) end
-  if offered.alts then Emit(results.alts, sources.alts.list) end
-  if offered.friends then Emit(results.friends, sources.friends.list) end
-  if offered.guild then Emit(results.guild, sources.guild.list) end
-  if offered.grouped then Emit(results.grouped, sources.grouped.list) end
+  local all = (type(opts) == "table" and opts.includeOff) and true or false
+  if all or offered.recent then Emit(results.recent, sources.recent.list) end
+  if all or offered.alts then Emit(results.alts, sources.alts.list) end
+  if all or offered.friends then Emit(results.friends, sources.friends.list) end
+  if all or offered.guild then Emit(results.guild, sources.guild.list) end
+  if all or offered.grouped then Emit(results.grouped, sources.grouped.list) end
 
   -- Whatever the client itself would complete, for names no cached source
   -- claimed. Only for a typed query: that is this API's documented use, and it

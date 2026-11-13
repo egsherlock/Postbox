@@ -507,12 +507,15 @@ local function Collect(countOnly)
 
   local off, suppressed = COLLECT.off, COLLECT.suppressed
   for i = 1, #SWITCHED do off[SWITCHED[i]] = not SourceOn(SWITCHED[i]) end
+  -- People recently grouped with have no switch: they follow Recent's.
+  off.grouped = not SourceOn("grouped")
   for key in pairs(suppressed) do suppressed[key] = nil end
   -- "No list offers this name" can be said only where every list could be
-  -- read: the guild's and the friends' names are known only from their
-  -- sources, so with either off a name of theirs could pass for one no list
-  -- offers.
-  RM._unlistedKnown = sourcesComplete and not off.guild and not off.friends
+  -- read. ContactService hands out a switched-off source's names when asked
+  -- (includeOff); one that did not would leave the guild's and the friends'
+  -- names unknown with their source off, and then nothing is said.
+  RM._unlistedKnown = sourcesComplete
+    and (not (off.guild or off.friends) or (CS ~= nil and CS.INCLUDE_OFF == true))
 
   local function Entry(key)
     local entry = byKey[key]
