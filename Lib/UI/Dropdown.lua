@@ -1250,9 +1250,13 @@ end
 -- `flip`, its words the other way round ("Oldest first" to "Newest
 -- first"); opts.flipped(id) -> whether it reads them now, asked with the
 -- marks. While it is the choice in effect it carries the turn mark at its
--- right end -- the house caret (Theme.GLYPHS "caret"), pointing down the
--- way its `name` runs and up the way its `flip` does, turned as it changes
--- (Theme.TurnGlyph) -- so it is plain that another click turns it round.
+-- right end -- the house caret (Theme.GLYPHS "caret"), pointing up while
+-- opts.ascending(id) says the order runs ascending (the smallest first:
+-- A to Z, the oldest, the least) and down while it runs descending, as
+-- the sort button's own arrow does; turned as it changes (Theme.TurnGlyph)
+-- -- so it is plain which way the list runs and that another click turns
+-- it round. Without opts.ascending it points down the way its `name` runs
+-- and up the way its `flip` does.
 -- The menu is as wide as the longer words of each.
 local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 
@@ -1365,6 +1369,7 @@ function Dropdown.Menu(owner, items, opts)
   local checked = type(opts.checked) == "function" and opts.checked or nil
   local disabled = type(opts.disabled) == "function" and opts.disabled or nil
   local flipped = type(opts.flipped) == "function" and opts.flipped or nil
+  local ascending = type(opts.ascending) == "function" and opts.ascending or nil
 
   -- A two-way row's words and its turn mark, as the choice stands now. A
   -- mark is turned while out of sight where `still` (the menu opening), so
@@ -1377,7 +1382,9 @@ function Dropdown.Menu(owner, items, opts)
     if not mark then return end
     local themed = ns.Theme
     if not on or still then mark:Hide() end
-    if themed and type(themed.TurnGlyph) == "function" then themed.TurnGlyph(mark, not back) end
+    local down = not back
+    if ascending then down = not ascending(item.id) end
+    if themed and type(themed.TurnGlyph) == "function" then themed.TurnGlyph(mark, down) end
     if on then
       if themed and type(themed.SetColor) == "function" then themed.SetColor(mark, "accentBright") end
       mark:Show()

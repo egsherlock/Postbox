@@ -4491,15 +4491,16 @@ end
 -- The sort button of a window that sorts and has no filters on it -- this
 -- one, and Manage Recipients (Core/RecipientManager.lua) -- built as the
 -- Mail tab's sort-and-filter button is (CollectTab's RV.NewSortButton),
--- from the same parts: a square segment plate wearing the sort mark
--- (Theme.GLYPHS "sort-list": three bars and an arrow up) at 16 on its
--- middle, the pair's other one ("sort-list-turned", the arrow down) while
--- the order runs its field the other way; drawn in the house's selected
+-- from the same parts: a square segment plate wearing the sort mark at 16
+-- on its middle -- three bars and an arrow up (Theme.GLYPHS "sort-list")
+-- while the order runs ascending, the smallest first, the pair's other one
+-- ("sort-list-turned", the arrow down) while it runs descending, as the
+-- chosen row's mark in its menu points; drawn in the house's selected
 -- state while the order is not the window's default, the mark then in the
 -- accent's bright tone (MM.PaintSortMark); a click opens the menu, a
 -- right-click puts the default back. `spec`:
 --   lit()        whether the order on screen is not the default
---   turned()     whether it is its field turned round (nil: never)
+--   ascending()  whether it runs ascending, the smallest first
 --   reset()      the default order back (the right-click and the menu's Reset)
 --   menu(sort)   the menu to open now (MM.SortMenu), or nil
 --   tip()        the tooltip's lines between its title and its hint
@@ -4532,7 +4533,7 @@ function MM.NewSortButton(parent, size, spec)
     local turned = sort.isSelected ~= on
     if turned then T.SetPlateSelected(sort, on) end
     if sort.Icon then
-      T.SetGlyphArt(sort.Icon, (spec.turned and spec.turned()) and "sort-list-turned" or "sort-list")
+      T.SetGlyphArt(sort.Icon, spec.ascending() and "sort-list" or "sort-list-turned")
       if on or turned then MM.PaintSortMark(sort.Icon) end
     end
   end
@@ -4587,12 +4588,13 @@ end
 -- its groups and Reset last under a hairline, an action row (`action`, a
 -- button of its own in the foot); a pick leaves it open with its
 -- dots moved; Reset grayed while there is nothing to reset. `checked(id)`,
--- `disabled(id)`, `onPick(id)` and `flipped(id)` (a field's row turned
--- round, reading its `flip` words) as Dropdown.Menu takes them. It opens
+-- `disabled(id)`, `onPick(id)`, `flipped(id)` (a field's row turned
+-- round, reading its `flip` words) and `ascending(id)` (its mark up, as
+-- the button's arrow) as Dropdown.Menu takes them. It opens
 -- under the button, left edges lined up, free to pass the window's edge;
 -- with `alignRight` its right edge is on the button's and it opens
 -- leftward, over its own window (Manage Recipients).
-function MM.SortMenu(sort, items, checked, disabled, onPick, flipped, alignRight)
+function MM.SortMenu(sort, items, checked, disabled, onPick, flipped, alignRight, ascending)
   local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
   if not (D and type(D.Menu) == "function") then return nil end
   local menu
@@ -4602,6 +4604,7 @@ function MM.SortMenu(sort, items, checked, disabled, onPick, flipped, alignRight
     disabled = disabled,
     onPick = onPick,
     flipped = flipped,
+    ascending = ascending,
     alignRight = alignRight and true or nil,
     onClose = function() if sort.open == menu then sort.open = nil end end,
   })
@@ -4618,6 +4621,11 @@ MM.SORT_FIELD = { mailbox = "mailbox", oldest = "mailbox", expiry = "expiry", ex
 MM.SORT_FLIP = { mailbox = "oldest", oldest = "mailbox", expiry = "expirylast", expirylast = "expiry" }
 MM.SORT_WORDS = { mailbox = "SORT_NEWEST_TITLE", oldest = "SF_SORT_OLDEST", expiry = "SORT_EXPIRY_TITLE",
   expirylast = "SF_SORT_EXPIRY_LAST" }
+-- The orders that run ascending, the smallest first: the oldest, and the
+-- soonest to expire (Order.ByExpiry). The button's arrow and the menu's
+-- mark point up for these, down for the rest.
+MM.SORT_UP = { oldest = true, expiry = true }
+function MM.MemorySortUp() return MM.SORT_UP[MM.SortOf("memory")] == true end
 
 -- The order kept for this window (MailboxUI.SetListSort, "memory"), and the
 -- list shown in it from its top; the button and an open menu told.
@@ -4637,11 +4645,7 @@ local function BuildSearch(frame)
   local sort
   sort = MM.NewSortButton(frame, HEADER_H, {
     lit = function() return MM.SortOf("memory") ~= "mailbox" end,
-    turned = function()
-      local now = MM.SortOf("memory")
-      local field = MM.SORT_FIELD[now]
-      return field ~= nil and field ~= now
-    end,
+    ascending = MM.MemorySortUp,
     reset = function() SetMemorySort(frame, "mailbox") end,
     menu = function()
       if not frame._sortMenu then
@@ -4665,7 +4669,7 @@ local function BuildSearch(frame)
         end, function(id)
           local now = MM.SortOf("memory")
           return picks[id] ~= nil and MM.SORT_FIELD[now] == picks[id] and now ~= picks[id]
-        end)
+        end, nil, MM.MemorySortUp)
       end
       return frame._sortMenu
     end,

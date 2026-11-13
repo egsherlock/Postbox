@@ -5398,6 +5398,11 @@ RV.SORT_FIELD = { mailbox = "mailbox", oldest = "mailbox", expiry = "expiry", ex
   gold = "gold", goldleast = "gold", sender = "sender", senderza = "sender" }
 RV.SORT_FLIP = { mailbox = "oldest", oldest = "mailbox", expiry = "expirylast", expirylast = "expiry",
   gold = "goldleast", goldleast = "gold", sender = "senderza", senderza = "sender" }
+-- The orders that run ascending, the smallest first: the oldest, the least
+-- time left (RV.ByLeft), the least gold, the senders A to Z. Every other
+-- runs descending. The sort button's arrow and its menu's mark point up
+-- for these and down for the rest.
+RV.SORT_UP = { oldest = true, expiry = true, goldleast = true, sender = true }
 -- The words for each order and each filter.
 RV.SF_SORT_KEYS = { mailbox = "SORT_NEWEST_TITLE", expiry = "SORT_EXPIRY_TITLE", gold = "SF_SORT_GOLD",
   sender = "SF_SORT_SENDER", oldest = "SF_SORT_OLDEST", expirylast = "SF_SORT_EXPIRY_LAST",
@@ -5788,7 +5793,8 @@ end
 -- field: a click chooses it the right way round, and a click on the one
 -- chosen turns it round (CT.PickSort); each row says its order in words,
 -- the way it runs now ("Newest first", "Oldest first"), and the chosen one
--- carries the menu's turn mark at its right end (Dropdown.Menu, `flip`).
+-- carries the menu's turn mark at its right end (Dropdown.Menu, `flip`),
+-- up or down as the button's arrow (RV.SORT_UP).
 -- Each filter is a
 -- tick of its own, marked while it is on (the select's chosen mark, which
 -- any number of rows can wear), and "All mail" is marked while none is.
@@ -5838,6 +5844,8 @@ function RV.SFMenu(panel, list)
       local now = RV.SortOf(list)
       return pick ~= nil and pick[1] == "sort" and RV.SORT_FIELD[now] == pick[2] and now ~= pick[2]
     end,
+    -- Its mark up while the order in force runs ascending, as the button's.
+    ascending = function() return RV.SORT_UP[RV.SortOf(list)] == true end,
     onPick = function(id)
       if id == "reset" then return RV.ResetAll(panel) end
       local pick = RV.SF_IDS[id]
@@ -5872,11 +5880,13 @@ function RV.SFCloseStale(panel)
 end
 
 -- The button: a square plate, the segments' height, wearing the sort mark
--- (Theme.GLYPHS "sort-list": three bars and an arrow up) at 16, its master,
--- the same in every language; its name is in its tooltip. While the list
--- on screen runs in its field's other order (Oldest first, Expiring last,
--- Least gold, Z to A) the mark is the pair's other one, "sort-list-turned",
--- its arrow down (RV.SortMarkArt). While the list
+-- at 16, its master, the same in every language; its name is in its
+-- tooltip. The mark says which way the list on screen runs: three bars
+-- and an arrow up (Theme.GLYPHS "sort-list") while it is ascending, the
+-- smallest first (Oldest first, Expiring first, Least gold, A to Z), the
+-- pair's other one, "sort-list-turned", its arrow down, while it is
+-- descending (Newest first, Expiring last, Most gold, Z to A); the chosen
+-- row in its menu points the same way (RV.SortMarkArt). While the list
 -- on screen is not at its defaults (RV.SFLit) it is drawn in the house's
 -- selected state, as a chosen segment is -- the plate's wash, ring and
 -- underline, and the mark in the accent's bright tone, as a selected
@@ -5926,11 +5936,12 @@ function RV.NewSortButton(panel, size)
   return sort
 end
 
--- The sort mark for `order` (RV.SortOf): the arrow up while it is its
--- field's own order, down while it is the field turned round.
+-- The sort mark for `order` (RV.SortOf): the arrow up while the list runs
+-- ascending, the smallest first (RV.SORT_UP), down while it runs
+-- descending, the largest first -- the way its row's mark in the menu
+-- points too.
 function RV.SortMarkArt(order)
-  local field = RV.SORT_FIELD[order]
-  return (field and field ~= order) and "sort-list-turned" or "sort-list"
+  return RV.SORT_UP[order] and "sort-list" or "sort-list-turned"
 end
 
 -- The sort mark's ink: the accent's bright tone while its plate is
