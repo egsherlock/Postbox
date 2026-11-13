@@ -842,6 +842,26 @@ function Theme.GetAccentTone(tone)
   return t[1], t[2], t[3]
 end
 
+-- Whether the live accent is a grey (IsGrey): White, or a host's grey,
+-- which has no colour to set a heading apart from the words under it.
+function Theme.AccentIsGrey()
+  return IsGrey(Theme.GetAccent())
+end
+
+-- The brand gold's text and mark tones in the palette in force, as the
+-- live accent's would be were it the gold (FillTones): text r, g, b, then
+-- mark r, g, b. For what must not go colourless with a grey accent (What's
+-- new's headings). Worked out in the tone slots, which are then marked
+-- stale, so the next ask for the live accent's tones makes them again.
+function Theme.BrandTones()
+  local gold = C.accent
+  FillTones(gold[1], gold[2], gold[3])
+  local t, m = tones.text, tones.mark
+  local tr, tg, tb, mr, mg, mb = t[1], t[2], t[3], m[1], m[2], m[3]
+  tones.gen = -1
+  return tr, tg, tb, mr, mg, mb
+end
+
 -- Whether the accent's text or mark tone had to move from the accent itself,
 -- and the ratios they read at: for the options' accent row. On a light
 -- palette the text is the ink rather than the accent moved, so only the mark

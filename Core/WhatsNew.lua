@@ -125,6 +125,8 @@ local WIN = {
   TITLE_GAP = 6,           -- a release's title to its first heading
   GROUP_GAP = 10,          -- a group's last line to the next heading
   LINE_GAP = 2,            -- a heading to its first line, and line to line
+  RULE_GAP = 8,            -- a heading's last letter to its rule (the options' NAME_GAP)
+  RULE_MIN = 8,            -- the least rule worth drawing
 }
 local BULLET = "\226\128\162"
 local win
@@ -136,9 +138,10 @@ local function PageWidth()
 end
 
 -------------------------------------------------------------
--- 2b. Two small measures
+-- 2b. Small parts
 --
--- The plaque on the title bar (section 2d) is drawn with these.
+-- The plaque on the title bar (section 2d) is drawn with the first two;
+-- the headings' rules and inks follow.
 -------------------------------------------------------------
 
 -- The ring inside a plate's edge, `px` thick, and the fill inside the
@@ -171,6 +174,59 @@ end
 local function Natural(fs)
   local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
   return ceil(tonumber(w) or 0)
+end
+
+-- A group's heading stands apart from the lines under it in two ways: a
+-- rule after its word, and an ink of its own.
+--
+-- The rule is the options' group heading's (OptionsPanel, Rows.Group): one
+-- unit tall, RULE_GAP after the last letter, a unit under the word's
+-- middle, to the page's right end, in the accent as a mark (Theme's
+-- "accent" on a texture: 3:1 on the plates, so it reads in every look). It
+-- stands inside the heading's line and adds nothing to the page's height.
+-- Where a heading leaves less than RULE_MIN for it, it is not drawn.
+function WIN.PlaceRule(rule, text, x, width)
+  local lead = Natural(text) + WIN.RULE_GAP
+  if lead + WIN.RULE_MIN > width - x then
+    rule:Hide()
+    return
+  end
+  rule:ClearAllPoints()
+  rule:SetPoint("LEFT", text, "LEFT", lead, -1)
+  rule:SetPoint("RIGHT", text, "RIGHT", 0, -1)
+  rule:Show()
+end
+
+-- The headings' ink and their rules': the accent, as every heading has it.
+-- But where the accent is a grey (White, or a host's grey), which would set
+-- the headings in the ink of the lines under them, Postbox's own gold
+-- instead, as the gold accent would draw them in the palette in force
+-- (Theme.BrandTones): its text tone on a dark palette, and on a light one
+-- the ink, as every heading there is, beside a rule in the gold's mark tone.
+-- Painted on every open: the accent, the look or the mode may have moved.
+function WIN.PaintHeadings(f)
+  local T = ns.Theme
+  local tr, tg, tb, mr, mg, mb
+  if T.AccentIsGrey and T.BrandTones and T.AccentIsGrey() then
+    tr, tg, tb, mr, mg, mb = T.BrandTones()
+  end
+  local light = T.IsLight and T.IsLight()
+  local items = f.Items
+  for i = 1, #items do
+    local item = items[i]
+    if item.rule then
+      if tr and not light then
+        T.SetTextRGB(item.text, tr, tg, tb, 1)
+      else
+        T.SetColor(item.text, "accent")
+      end
+      if mr then
+        item.rule:SetColorTexture(mr, mg, mb, 1)
+      else
+        T.FillColor(item.rule, "accent")
+      end
+    end
+  end
 end
 
 -------------------------------------------------------------
@@ -535,7 +591,10 @@ local function BuildWindow()
       heading:SetJustifyH("LEFT")
       heading:SetText(L[game and game.word or group[1]])
       local mark = game and GAMES.Mark(page, group.game) or nil
-      items[#items + 1] = { kind = "heading", text = heading, mark = mark }
+      -- Its rule, made with it (WIN.PlaceRule).
+      local rule = page:CreateTexture(nil, "ARTWORK")
+      rule:SetHeight(1)
+      items[#items + 1] = { kind = "heading", text = heading, mark = mark, rule = rule }
       for line in string.gmatch(L[game and group.lines or group[2]], "[^\n]+") do
         local dot = T.CreateText(page, "secondary")
         dot:SetText(BULLET)
@@ -580,6 +639,7 @@ local function LayoutWindow(f)
     text:ClearAllPoints()
     text:SetPoint("TOPLEFT", f.Page, "TOPLEFT", x, -(y + down))
     text:SetWidth(width - x)
+    if item.rule then WIN.PlaceRule(item.rule, text, x, width) end
     if item.dot then
       item.dot:ClearAllPoints()
       item.dot:SetPoint("TOPLEFT", f.Page, "TOPLEFT", 1, -y)
@@ -642,6 +702,7 @@ function WN.Open(beside, foot)
   win:Raise()
   local skin = ns.Skin
   if skin and skin.Refresh then pcall(skin.Refresh, win) end
+  WIN.PaintHeadings(win)
   LayoutWindow(win)
   Place(win, beside, foot)
   PLAQUE.Layout(win)
