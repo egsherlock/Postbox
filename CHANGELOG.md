@@ -64,8 +64,8 @@
   names wait under Hidden at the foot of the contact list, one click from
   coming back.
 - **Choose where suggested names come from** (Options > Send tab): your
-  alts, your guild, your friends, recent recipients. Favorites stay
-  whatever you switch off.
+  alts, your guild, your friends, people you mailed recently, and players
+  you grouped with recently. Favorites stay whatever you switch off.
 - **Manage Recipients shows when you last mailed each name,** and can
   sort by it.
 - Manage Recipients can delete a saved name that no list offers any more,
