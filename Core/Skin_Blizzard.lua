@@ -1500,6 +1500,273 @@ do
   end
 end
 
+-------------------------------------------------------------
+-- Dropdowns
+-------------------------------------------------------------
+
+-- A select's box (Lib/UI/Dropdown.lua, tagged __postboxSelect) wears the
+-- game's dropdown (WowStyle1DropdownTemplate's art): the text holder round
+-- the box and the gold arrow button at its right end, with its hover,
+-- pressed, open and disabled art; the value in the game's white, at the
+-- box's left as the game sets it, its room kept clear of the arrow
+-- (`__pbValueRoom`, which the select's own fit reads). A select whose items
+-- carry art keeps its value centred, the art before it, as it stood.
+-- The open list, a select's or a menu's, wears the game's menu ground
+-- (common-dropdown-bg, cut in nine by its own corners), and its rows the
+-- game's marks by kind: a select's rows are one choice, a circle on each
+-- and the chosen one's dot; a menu that marks choices (Dropdown.Menu with
+-- `checked`) marks a row that turns an order (`flip`, the sort menus'
+-- orders) as one choice too, and every other choice row (a filter, a hidden
+-- character) as one of several, a box on each and a tick on those that are
+-- on. A menu of actions alone (the Reset menu) and the action rows in a
+-- menu's foot have no marks. The chosen row's wash and bar go; a row's own
+-- art (a class icon, a colour, a sort's turn mark) stays. The lists stay
+-- Postbox's own, their scroller and their hover as they were.
+--
+-- Laid by the rim (measured from both clients' art): the text holder's
+-- metal stands 8 in from each end of its 54 x 41, 7 from its top and 9.5
+-- (10.5 on WoW Forever) from its foot, so it is drawn that much past the
+-- box, scaled to the box's height, its ends cut at 16 of the 54; the arrow
+-- (27 square) as the template lays it on the game's 25-unit box, scaled
+-- alike. The menu ground's metal stands 9 in from each side of its 68, 6
+-- from its top and 12 from its foot: drawn at its own size that much past
+-- the list, its corners 20 units.
+Skin.MarkRoom = 18
+do
+  local HOLDER = "common-dropdown-textholder"
+  local ARROW = {
+    up = "common-dropdown-a-button", over = "common-dropdown-a-button-hover",
+    down = "common-dropdown-a-button-pressed", open = "common-dropdown-a-button-open",
+    off = "common-dropdown-a-button-disabled",
+  }
+  local ARROW_LIST = { "up", "over", "down", "open", "off" }
+  local H_X, H_T, H_CAP = 8, 7, 16
+  local H_B = ns.IsForever and 10.5 or 9.5
+  -- The arrow on the game's box: right +1, down 3; its face 4 in from each
+  -- side. The value's lead in from the box's left, and its gap to the arrow.
+  local A_X, A_Y, A_FACE, LEAD, GAP = 1, -3, 4, 8, 2
+  -- A swatch before the value (Dropdown's SWATCH_X + SIZE + GAP).
+  local SWATCH_LEAD = 21
+
+  local BG = "common-dropdown-bg"
+  local BG_L, BG_R, BG_T, BG_B, BG_CORNER = 9, 9, 6, 12, 20
+
+  local MARKS = {
+    radio = { "common-dropdown-tickradial", "common-dropdown-icon-radialtick-yellow" },
+    box = { "common-dropdown-ticksquare", "common-dropdown-icon-checkmark-yellow" },
+  }
+  -- The marks' middle in from a row's left, inside Skin.MarkRoom: the
+  -- words (the list's padding and the room in, 22) start seven units past
+  -- the circle's drawn edge, as the game's menus set them.
+  local MARK_X = 9
+
+  local function HasArrows()
+    for i = 1, #ARROW_LIST do
+      if not HasAtlas(ARROW[ARROW_LIST[i]]) then return false end
+    end
+    return true
+  end
+
+  local function ArrowState(toggle, sel)
+    if not toggle:IsEnabled() then return "off" end
+    if sel.open then return "open" end
+    if sel.down then return "down" end
+    if sel.over then return "over" end
+    return "up"
+  end
+
+  local function PaintArrow(toggle)
+    local sel = toggle.__pbBlizzSelect
+    if not sel then return end
+    local state = ArrowState(toggle, sel)
+    if sel.state == state then return end
+    sel.state = state
+    Atlas(sel.arrow, ARROW[state], false)
+  end
+
+  local function Over(toggle) local s = toggle.__pbBlizzSelect if s then s.over = true PaintArrow(toggle) end end
+  local function Out(toggle) local s = toggle.__pbBlizzSelect if s then s.over, s.down = false, false PaintArrow(toggle) end end
+  local function Down(toggle) local s = toggle.__pbBlizzSelect if s and toggle:IsEnabled() then s.down = true PaintArrow(toggle) end end
+  local function Up(toggle) local s = toggle.__pbBlizzSelect if s then s.down = false PaintArrow(toggle) end end
+
+  function Parts.Select(toggle)
+    if toggle.__pbBlizzSelect ~= nil then return end
+    toggle.__pbBlizzSelect = false
+    if not (HasAtlas(HOLDER) and HasArrows()) then return end
+    local w0, h0 = Parts.Size(HOLDER)
+    local aw, ah = Parts.Size(ARROW.up)
+    if not (w0 and h0 and aw and ah) then return end
+    local h = toggle:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 22 end
+    if h0 <= H_T + H_B then return end
+    local s = h / (h0 - H_T - H_B)
+    local pieces = {}
+    for i = 1, 3 do
+      local t = toggle:CreateTexture(nil, "BACKGROUND", nil, 1)
+      Atlas(t, HOLDER, false)
+      pieces[i] = t
+    end
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    local cap = H_CAP / w0
+    L:SetTexCoord(0, cap, 0, 1)
+    L:SetWidth(H_CAP * s)
+    L:SetPoint("TOPLEFT", toggle, "TOPLEFT", -H_X * s, H_T * s)
+    L:SetPoint("BOTTOMLEFT", toggle, "BOTTOMLEFT", -H_X * s, -H_B * s)
+    R:SetTexCoord(1 - cap, 1, 0, 1)
+    R:SetWidth(H_CAP * s)
+    R:SetPoint("TOPRIGHT", toggle, "TOPRIGHT", H_X * s, H_T * s)
+    R:SetPoint("BOTTOMRIGHT", toggle, "BOTTOMRIGHT", H_X * s, -H_B * s)
+    M:SetTexCoord(cap, 1 - cap, 0, 1)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+    local arrow = toggle:CreateTexture(nil, "ARTWORK")
+    arrow:SetSize(aw * s, ah * s)
+    arrow:SetPoint("RIGHT", toggle, "RIGHT", A_X * s, A_Y * s)
+    local sel = { pieces = pieces, arrow = arrow, over = false, down = false, open = false }
+    toggle.__pbBlizzSelect = sel
+    -- The red button's own pieces and its glow, faded under the art.
+    Fade(toggle.Left)
+    Fade(toggle.Middle)
+    Fade(toggle.Right)
+    local glow = toggle.GetHighlightTexture and toggle:GetHighlightTexture()
+    if glow then Fade(glow) end
+    PaintArrow(toggle)
+    toggle:HookScript("OnEnter", Over)
+    toggle:HookScript("OnLeave", Out)
+    toggle:HookScript("OnMouseDown", Down)
+    toggle:HookScript("OnMouseUp", Up)
+    toggle:HookScript("OnEnable", PaintArrow)
+    toggle:HookScript("OnDisable", PaintArrow)
+    -- The value in the game's white: the button's normal font is its
+    -- highlight font (the house's even copy, a named font: Theme's
+    -- EvenButtonFonts), so it reads white at rest as under the pointer.
+    local T = ns.Theme
+    local lit = T and T.NamedFont and type(toggle.GetHighlightFontObject) == "function"
+      and T.NamedFont(toggle:GetHighlightFontObject()) or nil
+    if lit and type(toggle.SetNormalFontObject) == "function" then toggle:SetNormalFontObject(lit) end
+    -- Its place: at the box's left (after a swatch where it has one),
+    -- clear of the arrow; a select whose items carry art keeps it centred.
+    local inset = tonumber(toggle.__pbInset) or 12
+    local label = toggle.GetFontString and toggle:GetFontString()
+    if label and inset <= SWATCH_LEAD then
+      local lead = (inset >= SWATCH_LEAD) and SWATCH_LEAD or math.floor(LEAD * s + 0.5)
+      toggle.__pbValueRoom = lead + math.ceil((aw - A_FACE - A_X) * s) + GAP
+      label:ClearAllPoints()
+      label:SetPoint("LEFT", toggle, "LEFT", lead, 0)
+      label:SetJustifyH("LEFT")
+      if type(toggle.__pbRefit) == "function" then toggle.__pbRefit() end
+    end
+  end
+
+  -- The list's ground: the menu art cut in nine by its corners.
+  local CUTS = { { 0, 0 }, { 0, 0 }, { 0, 0 } }
+  function Parts.List(list)
+    if list.__pbBlizzList ~= nil then return end
+    list.__pbBlizzList = false
+    local w0, h0 = Parts.Size(BG)
+    if not (w0 and h0 and HasAtlas(BG)) or w0 <= 2 * BG_CORNER or h0 <= 2 * BG_CORNER then return end
+    local cu, cv = BG_CORNER / w0, BG_CORNER / h0
+    CUTS[1][1], CUTS[1][2] = 0, cu
+    CUTS[2][1], CUTS[2][2] = cu, 1 - cu
+    CUTS[3][1], CUTS[3][2] = 1 - cu, 1
+    local pieces = {}
+    for row = 1, 3 do
+      for col = 1, 3 do
+        local t = list:CreateTexture(nil, "BACKGROUND", nil, 1)
+        Atlas(t, BG, false)
+        t:SetTexCoord(CUTS[col][1], CUTS[col][2], row == 1 and 0 or (row == 2 and cv or 1 - cv),
+          row == 1 and cv or (row == 2 and 1 - cv or 1))
+        pieces[#pieces + 1] = t
+      end
+    end
+    -- Corners at their own size, past the list by the rim; edges and the
+    -- middle between them.
+    local TL, T, TR, Lf, C = pieces[1], pieces[2], pieces[3], pieces[4], pieces[5]
+    local Rt, BL, B, BR = pieces[6], pieces[7], pieces[8], pieces[9]
+    TL:SetSize(BG_CORNER, BG_CORNER)
+    TL:SetPoint("TOPLEFT", list, "TOPLEFT", -BG_L, BG_T)
+    TR:SetSize(BG_CORNER, BG_CORNER)
+    TR:SetPoint("TOPRIGHT", list, "TOPRIGHT", BG_R, BG_T)
+    BL:SetSize(BG_CORNER, BG_CORNER)
+    BL:SetPoint("BOTTOMLEFT", list, "BOTTOMLEFT", -BG_L, -BG_B)
+    BR:SetSize(BG_CORNER, BG_CORNER)
+    BR:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", BG_R, -BG_B)
+    T:SetPoint("TOPLEFT", TL, "TOPRIGHT", 0, 0)
+    T:SetPoint("BOTTOMRIGHT", TR, "BOTTOMLEFT", 0, 0)
+    B:SetPoint("TOPLEFT", BL, "TOPRIGHT", 0, 0)
+    B:SetPoint("BOTTOMRIGHT", BR, "BOTTOMLEFT", 0, 0)
+    Lf:SetPoint("TOPLEFT", TL, "BOTTOMLEFT", 0, 0)
+    Lf:SetPoint("BOTTOMRIGHT", BL, "TOPRIGHT", 0, 0)
+    Rt:SetPoint("TOPLEFT", TR, "BOTTOMLEFT", 0, 0)
+    Rt:SetPoint("BOTTOMRIGHT", BR, "TOPRIGHT", 0, 0)
+    C:SetPoint("TOPLEFT", TL, "BOTTOMRIGHT", 0, 0)
+    C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT", 0, 0)
+    list.__pbBlizzList = pieces
+    -- The card's own fill, line and grain, and the popup floor, faded under
+    -- the art (its middle is the game's dark ground at its own strength).
+    Fade(list.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(list[BACKDROP_EDGES[i]]) end
+    Fade(list.pbSurfaceTexture)
+    Fade(list.__pbPopupFloor)
+    -- Open, the select's arrow is the open arrow.
+    local toggle = list._toggle
+    if toggle and toggle.__pbBlizzSelect then
+      list:HookScript("OnShow", Parts.ListShown)
+      list:HookScript("OnHide", Parts.ListShown)
+    end
+  end
+
+  function Parts.ListShown(list)
+    local toggle = list._toggle
+    local sel = toggle and toggle.__pbBlizzSelect
+    if not sel then return end
+    sel.open = list:IsShown() and true or false
+    PaintArrow(toggle)
+  end
+
+  -- The chosen mark painted on or off (Dropdown's PaintChosen hands it
+  -- over): the dot or the tick, and the words in the game's white as every
+  -- row's are; a row set aside is faint, its mark with it.
+  local function Mark(row, text, on)
+    local m = row.__pbBlizzMark
+    if not m then return end
+    m.tick:SetShown(on and true or false)
+    if on and text then text:SetTextColor(Parts.FontRGB("GameFontHighlight", 1, 1, 1)) end
+    local a = (text and text.GetAlpha and text:GetAlpha()) or 1
+    m.ring:SetAlpha(a)
+    m.tick:SetAlpha(a)
+  end
+
+  -- A choice row of a list: which mark it takes, or nil.
+  local function KindOf(row)
+    if not row._selWash then return nil end
+    if row._itemId ~= nil and row._text then return "radio" end
+    local item = row.item
+    if type(item) == "table" and row.Text then return item.flip and "radio" or "box" end
+    return nil
+  end
+
+  function Parts.Row(row)
+    if row.__pbBlizzMark ~= nil then return end
+    row.__pbBlizzMark = false
+    local kind = KindOf(row)
+    local names = kind and MARKS[kind]
+    if not (names and HasAtlas(names[1]) and HasAtlas(names[2])) then return end
+    local ring = row:CreateTexture(nil, "ARTWORK")
+    Atlas(ring, names[1], true)
+    ring:SetPoint("CENTER", row, "LEFT", MARK_X, 0)
+    local tick = row:CreateTexture(nil, "OVERLAY")
+    Atlas(tick, names[2], true)
+    tick:SetPoint("CENTER", row, "LEFT", MARK_X, 0)
+    tick:Hide()
+    row.__pbBlizzMark = { ring = ring, tick = tick, kind = kind }
+    -- The house's chosen wash and bar, faded for good.
+    Fade(row._selWash)
+    Fade(row._selBar)
+    row.__pbChosenMark = Mark
+  end
+end
+
 -- One tagged child: what this skin dresses on it, each once.
 function Parts.DressOne(c)
   if c.SlimBar and c.SlimBar.__pbBlizzBar == nil and c:IsObjectType("ScrollFrame") then Parts.ScrollBar(c.SlimBar) end
@@ -1509,6 +1776,9 @@ function Parts.DressOne(c)
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
     Parts.Button(c)
   end
+  if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
+  if c.__pbPopupAlways and c._toggle and c.__pbBlizzList == nil then Parts.List(c) end
+  if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end
   if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
   if c.__pbVariant and c.__pbBlizzCell == nil then
     local p = c:GetParent()

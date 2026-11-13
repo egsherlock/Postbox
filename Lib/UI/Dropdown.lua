@@ -192,6 +192,19 @@ local function PaintChosen(row, text, on)
   end
   wash:SetShown(on and true or false)
   bar:SetShown(on and true or false)
+  -- A skin that marks chosen rows its own way (the Blizzard style's
+  -- circles and boxes) names it on the row; no other look sets it.
+  local mark = row.__pbChosenMark
+  if mark then mark(row, text, on) end
+end
+
+-- The room before a choice's words that a skin's marks take (the Blizzard
+-- style's circles and boxes, Skin.MarkRoom), or nil: every other look
+-- keeps MARK_GUTTER.
+function Dropdown.MarkRoom()
+  local skin = ns.Skin
+  local room = skin and skin.MarkRoom
+  return type(room) == "number" and room or nil
 end
 
 -- A select's list rows anchored with `gutter` before them (0 or
@@ -698,6 +711,8 @@ function Dropdown.Create(parent, opts)
     return n
   end
   local inset = Inset()
+  -- For a skin's dress: the gutter the value keeps at each end.
+  toggle.__pbInset = inset
 
   -- Items in faces of their own (FACE): the toggle's caption in the chosen
   -- one's, through the button's own fonts, since a button puts its state's
@@ -878,7 +893,9 @@ function Dropdown.Create(parent, opts)
       PaintArt()
       return
     end
-    fit(label, math.max(1, (toggle:GetWidth() or 0) - 2 * inset), caption, toggle)
+    -- A skin that sets the value elsewhere on the toggle (the Blizzard
+    -- style's, left-aligned before its arrow) names the room it takes.
+    fit(label, math.max(1, (toggle:GetWidth() or 0) - (toggle.__pbValueRoom or 2 * inset)), caption, toggle)
     PaintArt()
   end
 
@@ -1221,8 +1238,10 @@ function Dropdown.Create(parent, opts)
       if items[i].heading then headed = true end
       if type(items[i].icon) == "table" then art = true end
     end
-    list._trim = not (art or headed)
-    PlaceRows(list, art and 0 or MARK_GUTTER)
+    -- A skin's marks keep their room on every row, never trimmed.
+    local room = Dropdown.MarkRoom()
+    list._trim = not (art or headed or room)
+    PlaceRows(list, room or (art and 0 or MARK_GUTTER))
 
     list:SetScript("OnHide", ListHidden)
     lists[list] = true
@@ -1431,6 +1450,7 @@ function Dropdown.Create(parent, opts)
     items = newItems
     list = built[newItems]
     inset = Inset()
+    toggle.__pbInset = inset
     faced = Faced()
     if faced then FACE.selects[container] = true end
     Caption(NameFor(container._selectedId))
@@ -1661,6 +1681,9 @@ function Dropdown.Menu(owner, items, opts)
     end
     list:Hide()
     rows = {}
+    -- The room before a choice's words: a skin's marks' (where the menu
+    -- marks choices), else the gutter.
+    list._lead = (checked and Dropdown.MarkRoom()) or MARK_GUTTER
     -- Past opts.maxListHeight the choices scroll (Scroller) over the
     -- action rows, which keep the foot.
     local bodyH, footH = 0, 0
@@ -1744,7 +1767,7 @@ function Dropdown.Menu(owner, items, opts)
         bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
+        text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + list._lead, 0)
         text:SetWordWrap(false)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
@@ -1830,7 +1853,8 @@ function Dropdown.Menu(owner, items, opts)
     -- And the scroll bar's room where the choices scroll, in place of the
     -- padding on the right (the rows run to the track, SCROLLBAR_ROOM).
     if list._scroll then room = room + SCROLLBAR_ROOM - LIST_PADDING end
-    local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER) + room)
+    local width = math.max(tonumber(opts.minWidth) or 0,
+      math.ceil(widest) + 2 * LIST_PADDING + list._lead + MARK_GUTTER + room)
     list:SetWidth(width)
     local height = list:GetHeight() or 0
     local bottom, top = owner:GetBottom(), owner:GetTop()
