@@ -59,9 +59,9 @@ local ONCE = {}
 -- nothing shows them any more. Made when the window is first built, not at
 -- load.
 --
--- A release may also carry a placard, the words of a small plate beside its
--- title (section 2b; none carries one now), and a note, a line of its own
--- under the title: 1.60's asks for bug reports.
+-- A release may also carry a note, a line of its own under the title:
+-- 1.60's asks for bug reports. That Postbox runs on the other game too is
+-- said once, on the window's title bar (section 2d), not by a release.
 --
 -- A group about one game only names the game and its lines,
 -- `{ game = "forever" or "retail", lines = key }`: its heading is that
@@ -75,8 +75,8 @@ local KEEP = 3
 
 local function Releases()
   return {
-    -- No placard on any: each release's Forever news is a group like the
-    -- others (1.60's says Postbox runs there from that release on).
+    -- Each release's Forever news is a group like the others (1.60's says
+    -- Postbox runs there from that release on).
     { version = "1.70.0", groups = {
       { "WHATSNEW_170_NEW", "WHATSNEW_170_NEW_LINES" },
       { "WHATSNEW_170_LOOKS", "WHATSNEW_170_LOOKS_LINES" },
@@ -136,98 +136,12 @@ local function PageWidth()
 end
 
 -------------------------------------------------------------
--- 2b. A release's placard
+-- 2b. Two small measures
 --
--- Beside the release's title, at the right end of its line: a small plate
--- in the window's own chrome (the totals banner's quiet fill inside its
--- one-pixel edge, bandFill and bandBorder: neutral, following the look and
--- the mode), WoW Forever's emblem at its left end and the words beside it
--- in the body's small type, on one line, "Forever" in the bright ink and
--- the rest a step quieter. The emblem at its own size, 19 by 22 units (its
--- art's 2 texels a unit), so it stays legible at one screen pixel a unit;
--- the plate a unit clear of it all round, and centred on the title's line,
--- which it may stand taller than. All of it painted again on every open.
---
--- The emblem is Blizzard's, shown only to say Postbox supports their game:
--- the Forever client's own Interface\Glues\Common\
--- Glues-WoW-ForeverLogo-Infinity, shipped as Media/forever-logo.tga so
--- retail, which has no such art, shows it too. Drawn in its own colours,
--- never tinted. A new file under Media/ is found only after a full client
--- restart.
---
--- The rule for a translation too long for the line: where the title's
--- words, TITLE_GAP and the whole placard would not fit the page, the
--- placard is the emblem alone, and its words are its tooltip. It never
--- wraps, never runs past the page and never moves the title. Measured on
--- every open: a host skin can re-font the window after it is built.
+-- The plaque on the title bar (section 2d) is drawn with these.
 -------------------------------------------------------------
-local PLACARD = {
-  FILE = "Interface\\AddOns\\Postbox\\Media\\forever-logo.tga",
-  -- The art on its 64-texel canvas, and its own size in units.
-  L = 0.203125, R = 0.796875, T = 0.15625, B = 0.84375,
-  ART_W = 19, ART_H = 22,
-  PAD_Y = 1,               -- the emblem in from the plate's top and bottom
-  PAD = 5,                 -- the emblem's left and the words' last letter in from the plate's edges
-  WORDS_GAP = 5,           -- the emblem to the words
-  RIGHT_IN = 6,            -- the plate in from the page's right end, clear of the scroll bar's gutter
-  BRIGHT = "Forever",      -- the words' name of the game, in the bright ink
-  TITLE_GAP = 12,          -- the least room between the title and the plate
-}
 
--- The emblem alone: its words, which it does not show, as its tooltip.
-function PLACARD.Tip(self)
-  local T = ns.Theme
-  T.TipBegin(self, "ANCHOR_TOP")
-  T.TipTitle(self.__words or "")
-  GameTooltip:Show()
-  self.__tip = true
-end
-
-function PLACARD.TipOff(self)
-  if not self.__tip then return end
-  self.__tip = nil
-  GameTooltip:Hide()
-end
-
-local function BuildPlacard(page, words)
-  local T = ns.Theme
-  local plate = CreateFrame("Frame", nil, page)
-  local fill = plate:CreateTexture(nil, "BACKGROUND")
-  local ring = {}
-  for i = 1, 4 do ring[i] = plate:CreateTexture(nil, "BORDER") end
-  local emblem = plate:CreateTexture(nil, "ARTWORK")
-  emblem:SetTexture(PLACARD.FILE)
-  emblem:SetTexCoord(PLACARD.L, PLACARD.R, PLACARD.T, PLACARD.B)
-  -- Theme.Glyph's sampling: on the pixel grid, no texel snapping bias.
-  if emblem.SetSnapToPixelGrid then emblem:SetSnapToPixelGrid(true) end
-  if emblem.SetTexelSnappingBias then emblem:SetTexelSnappingBias(0) end
-  local text = T.CreateText(plate, "bodySmall")
-  text:SetJustifyH("LEFT")
-  text:SetWordWrap(false)
-  plate.Fill, plate.Ring, plate.Emblem, plate.Words = fill, ring, emblem, text
-  plate.__words = words
-  return plate
-end
-
--- From the tokens as they are now: the look or the mode may have moved
--- since the last open.
-local function PaintPlacard(plate)
-  local T = ns.Theme
-  T.FillColor(plate.Fill, "bandFill")
-  for i = 1, 4 do T.FillColor(plate.Ring[i], "bandBorder") end
-  -- The words a step quieter, the game's name in them bright: inks as the
-  -- look has them now, so the string is made here, once an open.
-  local words, bright = plate.__words or "", PLACARD.BRIGHT
-  T.SetColor(plate.Words, "textSecondary")
-  local hex = T.InkHex("textPrimary")
-  if hex and words:find(bright, 1, true) then
-    local s, e = words:find(bright, 1, true)
-    words = words:sub(1, s - 1) .. "|cff" .. hex .. bright .. "|r" .. words:sub(e + 1)
-  end
-  plate.Words:SetText(words)
-end
-
--- The ring inside the plate's edge, `px` thick, and the fill inside the
+-- The ring inside a plate's edge, `px` thick, and the fill inside the
 -- ring, so neither doubles the other's alpha.
 local function PlaceRing(plate, px)
   local top, bottom, left, right = plate.Ring[1], plate.Ring[2], plate.Ring[3], plate.Ring[4]
@@ -259,69 +173,6 @@ local function Natural(fs)
   return ceil(tonumber(w) or 0)
 end
 
--- Beside `title`, which stands at `y` down a page `width` wide, at the
--- right end of its line. Answers the line's height, or 0 where not even
--- the emblem fits beside the title.
-local function LayoutPlacard(plate, title, page, y, width)
-  local P = PLACARD
-  local words, emblem = plate.Words, plate.Emblem
-  PaintPlacard(plate)
-  local _, size = title:GetFont()
-  local line = ceil(tonumber(size) or P.ART_H)
-  local eh, ew = P.ART_H, P.ART_W
-  -- The plate a unit clear of the emblem, never shorter than the line, and
-  -- centred on it: `over` above the title's top, the rest below.
-  local plateH = max(line, eh + 2 * P.PAD_Y)
-  local over = floor((plateH - line) / 2)
-  emblem:SetSize(ew, eh)
-  emblem:ClearAllPoints()
-  emblem:SetPoint("LEFT", plate, "LEFT", P.PAD, 0)
-
-  -- The plate's right end, a little in from the page's.
-  local right = width - P.RIGHT_IN
-  local room = right - Natural(title) - P.TITLE_GAP
-  local lead = P.PAD + ew + P.WORDS_GAP
-  -- A unit to spare: a string given exactly its own width can still be
-  -- cut by the client's rounding. The words stand left, so it is never seen.
-  local shown = Natural(words) + 1
-  -- Where the last letter really ends, as the client lays the words out
-  -- (CollectTab's Span, the island's own rule): a client can measure a
-  -- string several units past its letters, which would leave the plate's
-  -- right gap wider than its left. The measured width where it cannot say.
-  local inkR = shown
-  local CT = ns.CollectTab
-  local Span = CT and CT.BarParts and CT.BarParts.Span
-  if Span then
-    local _, r = Span(words, words:GetText())
-    if r and r > 0 and r <= shown then inkR = ceil(r) end
-  end
-  local w = lead + inkR + P.PAD
-  local alone = w > room
-  if alone then
-    w = P.PAD + ew + P.PAD
-    words:Hide()
-  else
-    words:SetWidth(shown)
-    words:ClearAllPoints()
-    words:SetPoint("LEFT", plate, "LEFT", lead, 0)
-    words:Show()
-  end
-  plate:EnableMouse(alone)
-  plate:SetScript("OnEnter", alone and P.Tip or nil)
-  plate:SetScript("OnLeave", alone and P.TipOff or nil)
-  if w > room then
-    plate:Hide()
-    return 0
-  end
-  plate:ClearAllPoints()
-  plate:SetPoint("TOPRIGHT", page, "TOPLEFT", right, -(y - over))
-  plate:SetSize(w, plateH)
-  PlaceRing(plate, ns.Theme.OnePixel(plate))
-  plate:Show()
-  -- The line's height with the plate's part below the title's line.
-  return plateH - over
-end
-
 -------------------------------------------------------------
 -- 2c. A game's heading
 --
@@ -340,9 +191,9 @@ end
 --
 -- Forever's mark is the client's own emblem drawn for this size: 14 by 16
 -- units at 2 texels a unit on an even texel (Media/forever-mark-16.tga,
--- .dev/design/icons-r8/gen_forever_mark16.py), from the full-size art
--- the placard's (section 2b) is reduced from; the placard's 22-unit art
--- shown at 16 would be a 2.75:1 reduction and blur. Retail's is the game's
+-- .dev/design/icons-r8/gen_forever_mark16.py), from the client's full-size
+-- Interface\Glues\Common\Glues-WoW-ForeverLogo-Infinity; that art shown at
+-- 16 would be a 2.75:1 reduction and blur. Retail's is the game's
 -- own, logo-wow-retail: the round emblem the game draws for retail
 -- beside logo-wow-forever and logo-wow-classic, in an atlas both clients
 -- carry (the same file in each), so nothing is shipped for it. Cut to the
@@ -363,8 +214,9 @@ local GAMES = {
   FACE = { 0.93, 0.21, 0.70, -0.20, 0.72, 0.12 },
 }
 
--- The game's mark on a texture of the page, or nil where the client has
--- none: then the heading is the word alone.
+-- The game's mark on a texture of `page` (the pages, or the title bar's
+-- plaque, section 2d), or nil where the client has none: then the heading
+-- is the word alone.
 function GAMES.Mark(page, game)
   local art = GAMES[game]
   if type(art) ~= "table" or not art.aspect then return nil end
@@ -427,6 +279,189 @@ function GAMES.Place(mark, heading, page, y)
   return w + GAMES.GAP, wordDown, markDown + h + GAMES.UNDER
 end
 
+-------------------------------------------------------------
+-- 2d. The other game's plaque
+--
+-- At the left end of the window's title bar: a small plate saying Postbox
+-- runs on the other game too. On retail, Forever's mark and "Now on
+-- Forever"; on Forever, retail's mark and "On Retail too". The marks are
+-- the game groups' (section 2c), 16 units tall, in their own colours. The
+-- plate is chrome: the totals banner's quiet fill inside its one-pixel
+-- edge (bandFill and bandBorder: neutral, following the look and the
+-- mode), a unit clear of the mark above and below, 18 units tall. The
+-- words in the headings' small type (GameFontNormalSmall's class, under
+-- the title's GameFontNormal or larger), a step quieter, the game's name
+-- in them bright. Not a button: it takes no click, so the bar under it
+-- still drags the window.
+--
+-- Its left end where the look seats the bar's left control, 5 in from the
+-- Postbox style's strip as the cog is (a creative style's inset narrows
+-- the strip), else 6 in from the window's edge; its middle on the title's,
+-- its top on a whole unit (Theme.LayoutTitleGlyph's rule). It gives way,
+-- never the title: it must end CLEAR before the title's first letter.
+-- Where the words do not fit, the mark alone, its words its tooltip;
+-- where not even the mark fits, nothing. Measured on every open, after
+-- the skin's pass, which can re-font or re-seat the title. On a child
+-- frame of the window over its bar, so no skin's pass over the window's
+-- own textures (ElvUI's strip, EllesmereUI's fade) reaches it.
+-------------------------------------------------------------
+local PLAQUE = {
+  PAD_Y = 1,               -- the mark in from the plate's top and bottom
+  PAD = 4,                 -- the mark, and the words' last letter, in from the plate's ends
+  GAP = 4,                 -- the mark to the words (GAMES.GAP)
+  SEAT = 6,                -- in from the window's left, where the look has no strip
+  STRIP_IN = 5,            -- in from the strip's left, as the cog stands
+  CLEAR = 8,               -- the least room before the title's first letter (Theme's TITLE.CLEAR)
+}
+
+-- The mark alone: its words, which it does not show, as its tooltip.
+function PLAQUE.Tip(self)
+  local T = ns.Theme
+  T.TipBegin(self, "ANCHOR_BOTTOM")
+  T.TipTitle(self.__words or "")
+  GameTooltip:Show()
+  self.__tip = true
+end
+
+function PLAQUE.TipOff(self)
+  if not self.__tip then return end
+  self.__tip = nil
+  GameTooltip:Hide()
+end
+
+-- Made with the window: the other game's mark and words. -> the plate.
+function PLAQUE.Build(f)
+  local T = ns.Theme
+  local game = ns.IsForever and "retail" or "forever"
+  local plate = CreateFrame("Frame", nil, f)
+  plate:SetFrameLevel(f:GetFrameLevel() + 20)
+  local fill = plate:CreateTexture(nil, "BACKGROUND")
+  local ring = {}
+  for i = 1, 4 do ring[i] = plate:CreateTexture(nil, "BORDER") end
+  local text = T.CreateText(plate, "heading")
+  text:SetJustifyH("LEFT")
+  text:SetWordWrap(false)
+  plate.Fill, plate.Ring, plate.Words = fill, ring, text
+  plate.Mark = GAMES.Mark(plate, game)
+  plate.__words = L[ns.IsForever and "WHATSNEW_ON_RETAIL" or "WHATSNEW_ON_FOREVER"]
+  plate.__bright = L[GAMES[game].word]
+  -- Motion only, and only while the mark stands alone (its tooltip); never
+  -- a click, so a drag from it moves the window (MailboxUI's status line).
+  -- A client without the two setters takes no mouse here at all.
+  if plate.SetMouseClickEnabled and plate.SetMouseMotionEnabled then
+    plate:SetMouseClickEnabled(false)
+    plate:SetMouseMotionEnabled(false)
+    if plate.SetPropagateMouseClicks then plate:SetPropagateMouseClicks(true) end
+    plate.__motion = true
+  else
+    plate:EnableMouse(false)
+  end
+  plate:SetScript("OnEnter", PLAQUE.Tip)
+  plate:SetScript("OnLeave", PLAQUE.TipOff)
+  plate:Hide()
+  return plate
+end
+
+-- From the tokens as they are now: the look or the mode may have moved
+-- since the last open. The game's name bright in the quieter words: inks
+-- as the look has them now, so the string is made here, once an open.
+function PLAQUE.Paint(plate)
+  local T = ns.Theme
+  T.FillColor(plate.Fill, "bandFill")
+  for i = 1, 4 do T.FillColor(plate.Ring[i], "bandBorder") end
+  T.SetColor(plate.Words, "textSecondary")
+  local words, bright = plate.__words or "", plate.__bright
+  local hex = T.InkHex("textPrimary")
+  local s, e
+  if hex and type(bright) == "string" and bright ~= "" then s, e = words:find(bright, 1, true) end
+  if s then words = words:sub(1, s - 1) .. "|cff" .. hex .. bright .. "|r" .. words:sub(e + 1) end
+  plate.Words:SetText(words)
+end
+
+-- On the title bar of `f`, as the rule above lays it out.
+function PLAQUE.Layout(f)
+  local plate = f.Plaque
+  if not plate then return end
+  local T = ns.Theme
+  local title, mark, words = f.TitleText, plate.Mark, plate.Words
+  PLAQUE.Paint(plate)
+
+  -- The bar's left seat, in units from the window's left.
+  local fl, fw = f:GetLeft(), f:GetWidth() or WIN.W
+  local seat = PLAQUE.SEAT
+  local strip = f.__pbShell and f.__pbShell.strip
+  local sl = strip and strip.GetLeft and strip:GetLeft()
+  if sl and fl then seat = floor(sl - fl + 0.5) + PLAQUE.STRIP_IN end
+
+  -- The title's middle and its first letter, as the look set them.
+  local centre, first, mid = fw / 2, nil, nil
+  if title and fl then
+    local tl, tr, tt, tb = title:GetLeft(), title:GetRight(), title:GetTop(), title:GetBottom()
+    if tl and tr then centre = (tl + tr) / 2 - fl end
+    if tt and tb then mid = (tt + tb) / 2 end
+    local tw = Natural(title)
+    local left = tl and title.GetJustifyH and title:GetJustifyH() == "LEFT"
+    first = left and (tl - fl) or (centre - tw / 2)
+  end
+  local room = (first or centre) - PLAQUE.CLEAR - seat
+
+  local h = GAMES.MARK_H
+  local mw = mark and max(1, floor(h * mark.__aspect + 0.5)) or 0
+  local plateH = h + 2 * PLAQUE.PAD_Y
+  local lead = PLAQUE.PAD + (mark and (mw + PLAQUE.GAP) or 0)
+  -- A unit to spare: a string given exactly its own width can still be
+  -- cut by the client's rounding. The words stand left, so it is never seen.
+  local shown = Natural(words) + 1
+  -- Where the last letter really ends, as the client lays the words out
+  -- (CollectTab's Span, the island's own rule): a client can measure a
+  -- string several units past its letters, which would leave the plate's
+  -- right end wider than its left. The measured width where it cannot say.
+  local inkR = shown
+  local CT = ns.CollectTab
+  local Span = CT and CT.BarParts and CT.BarParts.Span
+  if Span then
+    local _, r = Span(words, words:GetText())
+    if r and r > 0 and r <= shown then inkR = ceil(r) end
+  end
+  local w = lead + inkR + PLAQUE.PAD
+  local alone = w > room
+  if alone then
+    w = PLAQUE.PAD + mw + PLAQUE.PAD
+    if not mark or w > room then
+      PLAQUE.TipOff(plate)
+      plate:Hide()
+      return
+    end
+    words:Hide()
+  else
+    words:SetWidth(shown)
+    words:ClearAllPoints()
+    words:SetPoint("LEFT", plate, "LEFT", lead, 0)
+    words:Show()
+  end
+  if mark then
+    mark:SetSize(mw, h)
+    mark:ClearAllPoints()
+    mark:SetPoint("LEFT", plate, "LEFT", PLAQUE.PAD, 0)
+    mark:Show()
+  end
+  if plate.__motion then plate:SetMouseMotionEnabled(alone) end
+  if not alone then PLAQUE.TipOff(plate) end
+
+  plate:SetSize(w, plateH)
+  plate:ClearAllPoints()
+  local ft = f:GetTop()
+  if title and mid and ft then
+    -- On the title's middle, its top moved to a whole unit under the window's.
+    local off = ft - mid - plateH / 2
+    plate:SetPoint("LEFT", title, "CENTER", seat - centre, off - floor(off + 0.5))
+  else
+    plate:SetPoint("TOPLEFT", f, "TOPLEFT", seat, -2)
+  end
+  PlaceRing(plate, T.OnePixel(plate))
+  plate:Show()
+end
+
 local function BuildWindow()
   local T = ns.Theme
 
@@ -483,8 +518,7 @@ local function BuildWindow()
     local title = T.CreateText(page, "title")
     title:SetJustifyH("LEFT")
     title:SetText(L("WHATSNEW_RELEASE", release.version))
-    local plate = release.placard and BuildPlacard(page, L[release.placard]) or nil
-    items[#items + 1] = { kind = "release", text = title, plate = plate }
+    items[#items + 1] = { kind = "release", text = title }
     if release.note then
       local note = T.CreateText(page, "secondary")
       note:SetJustifyH("LEFT")
@@ -515,13 +549,12 @@ local function BuildWindow()
   end
 
   f.Scroll, f.Page, f.Items = scroll, page, items
+  f.Plaque = PLAQUE.Build(f)
   return f
 end
 
 -- Top down, each text at the width it has and the height that gives it;
--- the window as tall as that, up to MAX_H. A placard stands on its
--- release's title line, and the line is as tall as the taller of the two;
--- a note stands between the title and the first heading, a title's gap
+-- the window as tall as that, up to MAX_H. A note stands between the title and the first heading, a title's gap
 -- below the title and a group's gap above the heading.
 local function LayoutWindow(f)
   local width = PageWidth()
@@ -553,7 +586,6 @@ local function LayoutWindow(f)
     end
     local h = ceil(text:GetStringHeight() or 12)
     if item.mark then h = max(down + h + GAMES.UNDER, least) end
-    if item.plate then h = max(h, LayoutPlacard(item.plate, text, f.Page, y, width)) end
     y = y + h
     before = kind
   end
@@ -612,6 +644,7 @@ function WN.Open(beside, foot)
   if skin and skin.Refresh then pcall(skin.Refresh, win) end
   LayoutWindow(win)
   Place(win, beside, foot)
+  PLAQUE.Layout(win)
 end
 
 -- The footer's What's new and /postbox whatsnew: open, or closed where open.
