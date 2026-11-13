@@ -6304,9 +6304,11 @@ ST.Pin = {}
 do
   local Pin = ST.Pin
   local byte = string.byte
-  -- The key's size, its room from the box's own cell's right end (the
-  -- search box's SEARCH_TOGGLE_IN) and the typed text's gap before it.
-  local SIZE, IN, GAP = 14, 6, 4
+  -- The key's size (a step under the search box's 14-unit toggle: the pin
+  -- is a lighter mark than the box's text, its art fitted to the 12 grid),
+  -- its room from the box's own cell's right end (the search box's
+  -- SEARCH_TOGGLE_IN) and the typed text's gap before it.
+  local SIZE, IN, GAP = 12, 6, 4
   -- Its ink: at rest and hovered as the every-character toggle's at rest,
   -- and dim while there is nothing to pin.
   local REST, HOVER, DIM = 0.45, 0.85, 0.25

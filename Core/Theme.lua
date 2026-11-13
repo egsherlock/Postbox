@@ -5314,7 +5314,7 @@ do
       large = { from = 21, file = MEDIA .. "glyph-groups-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
     recipients = { file = MEDIA .. "glyph-recipients-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true,
       large = { from = 21, file = MEDIA .. "glyph-recipients-large.tga", w = 30, h = 30, l = 0.03125, r = 0.96875, t = 0.03125, b = 0.96875, px = true } },
-    pin = { file = MEDIA .. "glyph-pin-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
+    pin = { file = MEDIA .. "glyph-pin-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     note = { file = MEDIA .. "glyph-note-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
