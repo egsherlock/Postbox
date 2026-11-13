@@ -27,6 +27,11 @@ local DEFAULT_TOGGLE_HEIGHT = 22
 local LIST_PADDING = 4
 -- The room before every row's caption, chosen or not, so the two start at
 -- the same x and a chosen row's bar (ChosenArt) stands clear of its words.
+-- A select's list (Dropdown.Create) leaves it out where its items carry art
+-- (the art stands ART.X into the row, two units clear of the bar, the
+-- toggle's own inset), and where a list of words alone would otherwise be
+-- wider than its toggle and hang out past its edge (PlaceRows): one ruled
+-- by headings keeps it, so its choices stand in from their headings.
 local MARK_GUTTER = 8
 -- The toggle's colour square: its left edge in from the toggle's, its size,
 -- and the room kept between it and the value.
@@ -178,6 +183,39 @@ local function PaintChosen(row, text, on)
   end
   wash:SetShown(on and true or false)
   bar:SetShown(on and true or false)
+end
+
+-- A select's list rows anchored with `gutter` before them (0 or
+-- MARK_GUTTER, MARK_GUTTER's note): each row's art or swatch and its words
+-- from where they start without one (`_artX`, `_textX0`, BuildList), and
+-- the words' start kept as `_textX` for the list's width (ListNeed). A
+-- heading stays at the list's own edge. Nothing is made; nothing at all
+-- when the rows already stand so.
+local function PlaceRows(list, gutter)
+  if list._gutter == gutter then return end
+  list._gutter = gutter
+  local rows = list._rows
+  for i = 1, #rows do
+    local row = rows[i]
+    local x0 = row._textX0
+    if x0 then
+      local art, sw = row._art, row._swatch
+      if art then
+        art:ClearAllPoints()
+        if row._artCentre then
+          art:SetPoint("CENTER", row, "LEFT", row._artX + gutter + row._artCentre, 0)
+        else
+          art:SetPoint("LEFT", row, "LEFT", row._artX + gutter, 0)
+        end
+      elseif sw then
+        sw:ClearAllPoints()
+        sw:SetPoint("LEFT", row, "LEFT", row._artX + gutter, 0)
+      end
+      row._textX = x0 + gutter
+      row._text:ClearAllPoints()
+      row._text:SetPoint("LEFT", row, "LEFT", row._textX, 0)
+    end
+  end
 end
 
 -- An item drawn in a face of its own (`item.face`, a font file: the
@@ -1018,9 +1056,12 @@ function Dropdown.Create(parent, opts)
 
         -- An item may carry its own art: { texture= or atlas=, aspect= }.
         -- Drawn at row height beside the caption, so a list of visual choices
-        -- shows the choices. Everything sits one gutter in (MARK_GUTTER) --
-        -- on EVERY row, so the captions of chosen and unchosen items line up.
-        local textOffset = LIST_PADDING + MARK_GUTTER
+        -- shows the choices. Everything on a row stands from one lead, the
+        -- same on EVERY row, so the captions of chosen and unchosen items
+        -- line up: ART.X in where the items carry art, else a gutter more
+        -- unless the list is trimmed (PlaceRows, which anchors them).
+        -- `_artX`, `_textX0`: where each starts, the gutter left out.
+        local textOffset = LIST_PADDING
         if type(item.icon) == "table" then
           local size = rowHeight - 4
           local g = GlyphOf(item.icon)
@@ -1028,14 +1069,12 @@ function Dropdown.Create(parent, opts)
             -- A glyph at its own size, centred in the art's square, in the
             -- caption's ink (painted on each open).
             local art = ns.Theme.Glyph(row, item.icon.glyph, nil, "ARTWORK")
-            art:SetPoint("CENTER", row, "LEFT", LIST_PADDING + MARK_GUTTER + size / 2, 0)
-            row._glyph = art
+            row._glyph, row._art, row._artCentre = art, art, size / 2
           elseif item.icon.glyph then
             size = 0
           else
             local art = row:CreateTexture(nil, "ARTWORK")
             art:SetSize(size, size * (item.icon.aspect or 1))
-            art:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
             if item.icon.atlas then
               art:SetAtlas(item.icon.atlas)
             else
@@ -1044,18 +1083,18 @@ function Dropdown.Create(parent, opts)
             -- Opt-in: a cell of a sheet (`coords`, { l, r, t, b }) and a
             -- colour the art is worn in (`color`, { r, g, b }).
             ArtCrop(art, item.icon)
+            row._art = art
           end
-          textOffset = LIST_PADDING + MARK_GUTTER + size + 6
+          row._artX = ART.X
+          textOffset = ART.X + size + ART.GAP
         elseif swatchFor then
           local size = rowHeight - 10
           local sw = NewSwatch(row, size, true)
-          sw:SetPoint("LEFT", row, "LEFT", LIST_PADDING + MARK_GUTTER, 0)
-          row._swatch = sw
-          textOffset = LIST_PADDING + MARK_GUTTER + size + 6
+          row._swatch, row._artX = sw, LIST_PADDING
+          textOffset = LIST_PADDING + size + 6
         end
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("LEFT", row, "LEFT", textOffset, 0)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
         -- The named font the words were given, for FontInk where they
@@ -1077,7 +1116,7 @@ function Dropdown.Create(parent, opts)
         row:SetScript("OnLeave", function()
           bg:SetColorTexture(0, 0, 0, 0)
         end)
-        row._item, row._text, row._textX = item, text, textOffset
+        row._item, row._text, row._textX0 = item, text, textOffset
         row:SetScript("OnClick", function()
           -- A choice its owner has set aside for now (item.off): drawn
           -- faint on each open, and a click on it changes nothing.
@@ -1090,6 +1129,17 @@ function Dropdown.Create(parent, opts)
         end)
       end
     end
+
+    -- A list whose items carry art stands it after the mark, no gutter; a
+    -- list ruled by headings keeps its gutter; any other may be trimmed
+    -- of it at an open (OpenList).
+    local art, headed = false, false
+    for i = 1, #items do
+      if items[i].heading then headed = true end
+      if type(items[i].icon) == "table" then art = true end
+    end
+    list._trim = not (art or headed)
+    PlaceRows(list, art and 0 or MARK_GUTTER)
 
     list:SetScript("OnHide", ListHidden)
     lists[list] = true
@@ -1132,8 +1182,9 @@ function Dropdown.Create(parent, opts)
   -- wear now: each row's words from where they start in it (`_textX`, the
   -- gutter and any art or colour before them) and a pad after, inside
   -- the list's own padding, and the scroll bar's room where it scrolls.
+  -- With `gutter`, as the rows would stand with that gutter (PlaceRows).
   -- Measured on each open; nothing is made.
-  local function ListNeed()
+  local function ListNeed(gutter)
     local rows = list._rows
     if not rows then return 0 end
     local widest = 0
@@ -1141,7 +1192,9 @@ function Dropdown.Create(parent, opts)
       local row = rows[i]
       local text = row._text or row.Text
       if text then
-        local w = (row._textX or 0) + TextWidth(text) + LIST_PADDING
+        local x = row._textX or 0
+        if gutter and row._textX0 then x = row._textX0 + gutter end
+        local w = x + TextWidth(text) + LIST_PADDING
         if w > widest then widest = w end
       end
     end
@@ -1181,8 +1234,16 @@ function Dropdown.Create(parent, opts)
     -- widest value (FitWidth) takes its list with it. And never narrower
     -- than its widest item as it measures now (ListNeed): a select kept at
     -- its column's width (the options' dropdowns) cuts a long value short
-    -- on the toggle, never in its list, which opens wider instead.
-    local width = math.max(listWidth, toggle:GetWidth() or 0, ListNeed())
+    -- on the toggle, never in its list, which opens wider instead. A list
+    -- of words alone that would open wider than its toggle and could fit
+    -- it with less is trimmed of its gutter first (MARK_GUTTER), so it
+    -- hangs out as little as its words need, and none where that is
+    -- enough; back to its gutter at an open where it fits with it.
+    local least = math.max(listWidth, toggle:GetWidth() or 0)
+    if list._trim then
+      PlaceRows(list, ListNeed(MARK_GUTTER) > least and 0 or MARK_GUTTER)
+    end
+    local width = math.max(least, ListNeed())
     if list:GetWidth() ~= width then list:SetWidth(width) end
     list:SetFrameLevel(level)
     PlaceList()
