@@ -137,6 +137,14 @@
   `Click: sort · Right-click: reset`.
 - **Reset has its own button** at the foot of the sort menus, lit only
   when there is something to reset.
+- **On the game's own UI, Postbox opens in its Postbox style** unless you
+  chose the Blizzard look (Options > Window > Style). If you picked
+  EllesmereUI's or ElvUI's look and play without it, Postbox wears the
+  Postbox style until that UI is back.
+- **Options: the Arrange, Character Groups and Manage Recipients buttons**
+  match the dropdowns beside them, with room between each icon and its
+  words. A dropdown's list with icons (Class icons, Bar icon, Icon style)
+  opens flush with its box.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
