@@ -10055,15 +10055,30 @@ do
   end
 
   -- The pointer on a line chooses it, as the arrow keys do: one chosen line
-  -- at a time, and it stays chosen when the pointer leaves.
+  -- at a time, and it stays chosen when the pointer leaves. The line under
+  -- the pointer is kept (S.findOver) from its own enter and leave, so a
+  -- press on it is known to be on the list whatever the list's own
+  -- IsMouseOver answers (Press, Lost).
   local function LineEnter(self)
+    S.findOver = self
     Find.Select(self.slot)
   end
 
+  local function LineLeave(self)
+    if S.findOver == self then S.findOver = nil end
+  end
+
   -- The press on a line is written down (Find.Note) before its click: a
-  -- press whose click never comes says so in /postbox debug.
-  local function LineDown(self)
-    if self.e then S.findDown = Find.Note("down", self.e) end
+  -- press whose click never comes says so in /postbox debug. The line is
+  -- held (S.findPress) until the release, which is heard as
+  -- GLOBAL_MOUSE_UP as well as the line's click (Release): the list stays
+  -- for it even if the box loses the keyboard in between (Lost).
+  local function LineDown(self, button)
+    if not self.e or (button and button ~= "LeftButton") then return end
+    local rec = Find.Note("down", self.e)
+    if S.findLate then rec.lost = true end
+    S.findDown, S.findPress = rec, self
+    S.findWatch:RegisterEvent("GLOBAL_MOUSE_UP")
   end
 
   local function LineClick(self)
@@ -10115,6 +10130,7 @@ do
       name:SetWordWrap(false)
       line.Name, line.Where = name, where
       line:SetScript("OnEnter", LineEnter)
+      line:SetScript("OnLeave", LineLeave)
       line:SetScript("OnMouseDown", LineDown)
       line:SetScript("OnClick", LineClick)
       line:Hide()
@@ -10131,15 +10147,26 @@ do
     return list
   end
 
-  function Find.Hide()
+  -- A press on a line let go of: no line held, the release no longer
+  -- listened for.
+  function Find.Unarm()
+    S.findPress, S.findLate = nil, nil
+    local watch = S.findWatch
+    if watch then watch:UnregisterEvent("GLOBAL_MOUSE_UP") end
+  end
+
+  -- `why`: what closed the list, kept in the record of a press whose click
+  -- had not come.
+  function Find.Hide(why)
     local list = S.findList
     -- A press on a line whose click has not come: the list closing now
     -- means it never will (a hidden button hears no click).
     local down = S.findDown
     if down and down.how == "down" then
-      down.why = "list closed before the click"
+      down.why, down.closed = "list closed before the click", why
       S.findDown = nil
     end
+    Find.Unarm()
     if list and list:IsShown() then list:Hide() end
   end
 
@@ -10147,12 +10174,12 @@ do
   function Find.Typed(text)
     local box = S.findBox
     if not (box and box:HasFocus()) then
-      Find.Hide()
+      Find.Hide("box without the keyboard")
       return
     end
     local q = Fold(text)
     if q == "" then
-      Find.Hide()
+      Find.Hide("box emptied")
       return
     end
     local index = Find.Index()
@@ -10464,7 +10491,7 @@ do
     r.seq, r.e, r.how, r.when = ring.seq, e, how, GetTime()
     r.from, r.to, r.target, r.shown, r.w, r.h = S.tab, nil, nil, nil, nil, nil
     r.mark, r.playing, r.why, r.ended, r.endAt, r.faded = nil, nil, nil, nil, nil, nil
-    r.clicked = nil
+    r.clicked, r.lost, r.closed = nil, nil, nil
     return r
   end
 
@@ -10550,9 +10577,10 @@ do
     if not (rec and rec.e == e and rec.how == "down") then rec = Find.Note(how or "call", e) end
     rec.how, rec.why = how or "call", nil
     S.findRec = rec
+    Find.Unarm()
     local box = S.findBox
     if box and box:HasFocus() then box:ClearFocus() end
-    Find.Hide()
+    Find.Hide("picked")
     if e.arrange then
       -- The same door as the Arrange button's: the panel steps aside, and
       -- the card opens on what was picked; Row size, on the overview.
@@ -10654,8 +10682,9 @@ do
       lines[1] = "Options search: no picks this session"
       return lines
     end
-    lines[1] = string.format("Options search: %d picks this session, last %d below (newest first)%s", ring.seq, ring.n,
-      (S.findOutside or 0) > 0 and string.format(" | list closed by a press outside it %d", S.findOutside) or "")
+    lines[1] = string.format("Options search: %d picks this session, last %d below (newest first)%s%s", ring.seq, ring.n,
+      (S.findOutside or 0) > 0 and string.format(" | list closed by a press outside it %d", S.findOutside) or "",
+      (S.findMiss or 0) > 0 and string.format(" | press on a line the list's IsMouseOver missed %d", S.findMiss) or "")
     local now = GetTime()
     for k = 0, ring.n - 1 do
       local r = ring[(ring.at - 1 - k) % FIND.TRACE + 1]
@@ -10684,7 +10713,8 @@ do
           parts[#parts + 1] = string.format("marked %s clicked after %.1fs", tostring(r.target), r.clicked - (r.when or r.clicked))
         end
         if r.faded then parts[#parts + 1] = "faded out" end
-        if r.why then parts[#parts + 1] = "stopped: " .. r.why end
+        if r.lost then parts[#parts + 1] = "box lost the keyboard during the press, list kept for the release" end
+        if r.why then parts[#parts + 1] = "stopped: " .. r.why .. (r.closed and (" (" .. r.closed .. ")") or "") end
         lines[#lines + 1] = table.concat(parts, " | ")
       end
     end
@@ -10692,12 +10722,63 @@ do
   end
   Panel.FindReportLines = Find.ReportLines
 
+  -- Whether a press on a line is in hand: the left button is down and a
+  -- line has heard it (S.findPress), or a line is under the pointer and
+  -- its own press may not have arrived yet (GLOBAL_MOUSE_DOWN and other
+  -- addons' handlers can come before a frame's OnMouseDown).
+  function Find.Pressing()
+    local down = type(IsMouseButtonDown) ~= "function" or IsMouseButtonDown("LeftButton")
+    if not down then return false end
+    if S.findPress then return true end
+    local over = S.findOver
+    return over ~= nil and over.e ~= nil and over:IsVisible() and true or false
+  end
+
+  -- The release after a press on a line (GLOBAL_MOUSE_UP, listened for
+  -- only from that press to its release, or while the list waits on it):
+  -- on the line pressed, it is that line's pick, whichever of the click and
+  -- this comes first (the first closes the list, and a hidden line hears no
+  -- click); anywhere else, the press is let go, and the list closes if the
+  -- box no longer has the keyboard.
+  function Find.Release()
+    local list, over = S.findList, S.findOver
+    if not (list and list:IsShown()) then
+      Find.Unarm()
+      return
+    end
+    local line = S.findPress or (S.findLate and over) or nil
+    if line and over == line and line.e and line:IsVisible() then
+      Find.Pick(line.e, "release")
+      return
+    end
+    local late = S.findLate
+    Find.Unarm()
+    local box = S.findBox
+    if late or not (box and box:HasFocus()) then Find.Hide("released off the line, box without the keyboard") end
+  end
+
   -- A press outside the box and its list, while the box has the keyboard.
-  local function Press(watch)
+  -- On the list means the list's rect, or a line under the pointer (its
+  -- own enter said so), or a line already pressed: the list's IsMouseOver
+  -- alone has not been taken as the last word.
+  local function Press(watch, event, button)
+    if event == "GLOBAL_MOUSE_UP" then
+      -- The left button's release only: a line is pressed with it.
+      if button == nil or button == "LeftButton" then Find.Release() end
+      return
+    end
     local wrap, list = S.findWrap, S.findList
     if wrap and wrap:IsMouseOver() then return end
-    if list and list:IsShown() and list:IsMouseOver() then return end
-    if list and list:IsShown() then S.findOutside = (S.findOutside or 0) + 1 end
+    if list and list:IsShown() then
+      if S.findPress or list:IsMouseOver() then return end
+      local over = S.findOver
+      if over and over.e and over:IsVisible() then
+        S.findMiss = (S.findMiss or 0) + 1
+        return
+      end
+      S.findOutside = (S.findOutside or 0) + 1
+      Find.Hide("press outside the box and the list")
+    end
     if S.findBox then S.findBox:ClearFocus() end
   end
 
@@ -10729,10 +10810,23 @@ do
     Find.Typed(box:GetText())
   end
 
+  -- The keyboard gone from the box: the list closes, unless a press on one
+  -- of its lines is in hand (Find.Pressing) -- the game or another addon
+  -- can take the keyboard at the press -- and then it stays for that
+  -- press's release, which picks the line or closes it (Find.Release).
   local function Lost()
-    S.findWatch:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    local watch = S.findWatch
+    watch:UnregisterEvent("GLOBAL_MOUSE_DOWN")
     PaintLine()
-    Find.Hide()
+    local list = S.findList
+    if list and list:IsShown() and Find.Pressing() then
+      S.findLate = true
+      local down = S.findDown
+      if down and down.how == "down" then down.lost = true end
+      watch:RegisterEvent("GLOBAL_MOUSE_UP")
+      return
+    end
+    Find.Hide("box lost the keyboard")
   end
 
   local function Typed(box)
@@ -10914,7 +11008,7 @@ do
   function Find.Close()
     local box = S.findBox
     if box and box:HasFocus() then box:ClearFocus() end
-    Find.Hide()
+    Find.Hide("panel hid")
     Find.Stop()
   end
 end
