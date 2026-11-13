@@ -340,17 +340,14 @@ end
 -- settings (Core/MailboxUI.lua) and its keep list: recipients and recent
 -- recipients, character groups, hidden characters, Mail Memory, History and
 -- how long it keeps mail, whether the minimap icon is on, the characters.
--- 1.50's default look is a fresh install's: the Postbox style on a plain
--- UI (installStyle, which the reset keeps), so a player on the old Blizzard
--- look lands on it with the rest of 1.50's defaults; under a host UI the host
--- still wins, as GetStyleChoice decides for a profile that has not chosen.
+-- The reset clears the saved style with the rest, so the look is the
+-- default one: the Postbox style on a plain UI, the host's under a host UI
+-- (MailboxUI, UI.DefaultStyle).
 -- The mail window says so the first time it opens, until the notice is
 -- answered (Core/WhatsNew.lua).
 local function ResetForRelease150()
   local UI = ns.MailboxUI
   if not (UI and type(UI.ResetSettings) == "function") then return end
-  local profile = type(PostboxDB) == "table" and type(PostboxDB.profile) == "table" and PostboxDB.profile
-  if profile then profile.installStyle = "postbox" end
   UI.ResetSettings()
   PostboxDB.notice = "1.50"
 end

@@ -358,10 +358,8 @@ end
 -- do -- and so must any table-valued setting added after them.
 local RESET_KEEP = {
   recipientHistory = true,  -- the Send tab's recent recipients (ContactService)
-  -- Not a setting: which style this profile's default is (UI.GetStyleChoice),
-  -- decided when it was first made. Reset to defaults returns a profile to
-  -- its own default, so it stays.
-  installStyle     = true,
+  -- (installStyle, kept here until 1.70, no longer means anything: the
+  -- default style is the same for every profile, UI.DefaultStyle.)
   -- How many days History keeps. A setting, but History is kept through a
   -- reset (its dialog says so), and History is pruned to this: back on the
   -- default 7, a longer choice would delete every entry older than a week
@@ -630,8 +628,6 @@ function UI.ResetEverything()
         -- minimap icon's switch as well. Its own tables stay, emptied:
         -- they are the ones memoised and held (see RESET TO DEFAULTS).
         ClearProfile(value, nil)
-        -- And the default style is a first install's.
-        value.installStyle = "postbox"
       elseif type(value) == "table" then
         for inner in pairs(value) do value[inner] = nil end
       else
@@ -681,10 +677,14 @@ end
 -- is the whole reason for the change.
 --
 -- "host" is the default wherever a host is installed, so nothing changes for
--- anyone who does not go looking for this. With none, a profile started since
--- the Postbox style arrived opens on it (profile.installStyle, written once at
--- a first install and kept by Reset to defaults); every older profile keeps
--- the Blizzard look it has always had.
+-- anyone who does not go looking for this. With none, the default is the
+-- Postbox style, for every profile, however old (UI.DefaultStyle). A saved
+-- "host" with no host installed wears that default too, and is kept: the
+-- host's look comes back by itself when the host is installed again. Only a
+-- saved "blizzard" (or a creative key) is a look the player chose that
+-- outranks the default; UI.SetStyleChoice is the only writer of `style`.
+-- (profile.installStyle, once a profile's own default, means nothing now;
+-- a stale one is left alone and cleared by the next Reset to defaults.)
 --
 -- "modern", Postbox Modern's key, reads as "postbox" and is never rewritten
 -- here; a profile coming from 1.40 has it cleared by the 1.50 reset (see
@@ -706,6 +706,12 @@ local function HostInstalled()
 end
 UI.HostInstalled = HostInstalled
 
+-- The look of a profile that has not chosen one: the host's where a host UI
+-- is installed, the Postbox style everywhere else.
+function UI.DefaultStyle()
+  return HostInstalled() and "host" or "postbox"
+end
+
 function UI.GetStyleChoice()
   local store = ns.Store
   local profile = store and store.Get and store.Get("profile")
@@ -719,13 +725,15 @@ function UI.GetStyleChoice()
   -- or the old default. Honouring it now would silently strip the host skin
   -- from someone who never asked. Until they choose from the host-aware
   -- control, a detected host wins, which is exactly what they see today.
-  if HostInstalled() and not (profile and profile.styleHostAware) then
+  local host = HostInstalled()
+  if host and not (profile and profile.styleHostAware) then
     return "host"
   end
 
-  if IsStyleKey(stored) then return stored end
-  if HostInstalled() then return "host" end
-  return (profile and profile.installStyle == "postbox") and "postbox" or "blizzard"
+  -- A saved "host" with no host to wear falls to the default below, and
+  -- stays saved for the day the host is back.
+  if IsStyleKey(stored) and (host or stored ~= "host") then return stored end
+  return host and "host" or "postbox"
 end
 
 function UI.SetStyleChoice(style)
@@ -757,15 +765,13 @@ end
 --   modernBorderSize 2 or more -> pbBorder "thick" (unless the border was none)
 -- An unset Modern value stays unset, so the Postbox default applies -- except
 -- the fill, whose defaults differ (Modern's 94%, Postbox's 90%): an unset one
--- is carried as the 94% the player saw. And the Postbox style becomes this
--- profile's own default look (installStyle), the one Reset to defaults
--- returns to, as it is for a profile started on it. This copy only reads
+-- is carried as the 94% the player saw. This copy only reads
 -- the Modern keys and `style = "modern"`; it removes nothing. A profile
 -- coming from 1.40 loses them a moment later all the same: the 1.50 reset
 -- runs after this (Postbox.lua, section 4b) and clears every setting but
 -- its keep list -- the Modern keys, `style`, the values carried from them
--- and pbFromModern among them -- leaving installStyle, so that profile
--- starts on 1.50's defaults in the Postbox style. What is carried over here
+-- and pbFromModern among them -- so that profile starts on the defaults,
+-- the Postbox style on a plain UI (UI.DefaultStyle). What is carried over here
 -- lasts only where no reset follows: a profile already on 1.50 that an
 -- older Postbox has since put on Modern. pbFromModern marks the copy as
 -- made, so a Postbox value the player later resets is not copied over again.
@@ -773,7 +779,6 @@ local MODERN_DEFAULT_OPACITY = 0.94  -- Skin_Modern's window fill, 1.40
 local function MigrateModern(profile)
   if type(profile) ~= "table" or profile.style ~= "modern" or profile.pbFromModern then return end
   profile.pbFromModern = true
-  if profile.installStyle == nil then profile.installStyle = "postbox" end
   local opacity = tonumber(profile.modernBgOpacity) or MODERN_DEFAULT_OPACITY
   if profile.pbOpacity == nil then
     profile.pbOpacity = math.max(0, math.min(1, opacity))
@@ -5306,8 +5311,14 @@ function UI.DiagnoseOptions()
     parts[#parts + 1] = string.format("%s=%s%s", key, value, (value ~= default) and "*" or "")
   end
   local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
-  Named("style", (UI.GetStyleChoice()), HostInstalled() and "host"
-    or (profile and profile.installStyle == "postbox") and "postbox" or "blizzard")
+  local styleNow = UI.GetStyleChoice()
+  Named("style", styleNow, UI.DefaultStyle())
+  -- A saved choice the look does not wear (a host's, with no host): named,
+  -- so the report says why the two differ.
+  local styleSaved = profile and profile.style
+  if type(styleSaved) == "string" and styleSaved ~= styleNow and styleSaved ~= "modern" then
+    parts[#parts + 1] = "styleSaved=" .. styleSaved
+  end
   Named("windowScale", UI.GetWindowScale(), "1")
   -- EllesmereUI's own look, and the skin standing down, where its skin says.
   local eui = ns.SkinEllesmere
@@ -5431,13 +5442,11 @@ function UI.Initialize()
   if UI._state.ready then return end
   UI._state.ready = true
 
-  -- Before PLAYER_LOGIN, where the skins read the style: a first install's
-  -- default style (Postbox.lua saw no saved variables at all), and Postbox
-  -- Modern's settings carried onto the Postbox style.
+  -- Before PLAYER_LOGIN, where the skins read the style: Postbox Modern's
+  -- settings carried onto the Postbox style.
   local store = ns.Store
   local profile = store and store.EnsurePath and store.EnsurePath("profile")
   if profile then
-    if ns.freshInstall and profile.installStyle == nil then profile.installStyle = "postbox" end
     MigrateModern(profile)
   end
 
