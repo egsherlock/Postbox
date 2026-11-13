@@ -33,9 +33,9 @@ local _, ns = ...
 -- dressed once and tagged; a walk over a window finds work only where
 -- something new was tagged since the last one.
 --
--- Dressed so far: the window frame, the sunken panels, and the main
--- window's Mail and Send tabs. The options' tabs, other plates, buttons,
--- fields, bands, dropdowns, rows and the scroll bar draw as they did.
+-- Dressed so far: the window frame, the sunken panels, the main window's
+-- Mail and Send tabs, and every push button. The options' tabs, other
+-- plates, fields, bands, dropdowns, rows and the scroll bar draw as they did.
 -- =====================================================================
 
 local Skin = {}
@@ -437,6 +437,175 @@ do
 end
 
 -------------------------------------------------------------
+-- Push buttons
+-------------------------------------------------------------
+
+-- Every push button (Theme.CreateButton: the game's UIPanelButtonTemplate)
+-- wears the game's newer red button, ThreeSliceButtonTemplate's art,
+-- drawn as ThreeSliceButtonMixin draws it: the end pieces scaled to the
+-- button's height, cropped when the two ends are wider than the button, the
+-- middle between them, the state's art on press and when disabled, the
+-- game's glow on hover. On Postbox's own button: the template is never
+-- made, and the button's own art is faded, never taken away (its scripts
+-- still set it, unseen).
+--
+-- Laid by its rim (measured from both clients' art, the same on each): the
+-- art carries 10 units of soft shadow round its face on every side, of its
+-- 128, so it is drawn that much past the button's box and its rim meets the
+-- box; the button keeps its size and its hit rectangle.
+--
+-- The dropdown boxes (also tagged as buttons) keep their look: a later step
+-- gives them the game's dropdown.
+do
+  local RIM = 10 / 128
+  -- ALL MAIL wears the gold-rimmed sister, to be judged in game: false here
+  -- gives it the red one like the rest.
+  local GOLD_ALL_MAIL = true
+
+  -- Every name made once: no string is built when a state changes.
+  local function Family(base)
+    local names = { highlight = base .. "-Highlight" }
+    local states = { up = "", down = "-Pressed", off = "-Disabled" }
+    for state, suffix in pairs(states) do
+      names[state] = { base .. "-Left" .. suffix, "_" .. base .. "-Center" .. suffix, base .. "-Right" .. suffix }
+    end
+    return names
+  end
+  local RED, GOLD = Family("128-RedButton"), Family("128-GoldRedButton")
+
+  local STATES = { "up", "down", "off" }
+  local function Has(names)
+    if not HasAtlas(names.highlight) then return false end
+    for s = 1, #STATES do
+      local set = names[STATES[s]]
+      for i = 1, 3 do
+        if not HasAtlas(set[i]) then return false end
+      end
+    end
+    return true
+  end
+
+  -- The pieces' size and crop for the button's present size, as
+  -- ThreeSliceButtonMixin.UpdateScale does it, for an art box the rim's
+  -- margin larger than the button all round.
+  local function Fit(button)
+    local art = button.__pbBlizzButton
+    if not art then return end
+    local w, h = button:GetWidth(), button:GetHeight()
+    if type(w) ~= "number" or type(h) ~= "number" or w <= 0 or h <= 0 then return end
+    local set = art.names.up
+    local lw, lh = Parts.Size(set[1])
+    local rw = Parts.Size(set[3])
+    if not (lw and lh and rw) then return end
+    local artH = h / (1 - 2 * RIM)
+    local m = artH * RIM
+    local scale = artH / lh
+    local boxW = w + 2 * m
+    local leftW, rightW = lw * scale, rw * scale
+    local newL, newR = leftW, rightW
+    if leftW + rightW > boxW then
+      local extra = leftW + rightW - boxW
+      if leftW - extra > rightW then
+        newL = leftW - extra
+      elseif rightW - extra > leftW then
+        newR = rightW - extra
+      else
+        if leftW ~= rightW then
+          extra = extra - math.abs(leftW - rightW)
+          newL = math.min(leftW, rightW)
+          newR = newL
+        end
+        newL, newR = newL - extra / 2, newR - extra / 2
+      end
+    end
+    local L, R = art[1], art[3]
+    L:SetTexCoord(0, newL / leftW, 0, 1)
+    L:SetSize(newL, artH)
+    R:SetTexCoord(1 - newR / rightW, 1, 0, 1)
+    R:SetSize(newR, artH)
+    if art.m ~= m then
+      art.m = m
+      L:ClearAllPoints()
+      L:SetPoint("TOPLEFT", button, "TOPLEFT", -m, m)
+      R:ClearAllPoints()
+      R:SetPoint("TOPRIGHT", button, "TOPRIGHT", m, m)
+    end
+  end
+
+  -- The art for the button's state: disabled, pressed, or at rest.
+  local function Paint(button)
+    local art = button.__pbBlizzButton
+    if not art then return end
+    local state = "up"
+    if not button:IsEnabled() then state = "off" elseif art.down then state = "down" end
+    if art.state == state then return end
+    art.state = state
+    local set = art.names[state]
+    for i = 1, 3 do Atlas(art[i], set[i], false) end
+    -- The middle tiles across, as the template's does; SetAtlas sets the
+    -- whole piece again, its crop and tiling with it.
+    art[2]:SetHorizTile(true)
+    Fit(button)
+  end
+
+  local function Down(button)
+    local art = button.__pbBlizzButton
+    if art and button:IsEnabled() then
+      art.down = true
+      Paint(button)
+    end
+  end
+
+  local function Up(button)
+    local art = button.__pbBlizzButton
+    if art then
+      art.down = false
+      Paint(button)
+    end
+  end
+
+  function Parts.Button(button)
+    if button.__pbBlizzButton ~= nil then return end
+    button.__pbBlizzButton = false
+    local names = (GOLD_ALL_MAIL and button.gridId == "all") and GOLD or RED
+    if not Has(names) then return end
+    local art = { names = names, m = false }
+    for i = 1, 3 do art[i] = button:CreateTexture(nil, "BACKGROUND", nil, 1) end
+    art[2]:SetPoint("TOPLEFT", art[1], "TOPRIGHT", 0, 0)
+    art[2]:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMLEFT", 0, 0)
+    button.__pbBlizzButton = art
+    -- The template's own three pieces, faded under the new art.
+    Fade(button.Left)
+    Fade(button.Middle)
+    Fade(button.Right)
+    Paint(button)
+    -- The game's glow over the whole art, as its template sets it.
+    if pcall(button.SetHighlightAtlas, button, names.highlight) then
+      local glow = button:GetHighlightTexture()
+      if glow then
+        glow:ClearAllPoints()
+        glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
+        glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+      end
+    end
+    button:HookScript("OnMouseDown", Down)
+    button:HookScript("OnMouseUp", Up)
+    button:HookScript("OnShow", Up)
+    button:HookScript("OnEnable", Paint)
+    button:HookScript("OnDisable", Paint)
+    button:HookScript("OnSizeChanged", Fit)
+  end
+end
+
+-- One tagged child: what this skin dresses on it, each once.
+function Parts.DressOne(c)
+  if c.__postboxPanel and not c.__pbBlizzInset and Sinks(c) then SinkPanel(c) end
+  if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
+    Parts.Button(c)
+  end
+end
+
+-------------------------------------------------------------
 -- The pass over tagged content
 -------------------------------------------------------------
 
@@ -462,7 +631,7 @@ do
       st[n], dp[n] = nil, nil
       n = n - 1
       if c then
-        if c.__postboxPanel and not c.__pbBlizzInset and c.IsObjectType and Sinks(c) then SinkPanel(c) end
+        if c.IsObjectType then Parts.DressOne(c) end
         if d <= 8 then n = Push(st, dp, n, d + 1, c:GetChildren()) end
       end
     end
