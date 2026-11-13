@@ -1057,9 +1057,12 @@ end
 -- Laid by its rim (measured): the track's art is 8 wide with a clear unit
 -- at each side, so on the 6-unit bar it is drawn a unit past each side and
 -- its visible track is the bar; the thumb's art is 8 wide and solid, a unit
--- past the bar each side, as the game's thumb stands past its track. The
--- arrows keep the art's own proportions and are drawn no wider than the
--- gutter allows, so they never pass the list's edge.
+-- past the bar each side, as the game's thumb stands past its track; its
+-- middle is cut to the thumb's length, never squashed. The arrows keep the
+-- art's own proportions, scaled down whole to the room between the bar's
+-- middle and the inside of the list's bevel (8 units of the art's 17), and
+-- stand on the track's ends in the step buttons' room: nothing of the bar
+-- passes the bevel, the list's edge, its top or its foot.
 do
   local TRACK = { "minimal-scrollbar-track-top", "!minimal-scrollbar-track-middle", "minimal-scrollbar-track-bottom" }
   local THUMB = {
@@ -1071,8 +1074,8 @@ do
     top = { up = "minimal-scrollbar-arrow-top", over = "minimal-scrollbar-arrow-top-over", down = "minimal-scrollbar-arrow-top-down" },
     bottom = { up = "minimal-scrollbar-arrow-bottom", over = "minimal-scrollbar-arrow-bottom-over", down = "minimal-scrollbar-arrow-bottom-down" },
   }
-  -- The clear unit at each side of the arrows' art.
-  local ARROW_RIM = 1
+  -- The list's rim the arrows stay inside: the inset bevel's side tile.
+  local EDGE = "!UI-Frame-InnerRightTile"
 
   local function HasAll(list)
     for i = 1, #list do
@@ -1108,6 +1111,24 @@ do
     return pieces
   end
 
+  -- The thumb's middle cut to its length from the top of the art, as
+  -- MinimalScrollBar's thumb cuts it (its art is 715 units long, and WoW
+  -- Forever's carries a grain that stretching would squash): on each
+  -- change of the thumb's length and after each change of its art.
+  local function CropThumb(thumb)
+    local bar = thumb.__pbBlizzBarOf
+    local art = bar and bar.__pbBlizzBar
+    if not art then return end
+    local h = thumb:GetHeight()
+    local _, th = Parts.Size(THUMB.up[1])
+    local _, mh = Parts.Size(THUMB.up[2])
+    local _, bh = Parts.Size(THUMB.up[3])
+    if type(h) ~= "number" or not (th and mh and bh) then return end
+    local v = (h - th - bh) / mh
+    if v < 0 then v = 0 elseif v > 1 then v = 1 end
+    art.thumb[2]:SetTexCoord(0, 1, 0, v)
+  end
+
   -- The thumb's art for the bar's state: pressed, pointed at, at rest.
   local function PaintThumb(bar)
     local art = bar.__pbBlizzBar
@@ -1117,6 +1138,7 @@ do
     art.state = state
     local names = THUMB[state]
     for i = 1, 3 do Atlas(art.thumb[i], names[i], false) end
+    CropThumb(art.thumbTex)
   end
 
   local function BarEnter(bar) local a = bar.__pbBlizzBar if a then a.over = true PaintThumb(bar) end end
@@ -1138,8 +1160,11 @@ do
   local function ArrowDown(btn) local a = btn.__pbBlizzArrow if a then a.down = true PaintArrow(btn) end end
   local function ArrowUp(btn) local a = btn.__pbBlizzArrow if a then a.down = false PaintArrow(btn) end end
 
-  -- The step button's own chevron hidden, the game's arrow in its place.
-  local function Arrow(btn, names, maxW)
+  -- The step button's own chevron hidden, the game's arrow in its place:
+  -- in the art's own proportions, no wider than `maxW`, its foot on the
+  -- track's top end (the top arrow) or its head on the track's bottom end,
+  -- so it stands in the step button's room and never above or below it.
+  local function Arrow(btn, names, maxW, top)
     if not btn or btn.__pbBlizzArrow then return end
     for i = 1, select("#", btn:GetRegions()) do
       local r = select(i, btn:GetRegions())
@@ -1152,8 +1177,18 @@ do
       h = h * maxW / w
       w = maxW
     end
+    -- Never taller than the step button's own room.
+    local room = btn:GetHeight()
+    if type(room) == "number" and room > 0 and h > room then
+      w = w * room / h
+      h = room
+    end
     tex:SetSize(w, h)
-    tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    if top then
+      tex:SetPoint("BOTTOM", btn, "BOTTOM", 0, 0)
+    else
+      tex:SetPoint("TOP", btn, "TOP", 0, 0)
+    end
     btn.__pbBlizzArrow = { tex = tex, names = names }
     PaintArrow(btn)
     btn:HookScript("OnEnter", ArrowEnter)
@@ -1183,7 +1218,13 @@ do
     art.track = Stack(bar, bar, TRACK, "BACKGROUND", trackOut + 1)
     art.thumb = Stack(bar, thumb, THUMB.up, "OVERLAY", thumbOut)
     art.state = "up"
+    art.thumbTex = thumb
     bar.__pbBlizzBar = art
+    thumb.__pbBlizzBarOf = bar
+    -- The bar sets its thumb's length (Theme.SlimScrollBar's FitThumb): the
+    -- middle is cut again each time, on Postbox's own texture.
+    hooksecurefunc(thumb, "SetHeight", CropThumb)
+    CropThumb(thumb)
     -- The bar's own track and thumb, faded (their paint, not their place:
     -- the slider still sizes and moves the thumb the art stands on).
     Fade(bar.Track)
@@ -1192,13 +1233,21 @@ do
     bar:HookScript("OnLeave", BarLeave)
     bar:HookScript("OnMouseDown", BarDown)
     bar:HookScript("OnMouseUp", BarUp)
-    -- The arrows, no wider than the gutter: twice the bar's middle's
-    -- distance from the list's edge, plus the art's clear rim.
+    -- The arrows, centred on the bar and no wider than the room between
+    -- the bar's middle and the inside of the list's rim (the inset bevel,
+    -- one tile wide): on the 6-unit bar four units in from its list's edge,
+    -- 8 units, the art scaled down whole. Nothing of them stands over the
+    -- bevel, past the list's edge or into the rows beside the bar.
     local maxW
     local _, _, _, x = bar:GetPoint(1)
-    if type(x) == "number" and x <= 0 then maxW = 2 * (-x + w / 2 + ARROW_RIM) end
-    if HasArrows(ARROWS.top) then Arrow(bar.Up, ARROWS.top, maxW) end
-    if HasArrows(ARROWS.bottom) then Arrow(bar.Down, ARROWS.bottom, maxW) end
+    if type(x) == "number" and x <= 0 then
+      local rim = Parts.Size(EDGE) or 3
+      local room = -x - rim
+      if room < 0 then room = 0 end
+      maxW = 2 * (w / 2 + room)
+    end
+    if HasArrows(ARROWS.top) then Arrow(bar.Up, ARROWS.top, maxW, true) end
+    if HasArrows(ARROWS.bottom) then Arrow(bar.Down, ARROWS.bottom, maxW, false) end
   end
 end
 
