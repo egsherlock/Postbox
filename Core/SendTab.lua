@@ -6145,7 +6145,25 @@ function Q.AttachAll(panel, bag, slot)
   ns.Print(ns.Plural("MSG_ATTACH_ALL", added, info.hyperlink or ""))
 end
 
+-- A press anywhere but on the open contact picker, or on a key of the bar
+-- that opens it (the tiles and the star, whose own click toggles it or
+-- switches it to another list), closes it -- as the house's other popups
+-- close, with no catcher frame over anything.
+function ST.PickerPressOutside()
+  local panel = ActivePanel()
+  local picker = panel and panel.ContactPicker
+  if not (picker and picker:IsShown()) or picker:IsMouseOver() then return end
+  local keys = panel.ContactButtons
+  for i = 1, (keys and #keys or 0) do
+    if keys[i]:IsVisible() and keys[i]:IsMouseOver() then return end
+  end
+  local star = panel.FavoriteButton
+  if star and star:IsVisible() and star:IsMouseOver() then return end
+  picker:Hide()
+end
+
 function ST.OnGlobalMouseDown(button)
+  ST.PickerPressOutside()
   if button ~= "RightButton" or not IsAltKeyDown() then return end
   if not ST.SendTabActive() or pendingSend then return end
   local panel = ActivePanel()
@@ -6299,6 +6317,10 @@ local function BuildRecipientField(panel)
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["RM_OPT_BUTTON"])
     Theme.TipLine(ns.Summary(L["RM_OPT_BUTTON_DESC"]))
+    -- The click toggles the window, as the cog's toggles the options, and
+    -- says so in the cog's words.
+    local rm = _G.PostboxRecipientManagerFrame
+    Theme.TipHint(L[(rm and rm:IsShown()) and "OPTIONS_COG_TOOLTIP_CLOSE" or "OPTIONS_COG_TOOLTIP"])
     GameTooltip:Show()
   end)
   manage:HookScript("OnLeave", function()
@@ -6317,6 +6339,17 @@ local function BuildRecipientField(panel)
     end
   end)
   panel.ManageRecipients = manage
+end
+
+-- The Manage Recipients key lit while its window is open, as the Mail
+-- tab's keys are while what they open stands (Theme.SetPlateSelected);
+-- the window's show and hide call it (RecipientManager, RM.KeyLit).
+function ST.PaintManageKey()
+  local panel = ActivePanel()
+  local key = panel and panel.ManageRecipients
+  if not key then return end
+  local rm = _G.PostboxRecipientManagerFrame
+  Theme.SetPlateSelected(key, (rm and rm:IsShown()) and true or false)
 end
 
 local function BuildContactBar(panel)
@@ -6501,6 +6534,23 @@ end
 -- takes an item out of a slot. Nothing here changes the area's height: the
 -- pane is as tall as the rows beside it. Redrawn whenever the queue
 -- changes, the rows change, or the pane's width does.
+-- button, link -> whether a click was the game's item rules, and answered
+-- so: a modified left-click on an item of the mail's, attached or queued,
+-- as on the Mail tab's item tiles and the game's own -- Shift links it,
+-- Ctrl tries it on (HandleModifiedItemClick) -- and never the plain click.
+function ST.ModifiedItemClick(button, link)
+  if button ~= "LeftButton" or not link then return false end
+  local modified
+  if type(IsModifiedClick) == "function" then
+    modified = IsModifiedClick()
+  else
+    modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
+  end
+  if not modified then return false end
+  if type(HandleModifiedItemClick) == "function" then HandleModifiedItemClick(link) end
+  return true
+end
+
 function ST.RefreshQueueStrip(panel)
   local pane = panel and panel.QueueStrip
   if not pane then return end
@@ -6533,8 +6583,20 @@ function ST.RefreshQueueStrip(panel)
         CropIconBorder(icon.Icon)
         icon.Icon:SetAlpha(0.65)
         Theme.ApplySlot(icon)
-        icon:RegisterForClicks("RightButtonUp")
+        -- Hover feedback as an attached slot has it (CreateAttachmentSlot).
+        local highlight = icon:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints()
+        highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        highlight:SetBlendMode("ADD")
+        icon:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         icon:SetScript("OnClick", function(self, mouseButton)
+          -- Shift links and Ctrl tries on, as on an attached slot; a plain
+          -- left-click does nothing here.
+          if mouseButton == "LeftButton" then
+            local entry = panel._queue and panel._queue[self.index]
+            ST.ModifiedItemClick(mouseButton, entry and entry.link)
+            return
+          end
           if mouseButton ~= "RightButton" then return end
           local q = panel._queue
           if q and q[self.index] then
@@ -6731,22 +6793,9 @@ local function BuildAttachmentArea(panel)
     if type(ClickSendMailItemButton) ~= "function" then return end
     local hasCursorItem = (type(CursorHasItem) == "function" and CursorHasItem())
 
-    -- A modified left-click on an attached item is the game's item rules,
-    -- as on the Mail tab's item tiles and the game's own: Shift links it,
-    -- Ctrl tries it on (HandleModifiedItemClick), and a modified click is
-    -- never the plain one. With an item on the cursor it is the plain drop.
-    if button == "LeftButton" and not hasCursorItem and self.itemLink then
-      local modified
-      if type(IsModifiedClick) == "function" then
-        modified = IsModifiedClick()
-      else
-        modified = IsShiftKeyDown() or IsControlKeyDown() or IsAltKeyDown()
-      end
-      if modified then
-        if type(HandleModifiedItemClick) == "function" then HandleModifiedItemClick(self.itemLink) end
-        return
-      end
-    end
+    -- A modified left-click on an attached item is the game's item rules
+    -- (ST.ModifiedItemClick). With an item on the cursor it is the plain drop.
+    if not hasCursorItem and ST.ModifiedItemClick(button, self.itemLink) then return end
 
     if button == "RightButton" and not hasCursorItem then
       -- Native behaviour: right-click with an empty cursor returns the attached

@@ -1892,10 +1892,12 @@ function RM.SoftRefresh()
 end
 
 -- Collects again from every source, measures, sorts, filters and draws. The
--- options call it when a source is switched on or off.
+-- options call it when a source is switched on or off. Closed, it does
+-- nothing: every open collects afresh (RM.Show), so a change made while
+-- the window is away is drawn when it is next shown.
 function RM.Refresh(resetScroll)
   local frame = RM._frame
-  if not frame then return end
+  if not (frame and frame:IsShown()) then return end
   RM._entries = Collect()
   -- A category whose source was switched off has no tile to stand under.
   local category = ActiveCategory()
@@ -2845,7 +2847,9 @@ local function Build()
   frame:HookScript("OnHide", function(self)
     ClearSelection()
     StopListening(self)
+    RM.KeyLit()
   end)
+  frame:HookScript("OnShow", RM.KeyLit)
   frame:Hide()
 
   -- Deliberately no __pbEuiAlwaysOpaque: this is a content window and follows
@@ -2963,6 +2967,13 @@ function RM.ResetWindow()
   SetDefaultSize(frame)
   frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
   ns.Core.UI.Helpers.PinFrameTopLeft(frame)
+end
+
+-- The window shown or hidden: the Send tab's key that opens it lit while
+-- it is open (SendTab, ST.PaintManageKey).
+function RM.KeyLit()
+  local ST = ns.SendTab
+  if type(ST) == "table" and type(ST.PaintManageKey) == "function" then ST.PaintManageKey() end
 end
 
 function RM.Toggle(anchor, from)
