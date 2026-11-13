@@ -146,6 +146,11 @@
   match the dropdowns beside them, with room between each icon and its
   words. A dropdown's list with icons (Class icons, Bar icon, Icon style)
   opens flush with its box.
+- **Options: setting names are plain**, white in Dark and dark ink in
+  Light, so your accent marks the group headings and the values you have
+  chosen. In Light the dropdown arrows and the icons on Arrange, Character
+  Groups and Manage Recipients wear your accent. The Blizzard look keeps
+  its gold names.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
