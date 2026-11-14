@@ -920,6 +920,13 @@ end
 -- genuinely does need every source to have answered.
 -------------------------------------------------------------
 
+-- Whether `key` (a Recipients key) is the character being played: the test
+-- every source applies, for the Send tab's favorite count.
+function CS.IsMe(key)
+  if me == nil or me == "" then me = IdentityKey(Helpers().PlayerName()) end
+  return key == me
+end
+
 local function GuildReady()
   if type(IsInGuild) == "function" and IsInGuild() and guildRosterSeen == 0 then
     return false
@@ -1657,7 +1664,7 @@ function CS.HiddenIn(id, out, seen)
   if id == "manual" then
     if type(R.Display) ~= "function" then return out end
     for key, row in pairs(hiddenScratch) do
-      if row.manual and not seen[key] and not HeldByOffered(key) then
+      if row.manual and key ~= me and not seen[key] and not HeldByOffered(key) then
         local address = R.Display(key)
         if address ~= "" then
           seen[key] = true
@@ -1878,6 +1885,10 @@ function CS.BuildSuggestions(text, opts)
 
     R.ForEach(function(key, row)
       if not (row.fav or row.manual) then return end
+      -- The character being played, favorited or added from another of his:
+      -- left out here as every source leaves it out (Resolve). Its row is
+      -- untouched, and it is offered again on his other characters.
+      if key == me then return end
       local address = R.Display(key)
       if address == "" then return end
       local lower = h.Lower(address)

@@ -2156,16 +2156,19 @@ end
 local ApplyFavoriteIcon = Theme.SetStarArt
 
 -- Reads the stored rows directly rather than calling R.Favorites(): the state
--- map is sparse (only recipients with non-default state have a row), and this
--- never calls R.Key, which must not run before the realm name is known (see
--- Core/Recipients.lua). The manager counts the same field the same way, so the
--- two windows never disagree about how many favourites there are.
+-- map is sparse (only recipients with non-default state have a row), and it
+-- calls R.Key on no row, which must not run before the realm name is known (see
+-- Core/Recipients.lua); the bar is drawn only once the mailbox is. It counts the Favorites list the star opens, so the
+-- character being played, which that list leaves out, is not counted; the
+-- manager, which lists it, counts every favorite.
 local function FavoriteCount()
   local R = ns.Recipients
   if type(R) ~= "table" or type(R.ForEach) ~= "function" then return 0 end
+  local CS = Contacts()
+  local IsMe = (type(CS) == "table" and type(CS.IsMe) == "function") and CS.IsMe or nil
   local count = 0
-  R.ForEach(function(_, row)
-    if row.fav then count = count + 1 end
+  R.ForEach(function(key, row)
+    if row.fav and not (IsMe and IsMe(key)) then count = count + 1 end
   end)
   return count
 end
