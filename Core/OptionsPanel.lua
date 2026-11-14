@@ -731,7 +731,7 @@ local TEXT_W = INSP_W - 2 - 2 * TEXT_X
 -- the text does not jump as the pointer moves from setting to setting.
 local SAY_MIN = 150
 -- STAGE: the Minimap drawing's ground at its least (Ctx.MinimapStage).
-local TILE_H, STAGE, MOCK_H = 46, 120, 34
+local TILE_H, STAGE, MOCK_H = 44, 120, 34
 -- The accent row's reading under its description: its lines.
 local READOUT_LINES = 3
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
@@ -6219,7 +6219,7 @@ end
 -- total over every one of them ("1 character" over one). On its right, in
 -- the inspector's column, the three ways into the windows the account
 -- builds, one lifted tile each, the three centred in the card's height, as
--- much room under the last as over the first: Mail Memory,
+-- much room over the first and under the last as between two: Mail Memory,
 -- Character Groups and Manage Recipients, a hairline the card's height
 -- under the strip between them and the list. A click
 -- on a character opens that character's box in Mail Memory
@@ -6229,7 +6229,8 @@ end
 -- the card is 158 tall whatever the settings under it need, and a setting
 -- added to General later never squeezes it (the page's need counts the
 -- card, Rows.PageNeed). Three is the fewest that hold the three tiles
--- (150 with their gaps, inside the card's edges). Under a short list the
+-- (156 with their four gaps, the card's height inside its edges). Under a
+-- short list the
 -- stripes run on, empty, to the foot strip. Past three lines the list
 -- scrolls under the column
 -- headings, which stay put with the foot strip, on the Mail tab's slim bar
@@ -6286,7 +6287,8 @@ do
   -- a block of their own beside the table: no strip over them (the strip
   -- and its note are the table's, over the list's side alone), 6 apart
   -- (the inspector's drawings keep their 8), the three centred in the
-  -- card's height inside its edges, an odd unit going under, and across
+  -- card's height inside its edges, as far from them as from each other:
+  -- 6 + 44 + 6 + 44 + 6 + 44 + 6 is the 156 inside them (TILE_H), and across
   -- the column between the hairline that splits the card (SPLIT_X, in the
   -- middle of the gap between the list and the inspector) and the card's
   -- right edge, inside it: the same room each side, an odd unit going
