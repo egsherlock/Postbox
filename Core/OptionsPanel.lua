@@ -4781,6 +4781,7 @@ do
       height       = DD_H + 2,
       defaultId    = ok and current or nil,
       swatchFor    = spec.swatchFor,
+      artLeft      = spec.artLeft,
       onList       = ListShown,
       maxListHeight = spec.maxListHeight,
     })
@@ -9285,8 +9286,11 @@ function State.ClassIconsRow(col)
     items[#items + 1] = { id = id, name = Icons.Name(id), icon = Icons.Spec(id, token) }
     offered[id] = true
   end
+  -- The chosen style's icon at the toggle's left, where a colour row's
+  -- square stands (Dropdown's artLeft), its name centred as theirs is.
   local cell = Rows.Dropdown(col, {
     title = L["OPT_CLASS_ICONS_TITLE"], text = L["OPT_CLASS_ICONS_DESC"], items = items,
+    artLeft = true,
     get = function()
       local id = Icons.Current()
       return offered[id] and id or "game"

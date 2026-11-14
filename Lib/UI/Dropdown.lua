@@ -555,6 +555,9 @@ end
 -- no caret on it, only a sample `w` x `h` in its middle, of the colour
 -- opts.sampleFor() answers (else swatchFor's for the choice); its list as
 -- any other (the options' Bar color).
+-- opts.artLeft: where the items carry art, the toggle shows the chosen
+-- one's at its left, where a colour square stands, rather than just before
+-- the value (the options' Class icons); the list is as without it.
 function Dropdown.Create(parent, opts)
   opts = type(opts) == "table" and opts or {}
   local swatchFor = type(opts.swatchFor) == "function" and opts.swatchFor or nil
@@ -667,12 +670,22 @@ function Dropdown.Create(parent, opts)
   -- letter onto a second line. Where the items carry art, the box leaves
   -- the art's room at both ends, so the longest value that fits still has
   -- its art whole on the toggle, and the value stays centred.
+  -- With opts.artLeft the chosen item's art stands where a colour square
+  -- does (SWATCH_X in from the left edge), and the box leaves its room and
+  -- the square's gap at both ends, as a colour list's box does for its
+  -- square: every value, art or none (a { blank = true } item), centred on
+  -- the one line.
+  local artLeft = opts.artLeft and true or false
   local function Inset()
     local n = CAPTION_GUTTER
     if swatchFor then n = math.max(n, SWATCH_X + SWATCH_SIZE + SWATCH_GAP) end
     for i = 1, #items do
       if type(items[i].icon) == "table" then
-        n = math.max(n, ART.X + artSize + ART.GAP)
+        if artLeft then
+          n = math.max(n, SWATCH_X + artSize + SWATCH_GAP)
+        else
+          n = math.max(n, ART.X + artSize + ART.GAP)
+        end
         break
       end
     end
@@ -730,7 +743,8 @@ function Dropdown.Create(parent, opts)
   -- button fades the button's own textures, never a child's. One texture
   -- per toggle, made the first time a chosen item has art; a new choice
   -- sets its file only when the art is another, and builds nothing. Greyed
-  -- with the toggle (ArtState).
+  -- with the toggle (ArtState). With opts.artLeft it stands at the toggle's
+  -- left instead, placed once.
   local art
   local function ArtState()
     if not art then return end
@@ -817,6 +831,17 @@ function Dropdown.Create(parent, opts)
     end
     -- A glyph is white art: it wears the value's own ink.
     if spec.glyph and label and label.GetTextColor then (art.Ink or art.Tex):SetVertexColor(label:GetTextColor()) end
+    if artLeft then
+      -- Where a colour square stands, whatever the value's width.
+      if not art.left then
+        art.left = true
+        art:ClearAllPoints()
+        art:SetPoint("LEFT", toggle, "LEFT", SWATCH_X, 0)
+      end
+      ArtState()
+      art:Show()
+      return
+    end
     -- The value's words as they show: their whole width, or the box's
     -- where they were cut short to it.
     local w = 0
