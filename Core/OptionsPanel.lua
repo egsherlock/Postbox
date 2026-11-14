@@ -9025,6 +9025,20 @@ function Pages.window(col)
     BlizzRow({ title = "OPT_BUTTONS_TITLE", text = "OPT_BUTTONS_DESC", get = "GetButtonLook", items = {
       { id = "red", name = L["OPT_BUTTONS_RED"] }, { id = "mailred", name = L["OPT_BUTTONS_MAILRED"] },
       { id = "dark", name = L["OPT_BUTTONS_DARK"] } } }, "SetButtonLook", "ButtonLookChanged")
+    -- How much of the window's stone is drawn, in the steps the other
+    -- styles offer; the options window and the other solid ones keep theirs.
+    local opacityItems = {}
+    for _, pct in ipairs({ 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 25, 0 }) do
+      opacityItems[#opacityItems + 1] = { id = pct, name = string.format(L["OPT_BG_OPACITY_STEP"], pct) }
+    end
+    Rows.Dropdown(col, {
+      title = L["OPT_BG_OPACITY_TITLE"], text = L["OPT_BG_OPACITY_DESC"], items = opacityItems,
+      get = function() return math.floor(ns.MailboxUI.GetBlizzOpacity() * 100 + 0.5) end,
+      set = function(id)
+        ns.MailboxUI.SetBlizzOpacity((tonumber(id) or 100) / 100)
+        if type(worn.OpacityChanged) == "function" then worn.OpacityChanged() end
+      end,
+    })
   end
 
   -- The window scale, in every style: every Postbox window, live, each kept

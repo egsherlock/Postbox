@@ -759,15 +759,18 @@ function UI.SetStyleChoice(style)
   profile.styleHostAware = true
 end
 
--- Two settings of the Blizzard style alone (Core/Skin_Blizzard.lua), each a
--- string with its own accessors, nil on the profile meaning the default:
+-- Three settings of the Blizzard style alone (Core/Skin_Blizzard.lua), each
+-- with its own accessors, nil on the profile meaning the default:
 --   Row texture (`blizzRows`): what the mail rows stand on -- "light" (the
 --     game's letter paper, the default), "dark" (the same paper shaded) or
 --     "none" (the dark list);
 --   Buttons (`blizzButtons`): which push buttons wear the game's red
 --     button -- "mailred" (those that collect or send mail, the rest the
 --     small dark button: the default), "red" (all of them) or "dark"
---     (none). The two that are not the default are stored by name.
+--     (none). The two that are not the default are stored by name;
+--   Background opacity (`blizzOpacity`): how much of the window's stone
+--     ground is drawn, a fraction under 1 (stored only below 1: solid, the
+--     default, is nil).
 -- The skin reads them when it dresses and again when one changes; every
 -- other look keeps them and never reads them.
 function UI.GetRowTexture()
@@ -787,6 +790,16 @@ end
 function UI.SetButtonLook(choice)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.blizzButtons = (choice == "red" or choice == "dark") and choice or nil end
+end
+function UI.GetBlizzOpacity()
+  local stored = tonumber(ns.Store and ns.Store.Get and ns.Store.Get("profile.blizzOpacity"))
+  if stored and stored >= 0 and stored < 1 then return stored end
+  return 1
+end
+function UI.SetBlizzOpacity(value)
+  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+  value = tonumber(value)
+  if profile then profile.blizzOpacity = (value and value >= 0 and value < 1) and value or nil end
 end
 
 -- The gate both host skins consult before claiming. Kept here rather than

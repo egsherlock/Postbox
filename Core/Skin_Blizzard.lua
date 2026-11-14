@@ -318,6 +318,175 @@ local function LayGround(frame)
 end
 
 -------------------------------------------------------------
+-- Background opacity
+-------------------------------------------------------------
+
+-- Options > Window > Background opacity (MailboxUI.GetBlizzOpacity): the
+-- window's rock and its streaks drawn at the chosen strength, so the world
+-- shows through them. Everything standing on the rock keeps its own ground
+-- and stays solid: the metal frame and its title band, the lists and cards
+-- with their dark grounds and bevels, the mail rows' paper, the fields, the
+-- buttons, the tabs, the totals strip. The windows every style keeps solid
+-- (__pbEuiAlwaysOpaque: the options, Mail Memory, Character Groups, What's
+-- new, the bug report) keep their rock whole; the mailbox window and Manage
+-- Recipients take the strength.
+--
+-- The words that stand on the rock itself (the ones Postbox tells Theme
+-- stand on the bare window, Theme.OnWindow: the Send tab's captions, its
+-- cost and guidance lines, the Mail tab's hint and notes, Manage Recipients'
+-- count) would go with it. Under each, while the rock is weaker than FLOOR,
+-- a patch of the same rock is laid round the words, at the strength that
+-- puts the rock under them back at FLOOR: the least at which the game's gold
+-- (the captions), the warning orange and the notes' gray all read at 4.5:1
+-- over a white world behind the window (the rock's brightest tenth, 0.031
+-- luminance; gold needs 0.93, the orange 0.94, the gray 0.80). The patch is
+-- the rock under the rock, so at 95% and above there is none, and below it
+-- the words keep the ground they have at 100%.
+--
+-- Solid, the default, is the look as it was: no rock is touched and no
+-- word looked for until the setting is moved off 100%. A change is one pass
+-- over the windows built (Theme.ForEachWindow); a window dressed later takes
+-- the strength as it is dressed or walked.
+do
+  local FLOOR = 0.94
+  local PAD_X, PAD_Y = 4, 2
+  local O = { alpha = 1, read = false }
+  Parts.Opacity = O
+  -- font string -> the patch under it, and the window it stands in.
+  local patches = setmetatable({}, { __mode = "k" })
+  local FOLLOWED = { "SetText", "SetFormattedText", "Show", "Hide", "SetShown" }
+
+  local function Rock(frame) return frame.pbWindowStone end
+
+  -- The patch's strength over a rock at `a`: 1 - (1 - FLOOR) / (1 - a), so
+  -- the two together cover FLOOR of the world; none at FLOOR and above.
+  local function PatchAlpha(a)
+    if a >= FLOOR then return 0 end
+    return 1 - (1 - FLOOR) / (1 - a)
+  end
+
+  -- The patch round the words, on the side they are justified to, shown
+  -- only under words that show. Its parent is the text's parent, so it does
+  -- not hide with the text by itself.
+  local function Paint(fs)
+    local patch = patches[fs]
+    if not patch then return end
+    local p = PatchAlpha(O.alpha)
+    local text = (p > 0) and fs:IsShown() and fs:GetText() or nil
+    if not text or text == "" then
+      if patch:IsShown() then patch:Hide() end
+      return
+    end
+    local w = fs:GetStringWidth() or 0
+    local box = fs:GetWidth() or 0
+    if box > 0 and w > box then w = box end
+    patch:SetWidth(w + 2 * PAD_X)
+    patch:SetAlpha(p)
+    patch:Show()
+  end
+
+  local function Lay(fs, patch)
+    local side = type(fs.GetJustifyH) == "function" and fs:GetJustifyH() or "LEFT"
+    if side == "RIGHT" then
+      patch:SetPoint("TOPRIGHT", fs, "TOPRIGHT", PAD_X, PAD_Y)
+      patch:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT", PAD_X, -PAD_Y)
+    elseif side == "CENTER" then
+      patch:SetPoint("TOP", fs, "TOP", 0, PAD_Y)
+      patch:SetPoint("BOTTOM", fs, "BOTTOM", 0, -PAD_Y)
+    else
+      patch:SetPoint("TOPLEFT", fs, "TOPLEFT", -PAD_X, PAD_Y)
+      patch:SetPoint("BOTTOMLEFT", fs, "BOTTOMLEFT", -PAD_X, -PAD_Y)
+    end
+  end
+
+  -- One word on the window's rock: its patch, made once, and its methods
+  -- followed so the patch keeps to its words.
+  local function Patch(fs, rock)
+    if patches[fs] then return end
+    local parent = fs:GetParent()
+    if not parent or type(parent.CreateTexture) ~= "function" then return end
+    -- Over the window's rock and streaks, under the words.
+    local patch = parent:CreateTexture(nil, "BACKGROUND", nil, 7)
+    patch:Hide()
+    patch:SetTexture(rock:GetTexture() or "Interface\\FrameGeneral\\UI-Background-Rock")
+    patch:SetHorizTile(true)
+    patch:SetVertTile(true)
+    patch.__pbBlizzPatch = true
+    Lay(fs, patch)
+    patches[fs] = patch
+    if type(hooksecurefunc) == "function" then
+      for i = 1, #FOLLOWED do
+        if type(fs[FOLLOWED[i]]) == "function" then hooksecurefunc(fs, FOLLOWED[i], Paint) end
+      end
+    end
+  end
+
+  -- The words among `...` (a frame's regions) that stand on the bare
+  -- window: Theme was told so (Theme.OnWindow, ground "window").
+  local function Words(rock, ...)
+    local G = ns.Theme and ns.Theme._Grounds
+    if not (G and G.Of) then return end
+    for i = 1, select("#", ...) do
+      local r = select(i, ...)
+      if r and not patches[r] and G.Of(r) == "window" and r:IsObjectType("FontString") then Patch(r, rock) end
+    end
+  end
+
+  -- Every frame under the window, ten levels down; no table is made.
+  local function Walk(rock, depth, ...)
+    for i = 1, select("#", ...) do
+      local c = select(i, ...)
+      if c and type(c.GetRegions) == "function" then
+        Words(rock, c:GetRegions())
+        if depth < 10 then Walk(rock, depth + 1, c:GetChildren()) end
+      end
+    end
+  end
+
+  -- One dressed window at the strength in force: its rock and streaks, and,
+  -- while it is under 100%, a patch under each word on its rock (new words
+  -- found on each walk).
+  function O.Window(frame)
+    if not (frame and frame.__pbBlizzWindow) or frame.__pbEuiAlwaysOpaque then return end
+    local rock = Rock(frame)
+    if not rock then return end
+    local a = O.alpha
+    rock:SetAlpha(a)
+    if frame.__pbBlizzStreaks then frame.__pbBlizzStreaks:SetAlpha(a) end
+    if a < 1 then
+      Words(rock, frame:GetRegions())
+      Walk(rock, 1, frame:GetChildren())
+    end
+  end
+
+  -- The setting as saved, read once at the first window dressed.
+  function O.Read()
+    if O.read then return end
+    O.read = true
+    local UI = ns.MailboxUI
+    O.alpha = UI and type(UI.GetBlizzOpacity) == "function" and UI.GetBlizzOpacity() or 1
+  end
+
+  -- The setting changed (Options > Window, or a reset): every window built
+  -- at the new strength, every patch with it.
+  function Skin.OpacityChanged()
+    local UI = ns.MailboxUI
+    O.read = true
+    O.alpha = UI and type(UI.GetBlizzOpacity) == "function" and UI.GetBlizzOpacity() or 1
+    local T = ns.Theme
+    if T and type(T.ForEachWindow) == "function" then T.ForEachWindow(O.Window) end
+    for fs in pairs(patches) do Paint(fs) end
+  end
+  -- A window walked while under 100%: the words it holds now, patched.
+  function O.Walked(frame)
+    if O.alpha < 1 then
+      O.Window(frame)
+      for fs in pairs(patches) do Paint(fs) end
+    end
+  end
+end
+
+-------------------------------------------------------------
 -- Sunken panels
 -------------------------------------------------------------
 
@@ -3685,6 +3854,10 @@ do
        and Skin.ButtonLookChanged then
       Skin.ButtonLookChanged()
     end
+    local O = Parts.Opacity
+    if O.read and type(UI.GetBlizzOpacity) == "function" and UI.GetBlizzOpacity() ~= O.alpha then
+      Skin.OpacityChanged()
+    end
   end
 end
 
@@ -3761,6 +3934,8 @@ end
 function Skin.Refresh(frame)
   if not frame then return end
   pcall(SkinTree, frame)
+  -- A whole window walked: under 100%, the words it holds now patched.
+  if frame.__pbBlizzWindow then pcall(Parts.Opacity.Walked, frame) end
 end
 
 -- A window already walked at the current skin generation (Theme
@@ -3794,6 +3969,8 @@ function Skin.Apply(frame)
   ns.SkinAppliedBy = "blizzard"
   -- The rows' ground (Options > Window > Row texture) in force.
   if not Parts.Rows.mode then Parts.Rows.Install() end
+  -- And Background opacity, which the walk at the end lays (Skin.Refresh).
+  Parts.Opacity.Read()
 
   -- Without the metal (a client missing a piece), the template's own thin
   -- frame stays: a window is never left without a frame.
