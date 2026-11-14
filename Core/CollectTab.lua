@@ -10909,6 +10909,9 @@ function RV.BarType(f, compact, style)
   -- The island's own: Delete all on the words' middle in their ink.
   local DN = f.Inner and ns.DividerNotch
   if DN then DN.Type(f) end
+  -- A window style that dresses the bar puts its own inks on here (the
+  -- Blizzard style's; nil in every other look), as after RV.LineType.
+  if f.__pbDress then f.__pbDress(f) end
 end
 
 -- How far right of its letters a string's shadow reaches (its font's
@@ -11066,7 +11069,7 @@ function RV.BarText(f, loc, words, n, style, custom, icon)
   if n >= 0 then
     -- In brackets, as the segments and the category buttons write theirs:
     -- the number in the words' ink (the string's own), the brackets dimmer.
-    local hex = f.__dimHex or "8f8f8f"
+    local hex = f.__pbDimHex or f.__dimHex or "8f8f8f"
     countText = "|cff" .. hex .. "(|r" .. FormatCount(n) .. "|cff" .. hex .. ")|r"
     count:SetText(countText)
     count:Show()
@@ -11418,6 +11421,7 @@ function RV.LineType(f, look, compact)
   f.__compact, f.__words, f.__sign, f.__lineX, f.__fitW, f.__tint, f.__r = compact, nil, nil, nil, nil, nil, nil
   f.__half, f.__W, f.__wide, f.__late, f.__live, f.__fadeE, f.__signX = nil, nil, nil, nil, nil, nil, nil
   f.__lH = nil
+  if f.__pbDress then f.__pbDress(f) end
 end
 
 -- A copy typed for `look` and the row size, where the type, the row size or
@@ -11519,6 +11523,9 @@ function RV.SignPlace(f, plus, sx, w)
     stem:SetSize(s, w)
   end
   stem:SetShown(plus)
+  -- A window style's own mark in the strokes' place (the Blizzard style's;
+  -- nil in every other look).
+  if f.__pbSign then f.__pbSign(f, not plus) end
 end
 
 -- Hairline or Full row painted as the list stands: its look, words, fill

@@ -360,6 +360,7 @@ function DN.Ink(f, r, g, b)
   P.a = B and B.groundA or 0.95
   P.edge = B and B.edgeA or 0.14
   f.__kf = nil
+  if f.__pbDress then f.__pbDress(f) end
 end
 
 -- The shadow's colour (Shadow color): the list's ground under Neutral, so
@@ -444,6 +445,8 @@ end
 -- The words, icon and number in their ink (the number's brackets keep
 -- their own, dimmer): brighter under the pointer.
 local function WordsInk(f, hot)
+  -- A window style's own inks (the Blizzard style's; nil in every other look).
+  if f.__pbWords then return f.__pbWords(f, hot) end
   local T = Th()
   local tone = hot and "textPrimary" or "textSecondary"
   T.SetColor(f.Label, tone)
@@ -679,6 +682,8 @@ function DN.SignDraw(f)
       f.__sgR = 0
     end
     f.__sgMode, f.__sgK = mode, k
+    -- A window style's own mark (the Blizzard style's; nil in every other look).
+    if f.__pbSign then f.__pbSign(f, mode == 1) end
   end
   if mode == 2 then
     local r = -a * 1.5707963267949
@@ -697,7 +702,9 @@ function DN.Sign(f, open)
   local to = open and 1 or 0
   f.__sgTo = to
   f.__sgMode = nil
-  local turn = f.__sgA ~= nil and f.__sgA ~= to and (f.__late or 0) > 0 and f.Sign.SetRotation ~= nil and Lively(f)
+  -- A style's own mark (f.__pbSign) is no arrow: it stands at once.
+  local turn = f.__sgA ~= nil and f.__sgA ~= to and (f.__late or 0) > 0 and f.Sign.SetRotation ~= nil
+    and not f.__pbSign and Lively(f)
   if turn then
     DN.Start(f.__panel)
   else

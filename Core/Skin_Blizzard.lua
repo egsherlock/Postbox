@@ -37,7 +37,7 @@ local _, ns = ...
 --
 -- Dressed so far: the window frame, the sunken panels, the main window's
 -- Mail and Send tabs, every push button, the Mail tab's totals strip and
--- every field and search box, every list's scroll bar, every segment and
+-- the bar over finished mail, every field and search box, every list's scroll bar, every segment and
 -- tile (one strip where they are joined, and a field's last cell joined to
 -- its field), the Sent clock as a cell of Send mail, the dropdowns and their
 -- lists, the options' tabs, checkboxes, heading rules, Find box and footer
@@ -1171,37 +1171,53 @@ do
     end
   end
 
-  function Parts.Totals(band)
-    if band.__pbBlizzBand ~= nil then return end
-    band.__pbBlizzBand = false
-    local h = band:GetHeight()
-    if type(h) ~= "number" or h <= 0 then h = 24 end
-    -- The art's height that puts its line on the strip's top and foot.
-    local face = ART_H - 2 * RIM_Y
-    local out = h * RIM_Y / face
+  -- The three pieces laid on `box` by the rim, for a box `h` units tall:
+  -- the art's height that puts its line on the box's top and foot. Again
+  -- where the height moves (the same points set anew).
+  function Parts.EdgeOn(pieces, box, h)
+    local out = h * RIM_Y / (ART_H - 2 * RIM_Y)
+    local L, M, R = pieces[1], pieces[2], pieces[3]
+    L:SetWidth(CAP)
+    L:SetPoint("TOPLEFT", box, "TOPLEFT", -RIM_X, out)
+    L:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", -RIM_X, -out)
+    R:SetWidth(CAP)
+    R:SetPoint("TOPRIGHT", box, "TOPRIGHT", RIM_X, out)
+    R:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", RIM_X, -out)
+    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
+    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+  end
+
+  -- The gold edge with the marble inside it, as textures of `owner` (the
+  -- pieces on `layer` / `sub`, the marble on `mLayer` / `mSub`, over the
+  -- pieces' black middle), laid on `box`, `h` units tall: the strip's own
+  -- box, or a frame that moves (the bar over finished mail's island shape),
+  -- which the art then follows by its anchors alone. Answers the pieces and
+  -- the marble.
+  function Parts.GoldEdge(owner, box, h, layer, sub, mLayer, mSub)
     local pieces = {}
     for i = 1, 3 do
-      local t = band:CreateTexture(nil, "BACKGROUND", nil, 2)
+      local t = owner:CreateTexture(nil, layer, nil, sub)
       t:SetTexture(EDGE)
       local c = PIECES[i]
       t:SetTexCoord(c[1], c[2], c[3], c[4])
       pieces[i] = t
     end
-    local L, M, R = pieces[1], pieces[2], pieces[3]
-    L:SetWidth(CAP)
-    L:SetPoint("TOPLEFT", band, "TOPLEFT", -RIM_X, out)
-    L:SetPoint("BOTTOMLEFT", band, "BOTTOMLEFT", -RIM_X, -out)
-    R:SetWidth(CAP)
-    R:SetPoint("TOPRIGHT", band, "TOPRIGHT", RIM_X, out)
-    R:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", RIM_X, -out)
-    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
-    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-    local marble = band:CreateTexture(nil, "BORDER", nil, -1)
+    Parts.EdgeOn(pieces, box, h)
+    local marble = owner:CreateTexture(nil, mLayer, nil, mSub)
     marble:SetTexture(MARBLE, "REPEAT", "REPEAT")
     marble:SetHorizTile(true)
     marble:SetVertTile(true)
-    marble:SetPoint("TOPLEFT", band, "TOPLEFT", MARBLE_IN, -MARBLE_IN)
-    marble:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -MARBLE_IN, MARBLE_IN)
+    marble:SetPoint("TOPLEFT", box, "TOPLEFT", MARBLE_IN, -MARBLE_IN)
+    marble:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -MARBLE_IN, MARBLE_IN)
+    return pieces, marble
+  end
+
+  function Parts.Totals(band)
+    if band.__pbBlizzBand ~= nil then return end
+    band.__pbBlizzBand = false
+    local h = band:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local pieces, marble = Parts.GoldEdge(band, band, h, "BACKGROUND", 2, "BORDER", -1)
     band.__pbBlizzBand = pieces
     band.__pbBlizzMarble = marble
     -- The strip's own fill and line, faded under the art (never recolored,
@@ -1219,6 +1235,229 @@ do
     local band = text and text.GetParent and text:GetParent()
     if band and band.__pbBlizzBand then Ink(band) end
     return up, down
+  end
+end
+
+-------------------------------------------------------------
+-- The bar over finished mail
+-------------------------------------------------------------
+
+-- The bar over the finished mail (CollectTab's RV.BuildBar; its looks in
+-- the comments above RV.BAR) wears the totals strip's art and the game's
+-- gold, in all three Bar looks; its sizes, places, clicks and moves are the
+-- window's own and do not change:
+--   Island  the island at the list's foot is a small plaque, the gold edge
+--           with the marble inside it, exactly where and as large as the
+--           capsule it replaces (whose fill and ring are faded, never
+--           drawn); opened, the same edge runs across the list. The art is
+--           anchored to the island's shape (Core/DividerNotch.lua, f.Shape),
+--           which the move already sets each frame, so the plaque follows
+--           its edges with no work of its own. Its shadow over the rows
+--           stays. The words, the number and Bar icon's mark in the game's
+--           gold, white under the pointer (the game's own pair, as the
+--           options' tabs have it), where the capsule lit up.
+--   Hairline and Full row  the words in the gold, and the rule from them to
+--           Delete all the game's Settings rule (Options_HorizontalDivider,
+--           as the headings wear it) over the rule's own faded line, on
+--           their own ground as before.
+-- In each the number's brackets are the gold a step dimmer, Delete all
+-- keeps its quiet words and its red, and the fold sign is the game's own
+-- "+" / "-" (the Professions recipe list's, professions-recipe-header-
+-- expand / -collapse, 22 x 16 on both clients): "-" while the finished mail
+-- shows, "+" folded and on the copy at the list's foot. It stands at once,
+-- never turned (it is no arrow), in the room the chevron took: in the
+-- island's fold sign itself, on its place, its cross as long as the
+-- chevron's longest side (9 units, 9.75 on Larger mail rows); on Hairline
+-- and Full row the same mark on the "+" strokes' middle, the strokes faded.
+-- Bar color tints the island's marble by the share the bar's fill mixes in
+-- (CT.BarParts.mix, 15%), the rest of the bar as before.
+--
+-- How it reaches the bar: the walk meets the window's three copies (the
+-- panel's Notch, Divider and DividerPin; never the options' drawing, whose
+-- copies stand for a panel of their own) and dresses each once. The window
+-- then calls back at the moments its own look sets these parts, through
+-- fields on the copy that are nil in every other look: f.__pbDress after a
+-- copy is typed (RV.BarType, RV.LineType) and when the island's inks move
+-- (DN.Ink); f.__pbWords where the island puts its words' ink at rest or
+-- pointed at; f.__pbSign where a fold sign is drawn (DN.SignDraw, RV.
+-- SignPlace); f.__pbDimHex for the brackets (RV.BarText). Each runs only
+-- when that part changes: a pass at rest, and every frame of a move, sets
+-- nothing more. Where the client lacks the marks or the rule, those parts
+-- stay as they were.
+do
+  local MARK_OPEN, MARK_SHUT = "professions-recipe-header-collapse", "professions-recipe-header-expand"
+  local DIVIDER = "Options_HorizontalDivider"
+  -- The fold sign's canvas (RV.BAR.sign / signL), and the brackets' share
+  -- of the gold.
+  local SIGN, SIGN_L, DIM = 12, 13, 0.7
+  -- The chevron's longest side, of its canvas (RV.BAR: 24 of 32), and the
+  -- marks' cross, of the art's width (both clients: 18 of 22).
+  local MARK_K, MARK_CROSS = 24 / 32, 18
+  local floor = math.floor
+
+  local function Gold() return Parts.FontRGB("GameFontNormal", 1, 0.82, 0) end
+  local function White() return Parts.FontRGB("GameFontHighlight", 1, 1, 1) end
+
+  -- The words, the number and the mark: the gold, or white pointed at.
+  local function Words(f, hot)
+    local r, g, b
+    if hot then r, g, b = White() else r, g, b = Gold() end
+    f.Label:SetTextColor(r, g, b, 1)
+    f.Count:SetTextColor(r, g, b, 1)
+    f.Mark:SetVertexColor(r, g, b, 1)
+  end
+
+  -- A mark for a fold sign's canvas `c` units square, "-" (`open`) or "+",
+  -- at its art's own proportion: its cross (18 of the art's 22 across) as
+  -- long as the chevron's longest side was (24 of the canvas's 32), so it
+  -- takes the chevron's room: the art at a third of the canvas less in
+  -- height (8 of 12 units: the art at half its size on one-line rows).
+  local function LayMark(t, open, c)
+    local name = open and MARK_OPEN or MARK_SHUT
+    Atlas(t, name, false)
+    local w0, h0 = Parts.Size(name)
+    w0, h0 = w0 or 22, h0 or 16
+    local w = c * MARK_K * w0 / MARK_CROSS
+    t:SetSize(w, w * h0 / w0)
+  end
+
+  -- The island's fold sign (DN.SignDraw, as the fold moves).
+  local function IsleSign(f, open)
+    LayMark(f.Sign, open, f.__canvas or SIGN)
+  end
+
+  -- Hairline's and Full row's (RV.SignPlace, as the sign moves), on the
+  -- island's canvas: Full row's for the row size, Hairline's the one-line
+  -- rows' in both (Hairline is the same in either size).
+  local function LineSign(f, open)
+    local a = f.__pbBlizzBar
+    if not (a and a.mark) then return end
+    LayMark(a.mark, open, (f.__look == "full" and not f.__compact) and SIGN_L or SIGN)
+  end
+
+  -- The island's height as its move lays it (DN.Size); a copy not laid out
+  -- yet, the one-line rows' bar.
+  local function Band(f)
+    local h = f.__isleBand
+    if type(h) ~= "number" or h <= 0 then h = 22 end
+    return h
+  end
+
+  -- The island's marble under Bar color: tinted by the share the bar's fill
+  -- takes of the colour; plain under Neutral.
+  local function Tint(f, marble)
+    local UI = ns.MailboxUI
+    local cr, cg, cb
+    if UI and type(UI.DividerColorRGB) == "function" then cr, cg, cb = UI.DividerColorRGB() end
+    if type(cr) ~= "number" then
+      marble:SetVertexColor(1, 1, 1, 1)
+      return
+    end
+    local B = ns.CollectTab and ns.CollectTab.BarParts
+    local k = B and B.mix or 0.15
+    marble:SetVertexColor(1 + (cr - 1) * k, 1 + (cg - 1) * k, 1 + (cb - 1) * k, 1)
+  end
+
+  -- f.__pbDress: after a copy is typed, and as the island's inks move.
+  local function Dress(f)
+    local a = f.__pbBlizzBar
+    if not a then return end
+    local look = f.__look
+    local line = look == "hairline" or look == "full"
+    local P = f.Isle
+    Words(f, P and not line and (f.__hv or 0) >= 1)
+    if P then
+      -- The tones the pointer's ease mixes (DN.Tones): the gold at rest,
+      -- white pointed at, for the words and for the mark.
+      local t = P.tone
+      local r, g, b = Gold()
+      t[1], t[2], t[3], t[4], t[9], t[10], t[11], t[12] = r, g, b, 1, r, g, b, 1
+      r, g, b = White()
+      t[5], t[6], t[7], t[8], t[13], t[14], t[15], t[16] = r, g, b, 1, r, g, b, 1
+      -- The mark in its own colours.
+      if f.__pbSign then f.Sign:SetVertexColor(1, 1, 1, 1) end
+      local h = Band(f)
+      if a.band ~= h then
+        a.band = h
+        Parts.EdgeOn(a.edge, f.Shape, h)
+      end
+      Tint(f, a.marble)
+    end
+    if a.mark then a.mark:SetShown(line) end
+    if a.rule then
+      a.rule:SetShown(line)
+      -- RV.LineType gives the rule its strength each time.
+      if line then f.Rule:SetAlpha(0) end
+    end
+  end
+
+  -- The brackets' ink: the gold a step dimmer, "rrggbb".
+  local function DimHex()
+    local r, g, b = Gold()
+    return ("%02x%02x%02x"):format(floor(r * DIM * 255 + 0.5), floor(g * DIM * 255 + 0.5), floor(b * DIM * 255 + 0.5))
+  end
+
+  -- A copy of the bar (it has Hairline's strokes, `SignH`), met by the walk.
+  function Parts.Bar(f)
+    f.__pbBlizzBar = false
+    local panel = f.__panel
+    if not (panel and (panel.Notch == f or panel.Divider == f or panel.DividerPin == f)) then return end
+    local a = {}
+    local marks = HasAtlas(MARK_OPEN) and HasAtlas(MARK_SHUT)
+    local P = f.Isle
+    if P and f.Shape then
+      local h = Band(f)
+      a.band = h
+      -- Over the shadow (BACKGROUND -8), above the capsule's pieces.
+      a.edge, a.marble = Parts.GoldEdge(f, f.Shape, h, "BACKGROUND", -5, "BACKGROUND", -4)
+      Fade(P.mid)
+      Fade(P.side[1])
+      Fade(P.side[2])
+      for i = 1, 4 do
+        Fade(P.ring[i])
+        Fade(P.fill[i])
+      end
+      Fade(P.top)
+      Fade(P.bot)
+      Fade(P.edgeL)
+      Fade(P.edgeR)
+      f.__pbWords = Words
+      if marks then f.__pbSign = IsleSign end
+    else
+      if marks then
+        local mark = f:CreateTexture(nil, "ARTWORK")
+        mark:SetPoint("CENTER", f.SignH, "CENTER", 0, 0)
+        mark:Hide()
+        a.mark = mark
+        Fade(f.SignH)
+        Fade(f.SignV)
+        f.__pbSign = LineSign
+      end
+      if HasAtlas(DIVIDER) then
+        local rule = f:CreateTexture(nil, "ARTWORK")
+        if Atlas(rule, DIVIDER, false) then
+          local _, h = Parts.Size(DIVIDER)
+          h = h or 1
+          local T = ns.Theme
+          local px = T and type(T.OnePixel) == "function" and T.OnePixel(f) or 1
+          if px > h then h = px end
+          rule:SetHeight(h)
+          rule:SetPoint("TOPLEFT", f.Rule, "TOPLEFT", 0, 0)
+          rule:SetPoint("TOPRIGHT", f.Rule, "TOPRIGHT", 0, 0)
+          rule:Hide()
+          a.rule = rule
+        else
+          rule:Hide()
+        end
+      end
+    end
+    f.__pbDimHex = DimHex()
+    f.__pbBlizzBar = a
+    f.__pbDress = Dress
+    -- Whatever the copy has drawn already is typed, written and signed
+    -- again on its next pass, and dressed now.
+    f.__gen, f.__words, f.__folded, f.__sign = nil, nil, nil, nil
+    Dress(f)
   end
 end
 
@@ -2982,6 +3221,7 @@ function Parts.DressOne(c)
   if c.__postboxInputWrap and c.__pbBlizzField == nil then Parts.Field(c) end
   if c.__postboxPanel and not c.__pbBlizzInset and Sinks(c) then SinkPanel(c) end
   if c.__postboxPanel == "band" and c.__pbBlizzBand == nil and Parts.IsTotals(c) then Parts.Totals(c) end
+  if c.SignH and c.__pbBlizzBar == nil then Parts.Bar(c) end
   if c.__postboxButton and not c.__postboxSelect and c.__pbBlizzButton == nil and c:IsObjectType("Button") then
     Parts.Button(c)
   end
