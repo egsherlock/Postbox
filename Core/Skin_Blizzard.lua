@@ -24,10 +24,10 @@ local _, ns = ...
 -- they ran before this file existed.
 --
 -- It answers only what it dresses. Everything a skin may publish and this
--- one does not (GetAccent, GetHostBaseline, GetFontFace, StyleTabPlate,
--- ButtonTextRGB, the appearance getters, ApplyLook...) is asked for by
--- presence, so leaving it out keeps the game's own answer, as when no skin
--- claimed. The places that read "no skin" as "the game's own look" ask
+-- one does not (GetAccent, GetHostBaseline, StyleTabPlate, ButtonTextRGB,
+-- the appearance getters...) is asked for by presence, so leaving it out
+-- keeps the game's own answer, as when no skin claimed. Its GetFontFace
+-- (Text, below) answers the game's own at its defaults. The places that read "no skin" as "the game's own look" ask
 -- Theme.NativeLook() instead, which says yes for this skin too.
 --
 -- A surface treatment only: no frame moves or changes size, and nothing is
@@ -3484,6 +3484,78 @@ do
 end
 
 -------------------------------------------------------------
+-- Text: Font, Text style and Text weight
+-------------------------------------------------------------
+
+-- Options > Window > Text style: the Postbox style's, the same choices
+-- (ns.SkinFonts), saved for this style apart (profile blizzOutline; nil
+-- is the default), so each style keeps its own. They reach every text through the copies Theme dresses
+-- (Skin.GetFontFace, read by Theme.HostFont), as a host's face does:
+--   Text style   Shadow (the default): the game fonts' own soft shadow and
+--                flags, in whichever font; Outline: the client's thin
+--                outline, no shadow; None: neither.
+-- At its default the face is the game objects' own, as
+-- when this skin published none: the look as it was, byte for byte. On the
+-- letter paper (Row texture Light: the mail rows and the Message box) the
+-- dark words stay clean whatever Text style says (Row texture, below).
+-- A change dresses the copies again in place (Theme.RefreshHostFonts) and
+-- measures the screens that fit text again: live, nothing per row.
+do
+  local function Saved(path)
+    local Store = ns.Store
+    return Store and type(Store.Get) == "function" and Store.Get(path) or nil
+  end
+
+  local function Save(key, value)
+    local Store = ns.Store
+    local profile = Store and type(Store.EnsurePath) == "function" and Store.EnsurePath("profile")
+    if profile then profile[key] = value end
+  end
+
+  function Skin.GetOutlineChoices() return ns.SkinFonts.OutlineChoices() end
+
+  function Skin.GetOutline()
+    local saved = Saved("profile.blizzOutline")
+    if ns.SkinFonts.IsOutline(saved) then return saved end
+    return "shadow"
+  end
+
+  function Skin.SetOutline(key)
+    if not ns.SkinFonts.IsOutline(key) then return end
+    Save("blizzOutline", (key ~= "shadow") and key or nil)
+    Skin.ApplyFonts()
+  end
+
+  -- The face the copies wear (Theme's HostFace): the file (false: each game
+  -- font's own), the flags (false: its own) and the shadow (nil: its own).
+  -- At the defaults false, false, nil: what no answer meant.
+  function Skin.GetFontFace()
+    local path = false
+    local outline = Skin.GetOutline()
+    if outline == "outline" then return path, "OUTLINE", false end
+    if outline == "none" then return path, "", false end
+    return path, false, nil
+  end
+
+  -- A change of Text style or Text size (Theme.FontsMoved, a
+  -- reset): the copies dressed again where the face moved, the paper's
+  -- words given their clean face or their usual one, and the screens that
+  -- fit text measured again (which binds the mail rows again).
+  function Skin.ApplyFonts()
+    local T = ns.Theme
+    if not T then return end
+    if type(T.RefreshHostFonts) == "function" then T.RefreshHostFonts() end
+    local R = Parts.Rows
+    local outline = Skin.GetOutline() == "outline"
+    if R and R.outline ~= outline then
+      R.outline = outline
+      if R.mode and Parts.MessageGrounds then Parts.MessageGrounds() end
+    end
+    if type(T.RefitScreens) == "function" then T.RefitScreens() end
+  end
+end
+
+-------------------------------------------------------------
 -- Row texture: what the mail rows stand on
 -------------------------------------------------------------
 
@@ -3648,6 +3720,8 @@ do
   -- here: every other look keeps the functions it always ran.
   function R.Install()
     R.Resolve()
+    -- Text style Outline, which the paper's words are kept clean of (Face).
+    R.outline = Skin.GetOutline() == "outline"
     local T = ns.Theme
     if not T or T.RowGround then return end
     T.RowGround = Skin.RowGround
@@ -3685,10 +3759,32 @@ do
     end
   end
 
+  -- Under Text style Outline the dark words on the paper wear the copy
+  -- Theme makes for a light ground (Theme.HostFont "light"), drawn with no
+  -- outline and no shadow; anywhere else, and on the paper under Shadow and
+  -- None, the copy every text wears. Only a copy is swapped (Theme.CopyBase):
+  -- a font of any other kind is left as it is. `light`: the clean one.
+  local function Face(fs, light)
+    if not (fs and fs.GetFontObject) then return end
+    local T = ns.Theme
+    local object = fs:GetFontObject()
+    local base = object and T.CopyBase and T.CopyBase(object)
+    if not base then return end
+    local want = T.HostFont(base, light and "light" or nil)
+    if want and want ~= object then fs:SetFontObject(want) end
+  end
+
   -- The row's own texts and marks in the rows' inks (`ground` "row"), or,
   -- with `ground` nil, back in the palette's.
   local function Texts(row, ground, clean)
     local T = ns.Theme
+    -- Their face first, as a new font object may carry its own colour. Only
+    -- under Outline on the paper, or to undo it: nothing otherwise.
+    local light = clean and R.outline
+    if light or row.__pbCleanFace then
+      row.__pbCleanFace = light or nil
+      for i = 1, #SHADOWED do Face(row[SHADOWED[i]], light) end
+    end
     for i = 1, #STATIC, 2 do
       local fs = row[STATIC[i]]
       if fs then T.SetColor(fs, STATIC[i + 1], ground) end
@@ -3788,6 +3884,21 @@ do
   local function Words(box)
     local T = ns.Theme
     if not T then return end
+    -- As the rows' words (Face): clean on the paper under Outline. An edit
+    -- box by the font Postbox gave it (Theme.SetBoxFont), set as that does;
+    -- its SetFontObject comes back here and finds it in place.
+    local light = R.light and R.outline
+    if light or box.__pbCleanFace then
+      box.__pbCleanFace = light or nil
+      local object = box.__pbFont
+      local base = object and T.CopyBase and T.CopyBase(object)
+      local want = base and T.HostFont(base, light and "light" or nil)
+      if want and want ~= object then
+        box.__pbFont = want
+        box:SetFontObject(want)
+      end
+      Face(box._placeholder, light)
+    end
     T.SetColor(box, "textPrimary", T.ROW)
     Shadow(box, R.light)
     Highlight(box, R.light)

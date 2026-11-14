@@ -9063,6 +9063,14 @@ function Pages.window(col)
   -- scale here; the Postbox style and the creative ones keep it in their
   -- Text group, with the font it sizes.
   local T = ns.Theme
+  -- The Blizzard style also offers the Postbox style's Text style after
+  -- Text size, saved for this style alone; its default is the game's own.
+  local blizzText = worn and worn.IsBlizzardStyle and worn.GetOutlineChoices and worn or nil
+  local function Faced(list)
+    local items = {}
+    for i = 1, #list do items[i] = { id = list[i].key, name = list[i].name, face = list[i].file } end
+    return items
+  end
   if not (Skin and (own or Skin.IsCreativeStyle)) and T.GetTextScaleChoices then
     local textItems = {}
     for _, scale in ipairs(T.GetTextScaleChoices()) do
@@ -9073,6 +9081,13 @@ function Pages.window(col)
       title = L["OPT_TEXT_SIZE_TITLE"], text = L["OPT_TEXT_SIZE_DESC"], items = textItems,
       get = function() return math.floor(T.GetTextScale() * 100 + 0.5) end,
       set = function(id) T.SetTextScale((tonumber(id) or 100) / 100) end,
+    })
+  end
+  if blizzText then
+    Rows.Dropdown(col, {
+      title = L["OPT_OUTLINE_TITLE"], text = L["OPT_OUTLINE_DESC"], items = Faced(blizzText.GetOutlineChoices()),
+      get = function() return blizzText.GetOutline() end,
+      set = function(id) blizzText.SetOutline(id) end,
     })
   end
 

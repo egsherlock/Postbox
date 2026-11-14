@@ -2199,6 +2199,10 @@ function Theme.HostFont(base, polarity)
   return copy
 end
 
+-- The game object a copy of either kind (Theme.HostFont's) was made from;
+-- nil for any other font. Asks nothing and makes nothing.
+function Theme.CopyBase(object) return HF.baseOf[object] end
+
 -- A number font (a text role's `gameFace`: a count on an item's art) -> its
 -- copy at its floor in the game's own face (DressGameCopy); the object
 -- itself where it has no floor or the client makes no copy.
