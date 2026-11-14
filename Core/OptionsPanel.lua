@@ -7160,8 +7160,11 @@ do
   -- title the figure's name, then each part that is not zero, a label and
   -- its gold. Earned's returned deposits are inside its sales, and the
   -- auction house's cut was never in a mail: both muted, the cut stated,
-  -- never taken off. Under either, where the week reaches back past the
-  -- deposits' record, that they count from 1.70. Built from the sums the
+  -- never taken off. Then at most one short muted line, only while it
+  -- matters: under Earned, that deposits and cut count from 1.70, with how
+  -- many sales lack them when any do; under Spent, that deposits paid
+  -- count from 1.70, while the week reaches back past their record. Built
+  -- from the sums the
   -- card was painted from; the lines are the only strings a hover makes.
   -- Each part's gold is written as the card writes its figures and the
   -- totals band its sums: the figures in their tone with the game's coins
@@ -7232,15 +7235,19 @@ do
       TipGold("OPT_WEEK_COD", w.cod, "negative")
       TipGold("OPT_WEEK_GOLD_SENT", w.gold, "negative")
       TipGold("OPT_WEEK_DEP_PAID", w.depPaid, "negative")
+      if w.partial then TipMuted(L["OPT_WEEK_SINCE_PAID"]) end
     else
       TipHead("OPT_WEEK_EARNED", w.earned, "positive")
       TipGold("OPT_WEEK_SALES", w.sales, "positive")
       TipGold("OPT_WEEK_DEP_BACK", w.depBack, "muted")
       TipGold("OPT_WEEK_OTHER", w.other, "positive")
-      if TipGold("OPT_WEEK_CUT", w.cut, "muted") then TipMuted(L["OPT_WEEK_CUT_NOTE"]) end
-      if w.unopened > 0 then TipMuted(ns.Plural("OPT_WEEK_UNOPENED", w.unopened)) end
+      TipGold("OPT_WEEK_CUT", w.cut, "muted")
+      if w.unopened > 0 then
+        TipMuted(ns.Plural("OPT_WEEK_UNOPENED", w.unopened))
+      elseif w.partial then
+        TipMuted(L["OPT_WEEK_SINCE"])
+      end
     end
-    if w.partial then TipMuted(L["OPT_WEEK_SINCE"]) end
     GameTooltip:Show()
   end
 
