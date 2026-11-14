@@ -3977,6 +3977,12 @@ do
     local all = MM.Characters()
     local UI = ns.MailboxUI
     local order = UI and type(UI.GetCharacterOrder) == "function" and UI.GetCharacterOrder() or "warnings"
+    -- Warnings first while Warn about expiring mail is Off: its own next
+    -- rule, by name then realm (MM.Characters' sort without st.warn), which
+    -- is Name's. The saved choice is kept and comes back with the warnings.
+    if order == "warnings" and UI and type(UI.GetMemoryWarn) == "function" and UI.GetMemoryWarn() == "off" then
+      order = "name"
+    end
     local sortBy = ORDERS[order]
     if not sortBy then return all end
     local list = memo.list

@@ -9203,22 +9203,62 @@ end
 -- Character order: the order the character list (the Inbox button's, on
 -- the Mail tab and in Mail Memory's window) offers the characters in; a
 -- pick reorders an open list at once (UI.SetCharacterOrder). Warnings
--- first, the default, is the order it always had.
+-- first, the default, is the order it always had. While Warn about expiring
+-- mail is Off there are no warnings to put first: Warnings first is not on
+-- offer (State.CharacterOrder), and a saved Warnings first shows as Name,
+-- the order the list then has (MM.CharactersInOrder), and stays saved, so
+-- it is back by itself when the warnings are, as a saved Class icons style
+-- not on offer shows as Game (State.ClassIconsRow).
 function State.CharacterOrderRow(col)
   local UI = ns.MailboxUI
   if not (UI and UI.GetCharacterOrder) then return end
-  return Rows.Dropdown(col, {
-    title = L["OPT_CHARACTER_ORDER_TITLE"], text = L["OPT_CHARACTER_ORDER_DESC"],
-    items = {
-      { id = "warnings", name = L["OPT_CHARACTER_ORDER_WARNINGS"] },
-      { id = "expiring", name = L["OPT_CHARACTER_ORDER_EXPIRING"] },
-      { id = "mail", name = L["OPT_CHARACTER_ORDER_MAIL"] },
-      { id = "name", name = L["OPT_CHARACTER_ORDER_NAME"] },
-      { id = "played", name = L["OPT_CHARACTER_ORDER_PLAYED"] },
-    },
-    get = function() return UI.GetCharacterOrder() end,
+  local on = {
+    { id = "warnings", name = L["OPT_CHARACTER_ORDER_WARNINGS"] },
+    { id = "expiring", name = L["OPT_CHARACTER_ORDER_EXPIRING"] },
+    { id = "mail", name = L["OPT_CHARACTER_ORDER_MAIL"] },
+    { id = "name", name = L["OPT_CHARACTER_ORDER_NAME"] },
+    { id = "played", name = L["OPT_CHARACTER_ORDER_PLAYED"] },
+  }
+  local off = { on[2], on[3], on[4], on[5] }
+  local cell = Rows.Dropdown(col, {
+    title = L["OPT_CHARACTER_ORDER_TITLE"],
+    text = L["OPT_CHARACTER_ORDER_DESC"] .. "\n\n" .. L["OPT_CHARACTER_ORDER_WARN_NOTE"],
+    items = State.WarnOn() and on or off,
+    get = function()
+      local id = UI.GetCharacterOrder()
+      if id == "warnings" and not State.WarnOn() then return "name" end
+      return id
+    end,
     set = function(id) UI.SetCharacterOrder(id) end,
   })
+  -- The order as saved, offered now or not: Reset this tab puts back a
+  -- saved order the row shows as Name too (TabReset.Units).
+  cell.moreGet = UI.GetCharacterOrder
+  S.orderCell, S.orderItems = cell, { on = on, off = off }
+  S.refresh[#S.refresh + 1] = State.CharacterOrder
+  return cell
+end
+
+-- Whether Warn about expiring mail is anything but Off.
+function State.WarnOn()
+  local UI = ns.MailboxUI
+  return ((UI and UI.GetMemoryWarn and UI.GetMemoryWarn()) or "any") ~= "off"
+end
+
+-- Character order's choices for Warn about expiring mail as it is now:
+-- the list handed over again only where it changed (never changed in
+-- place), the box painted from `get`.
+function State.CharacterOrder()
+  local cell, lists = S.orderCell, S.orderItems
+  if not (cell and lists) then return end
+  local items = State.WarnOn() and lists.on or lists.off
+  if cell.items ~= items then
+    cell.items = items
+    if cell.dd.SetItems then cell.dd:SetItems(items) end
+    -- The search's index lists the choices as they are when next used.
+    S.findIndex = nil
+  end
+  Rows.PaintDropdown(cell)
 end
 
 -- Text weight, under Text style, in either Mode: Regular or Bold, applied
@@ -9922,6 +9962,11 @@ function Pages.Alerts(col)
     State.Warnings()
     -- The marker, on the Minimap tab, and its look grey with Warn about too.
     State.MinimapRows()
+    -- Character order offers Warnings first only while there are warnings,
+    -- and an open character list takes the order it now has.
+    State.CharacterOrder()
+    local MM = ns.MailMemory
+    if MM and type(MM.ReloadPicker) == "function" then MM.ReloadPicker() end
     local Icon = ns.MinimapButton
     if Icon and Icon.Refresh then Icon.Refresh() end
     Ctx.Repaint()
