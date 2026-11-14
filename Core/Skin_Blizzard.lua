@@ -2681,8 +2681,11 @@ do
   local H_X, H_T, H_CAP = 8, 7, 16
   local H_B = ns.IsForever and 10.5 or 9.5
   -- The arrow on the game's box: right +1, down 3; its face 4 in from each
-  -- side. The value's lead in from the box's left, and its gap to the arrow.
-  local A_X, A_Y, A_FACE, LEAD, GAP = 1, -3, 4, 8, 2
+  -- side. The value's room, in the art's units (scaled with the box): from
+  -- a unit and a half inside the text holder's rim (which stands 4 in from
+  -- the box's edge) to a unit short of the arrow's face, measured from both
+  -- clients' art: 3.4 units more than it had (8 in, 2 from the art's left).
+  local A_X, A_Y, A_FACE, LEAD, GAP = 1, -3, 4, 5.5, 1
   -- A swatch before the value (Dropdown's SWATCH_X + SIZE + GAP).
   local SWATCH_LEAD = 21
 
@@ -2796,7 +2799,7 @@ do
     local label = toggle.GetFontString and toggle:GetFontString()
     if label and inset <= SWATCH_LEAD then
       local lead = (inset >= SWATCH_LEAD) and SWATCH_LEAD or math.floor(LEAD * s + 0.5)
-      toggle.__pbValueRoom = lead + math.ceil((aw - A_FACE - A_X) * s) + GAP
+      toggle.__pbValueRoom = lead + (aw - A_FACE - A_X) * s + GAP
       label:ClearAllPoints()
       label:SetPoint("LEFT", toggle, "LEFT", lead, 0)
       label:SetJustifyH("LEFT")
