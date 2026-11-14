@@ -1553,7 +1553,8 @@ do
     T.KeepHalo(tile.Title)
     T.KeepHalo(tile.Sub)
     Ctx.TintTile(tile)
-    local room = CTX_W - 48 - 28
+    -- A skin that lays the tile's words in its own room names it.
+    local room = tile.__pbTextRoom or (CTX_W - 48 - 28)
     T.FitText(tile.Title, room, tile.titleText, tile)
     T.FitText(tile.Sub, room, fact or "")
   end

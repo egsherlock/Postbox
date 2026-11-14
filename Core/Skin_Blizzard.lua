@@ -741,6 +741,8 @@ do
       end
       -- The red button's glow is the red art's; the dark one lights by its art.
       if art.glow then art.glow:SetAlpha(red and 1 or 0) end
+      -- A button that inks its own words by the art it wears (Parts.Tile).
+      if art.onKind then art.onKind(button) end
     end
     if kind == "dark" then return PaintDark(button) end
     local state = "up"
@@ -1218,6 +1220,106 @@ do
     LookNow()
     for button in pairs(dressed) do Paint(button) end
     for clock in pairs(cells) do PaintCell(clock) end
+  end
+end
+
+-------------------------------------------------------------
+-- The options' tiles
+-------------------------------------------------------------
+
+-- Options > General's three ways in (Mail Memory, Character Groups, Manage
+-- Recipients: Core/OptionsPanel.lua, Ctx.Tile) are the game's buttons and
+-- follow Options > Window > Buttons as every push button does (Parts.Button:
+-- the small dark button under Mail red, rest dark and All dark, the newer
+-- red button under All red, with their pointer and press). Postbox's own
+-- plate, ring, left edge and chevron are not drawn; the game's small forward
+-- arrow stands where the chevron stood (its middle 14.5 in from the right,
+-- as the chevron's was 15). The name and the mark in the game's gold (the
+-- disabled gray on a tile whose list is off), the second line in its quiet
+-- gray, white on the red button.
+--
+-- Room for the second line in this style: the words start 2 units nearer
+-- the mark (46 in, 7 clear of the mark's 30) and run to 4 units short of
+-- the arrow, 150 units on the 218-unit tile where the chevron left 142
+-- (`tile.__pbTextRoom`, which Ctx.PaintTile reads). The tile keeps its
+-- size, place and clicks.
+do
+  local ARROW = "common-icon-forwardarrow"
+  -- The arrow's art is a square with the arrow 6 wide and 10 tall in its
+  -- middle (measured, both clients): drawn 12 square, its middle ARROW_X in
+  -- from the tile's right, so the arrow stands from 17.5 to 11.5 in.
+  local ARROW_SIZE, ARROW_X, ARROW_INK, ARROW_GAP, TEXT_X = 12, 14.5, 3, 4, 46
+  local busy = false
+
+  local function Ink(tile)
+    if busy or not tile.__pbBlizzTile then return end
+    busy = true
+    local art = tile.__pbBlizzButton
+    local red = art and art.kind == "red"
+    local r, g, b
+    if tile.off then
+      r, g, b = Parts.FontRGB("GameFontDisable", 0.5, 0.5, 0.5)
+    else
+      r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    end
+    tile.Title:SetTextColor(r, g, b)
+    if tile.glyph then tile.Mark:SetVertexColor(r, g, b, 1) end
+    if red then
+      tile.Sub:SetTextColor(Parts.FontRGB("GameFontHighlight", 1, 1, 1))
+    elseif tile.__pbBlizzTile.white then
+      local T = ns.Theme
+      if T and T.SetColor then T.SetColor(tile.Sub, "textSecondary") end
+    end
+    tile.__pbBlizzTile.white = red
+    busy = false
+  end
+
+  function Parts.IsTile(c)
+    return c.Chevron ~= nil and c.Holder ~= nil and c.Sub ~= nil and c.Title ~= nil and c.Edge ~= nil
+      and c:IsObjectType("Button")
+  end
+
+  function Parts.Tile(tile)
+    if tile.__pbBlizzTile ~= nil then return end
+    tile.__pbBlizzTile = false
+    if not HasAtlas(ARROW) then return end
+    Parts.Button(tile)
+    local art = tile.__pbBlizzButton
+    if not art then return end
+    tile.__pbBlizzTile = { white = false }
+    -- Postbox's plate: the card's own fill and line, and the holder's rest,
+    -- hover, ring and edge; the mark (and an art tile's glow) stay.
+    Fade(tile.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(tile[BACKDROP_EDGES[i]]) end
+    Fade(tile.pbSurfaceTexture)
+    for i = 1, select("#", tile.Holder:GetRegions()) do
+      local region = select(i, tile.Holder:GetRegions())
+      if region and region ~= tile.Mark and region ~= tile.Glow and region:IsObjectType("Texture") then Fade(region) end
+    end
+    local parts = tile.Chevron
+    for i = 1, #parts do Fade(parts[i]) end
+    local arrow = tile.Holder:CreateTexture(nil, "OVERLAY")
+    Atlas(arrow, ARROW, false)
+    arrow:SetSize(ARROW_SIZE, ARROW_SIZE)
+    arrow:SetPoint("CENTER", tile, "RIGHT", -ARROW_X, 0)
+    tile.__pbBlizzTile.arrow = arrow
+    -- The words' room and lead.
+    local w = tile:GetWidth()
+    if type(w) == "number" and w > 0 then
+      local room = math.floor(w - ARROW_X - ARROW_INK - ARROW_GAP - TEXT_X)
+      tile.__pbTextRoom = room
+      tile.Title:SetPoint("BOTTOMLEFT", tile, "LEFT", TEXT_X, 1)
+      tile.Sub:SetPoint("TOPLEFT", tile, "LEFT", TEXT_X, -1)
+      tile.Title:SetWidth(room)
+      tile.Sub:SetWidth(room)
+    end
+    -- The inks, again whenever the options paint them their own way.
+    art.onKind = Ink
+    local function Again() Ink(tile) end
+    hooksecurefunc(tile.Title, "SetTextColor", Again)
+    hooksecurefunc(tile.Sub, "SetTextColor", Again)
+    if tile.glyph then hooksecurefunc(tile.Mark, "SetVertexColor", Again) end
+    Ink(tile)
   end
 end
 
@@ -3478,6 +3580,7 @@ function Parts.DressOne(c)
   if c.__postboxCheck and c.__pbBlizzCheck == nil and c:IsObjectType("CheckButton") then Parts.Check(c) end
   if c.__pbGroupHead and c.__pbBlizzHeading == nil then Parts.Heading(c) end
   if c.__pbFindBox and c.__pbBlizzFind == nil then Parts.Find(c) end
+  if c.__pbBlizzTile == nil and c.Chevron and Parts.IsTile(c) then Parts.Tile(c) end
   if c.__pbFooter and c.__pbBlizzFooter == nil then Parts.Footer(c) end
   if c.__pbPopupAlways and c._toggle and c._toggle.__pbFooterOf then Parts.FooterMenu(c) end
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
