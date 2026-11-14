@@ -11251,7 +11251,9 @@ function RV.PaintBar(panel, f, compact)
       if folded then sign:SetSize(14 * k, 24 * k) else sign:SetSize(24 * k, 14 * k) end
     end
   end
-  local x = panel._barSignX or (T.Metrics.inset + 4)
+  -- (A window style's own place for its mark: the Blizzard style's `__pbSignX`,
+  -- nil in every other look.)
+  local x = f.__pbSignX or panel._barSignX or (T.Metrics.inset + 4)
   if f.__signX ~= x then
     f.__signX = x
     f.Sign:ClearAllPoints()

@@ -1278,12 +1278,23 @@ end
 -- "+" / "-" (the Professions recipe list's, professions-recipe-header-
 -- expand / -collapse, 22 x 16 on both clients): "-" while the finished mail
 -- shows, "+" folded and on the copy at the list's foot. It stands at once,
--- never turned (it is no arrow), in the room the chevron took: in the
--- island's fold sign itself, on its place, its cross as long as the
--- chevron's longest side (9 units, 9.75 on Larger mail rows); on Hairline
--- and Full row the same mark on the "+" strokes' middle, the strokes faded.
--- Bar color tints the island's marble by the share the bar's fill mixes in
--- (CT.BarParts.mix, 15%), the rest of the bar as before.
+-- never turned (it is no arrow), 10 units tall on one-line rows (11 on
+-- Larger mail rows; the art at five eighths, 13.75 across), between the
+-- chevron's room and the art's own size. In the island it is the fold sign
+-- itself, moved in from the rows' read-dot column so that its line starts
+-- as far from the gold edge's left end as Delete all's words end from its
+-- right (the row's inset; `f.__pbSignX`, which RV.PaintBar reads); on
+-- Hairline and Full row the same mark on the "+" strokes' middle, 8 units
+-- tall (9 on Full row with Larger mail rows), its line about the read
+-- dot's width as the strokes were, the strokes faded.
+-- Bar color is mixed into the island's marble by the share the bar's fill
+-- mixes in everywhere (CT.BarParts.mix, 15%): the colour laid over the
+-- marble at that strength, none under Neutral; the rest of the bar as
+-- before. Under the pointer the marble lights a little and a press
+-- darkens it (a wash over it, white or black), on the pointer's own ease
+-- as the capsule lit: `f.__pbColour`, called where the capsule's pieces
+-- are coloured (DividerNotch's Colour), only when that ease or the opening
+-- moves.
 --
 -- How it reaches the bar: the walk meets the window's three copies (the
 -- panel's Notch, Divider and DividerPin; never the options' drawing, whose
@@ -1303,9 +1314,14 @@ do
   -- The fold sign's canvas (RV.BAR.sign / signL), and the brackets' share
   -- of the gold.
   local SIGN, SIGN_L, DIM = 12, 13, 0.7
-  -- The chevron's longest side, of its canvas (RV.BAR: 24 of 32), and the
-  -- marks' cross, of the art's width (both clients: 18 of 22).
-  local MARK_K, MARK_CROSS = 24 / 32, 18
+  -- The mark's height, of its canvas: in the island 10 of the 12 units; on
+  -- Hairline and Full row 8, which makes its line as long as the rows' read
+  -- dot is wide, whose column it stands on. And its line, of the art's
+  -- width (both clients: 18 of 22).
+  local MARK_H, MARK_LINE_H, MARK_CROSS = 10 / 12, 8 / 12, 18 / 22
+  -- The wash over the marble: under the pointer on the island and on the
+  -- open bar (white), and pressed (black).
+  local LIT_ISLE, LIT_BAR, LIT_DOWN = 0.12, 0.05, 0.35
   local floor = math.floor
 
   local function Gold() return Parts.FontRGB("GameFontNormal", 1, 0.82, 0) end
@@ -1320,23 +1336,26 @@ do
     f.Mark:SetVertexColor(r, g, b, 1)
   end
 
-  -- A mark for a fold sign's canvas `c` units square, "-" (`open`) or "+",
-  -- at its art's own proportion: its cross (18 of the art's 22 across) as
-  -- long as the chevron's longest side was (24 of the canvas's 32), so it
-  -- takes the chevron's room: the art at a third of the canvas less in
-  -- height (8 of 12 units: the art at half its size on one-line rows).
-  local function LayMark(t, open, c)
-    local name = open and MARK_OPEN or MARK_SHUT
-    Atlas(t, name, false)
-    local w0, h0 = Parts.Size(name)
+  -- A mark's size for a fold sign's canvas `c` units square, `k` of it
+  -- tall, at its art's own proportion: whole units tall (in the island 10
+  -- for the 12-unit canvas, 11 for the 13), so its line stands on the bar's
+  -- middle. -> width, height
+  local function MarkSize(c, k)
+    local w0, h0 = Parts.Size(MARK_OPEN)
     w0, h0 = w0 or 22, h0 or 16
-    local w = c * MARK_K * w0 / MARK_CROSS
-    t:SetSize(w, w * h0 / w0)
+    local h = floor(c * k + 0.5)
+    return h * w0 / h0, h
+  end
+
+  -- The mark, "-" (`open`) or "+", for the canvas `c`, `k` of it tall.
+  local function LayMark(t, open, c, k)
+    Atlas(t, open and MARK_OPEN or MARK_SHUT, false)
+    t:SetSize(MarkSize(c, k))
   end
 
   -- The island's fold sign (DN.SignDraw, as the fold moves).
   local function IsleSign(f, open)
-    LayMark(f.Sign, open, f.__canvas or SIGN)
+    LayMark(f.Sign, open, f.__canvas or SIGN, MARK_H)
   end
 
   -- Hairline's and Full row's (RV.SignPlace, as the sign moves), on the
@@ -1345,7 +1364,7 @@ do
   local function LineSign(f, open)
     local a = f.__pbBlizzBar
     if not (a and a.mark) then return end
-    LayMark(a.mark, open, (f.__look == "full" and not f.__compact) and SIGN_L or SIGN)
+    LayMark(a.mark, open, (f.__look == "full" and not f.__compact) and SIGN_L or SIGN, MARK_LINE_H)
   end
 
   -- The island's height as its move lays it (DN.Size); a copy not laid out
@@ -1356,19 +1375,41 @@ do
     return h
   end
 
-  -- The island's marble under Bar color: tinted by the share the bar's fill
-  -- takes of the colour; plain under Neutral.
-  local function Tint(f, marble)
+  -- Bar color on the island's marble: the colour laid over it at the share
+  -- the bar's fill mixes in (RV.BarRGB); nothing under Neutral.
+  local function Tint(wash)
     local UI = ns.MailboxUI
     local cr, cg, cb
     if UI and type(UI.DividerColorRGB) == "function" then cr, cg, cb = UI.DividerColorRGB() end
     if type(cr) ~= "number" then
-      marble:SetVertexColor(1, 1, 1, 1)
+      wash:Hide()
       return
     end
     local B = ns.CollectTab and ns.CollectTab.BarParts
-    local k = B and B.mix or 0.15
-    marble:SetVertexColor(1 + (cr - 1) * k, 1 + (cg - 1) * k, 1 + (cb - 1) * k, 1)
+    wash:SetColorTexture(cr, cg, cb, B and B.mix or 0.15)
+    wash:Show()
+  end
+
+  -- f.__pbColour (DividerNotch's Colour: `kf` 0 the island, 1 the bar; the
+  -- pointer's ease `hv`, the press's `pv`): the marble lit under the
+  -- pointer, darkened by a press. Only where it moved.
+  local function Light(f, kf, hv, pv)
+    local a = f.__pbBlizzBar
+    local glow = a and a.glow
+    if not glow then return end
+    local s = (LIT_ISLE + (LIT_BAR - LIT_ISLE) * kf) * hv
+    s = s + (-LIT_DOWN - s) * pv
+    if a.lit == s then return end
+    a.lit = s
+    if s > 0 then
+      glow:SetColorTexture(1, 1, 1, s)
+      glow:Show()
+    elseif s < 0 then
+      glow:SetColorTexture(0, 0, 0, -s)
+      glow:Show()
+    else
+      glow:Hide()
+    end
   end
 
   -- f.__pbDress: after a copy is typed, and as the island's inks move.
@@ -1387,14 +1428,20 @@ do
       t[1], t[2], t[3], t[4], t[9], t[10], t[11], t[12] = r, g, b, 1, r, g, b, 1
       r, g, b = White()
       t[5], t[6], t[7], t[8], t[13], t[14], t[15], t[16] = r, g, b, 1, r, g, b, 1
-      -- The mark in its own colours.
-      if f.__pbSign then f.Sign:SetVertexColor(1, 1, 1, 1) end
+      -- The mark in its own colours, its line the row's inset in from the
+      -- bar's left end (RV.PaintBar places the fold sign's middle there).
+      if f.__pbSign then
+        f.Sign:SetVertexColor(1, 1, 1, 1)
+        local T = ns.Theme
+        local inset = T and T.Metrics and T.Metrics.inset or 10
+        f.__pbSignX = inset + MarkSize(f.__canvas or SIGN, MARK_H) * MARK_CROSS / 2
+      end
       local h = Band(f)
       if a.band ~= h then
         a.band = h
         Parts.EdgeOn(a.edge, f.Shape, h)
       end
-      Tint(f, a.marble)
+      if a.wash then Tint(a.wash) end
     end
     if a.mark then a.mark:SetShown(line) end
     if a.rule then
@@ -1423,6 +1470,16 @@ do
       a.band = h
       -- Over the shadow (BACKGROUND -8), above the capsule's pieces.
       a.edge, a.marble = Parts.GoldEdge(f, f.Shape, h, "BACKGROUND", -5, "BACKGROUND", -4)
+      -- Over the marble, inside the gold line: Bar color's wash, then the
+      -- pointer's.
+      a.wash = f:CreateTexture(nil, "BACKGROUND", nil, -3)
+      a.wash:SetAllPoints(a.marble)
+      a.wash:Hide()
+      a.glow = f:CreateTexture(nil, "BACKGROUND", nil, -2)
+      a.glow:SetAllPoints(a.marble)
+      a.glow:Hide()
+      a.lit = 0
+      f.__pbColour = Light
       Fade(P.mid)
       Fade(P.side[1])
       Fade(P.side[2])

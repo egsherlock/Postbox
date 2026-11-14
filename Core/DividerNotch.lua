@@ -440,6 +440,9 @@ local function Colour(f, kf, hv, pv, ks)
   local er, eg, eb = Clamp(br + dr * es), Clamp(bg + dg * es), Clamp(bb + db * es)
   P.edgeL:SetVertexColor(er, eg, eb, 1)
   P.edgeR:SetVertexColor(er, eg, eb, 1)
+  -- A window style's own ground under the pointer (the Blizzard style's;
+  -- nil in every other look).
+  if f.__pbColour then f.__pbColour(f, kf, hv, pv) end
 end
 
 -- The words, icon and number in their ink (the number's brackets keep
