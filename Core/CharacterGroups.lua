@@ -1369,8 +1369,10 @@ local SUGGESTION_SOURCES = {
 }
 
 -- Hidden recipients included: hiding a name is the Send tab's, and stops it
--- being offered there, never here. Kept, so a search builds no options table.
-local SUGGESTION_OPTS = { includeHidden = true }
+-- being offered there, never here. So are the sources switched off: the
+-- Send tab's Offer switches are the Send tab's and Manage Recipients' alone.
+-- Kept, so a search builds no options table.
+local SUGGESTION_OPTS = { includeHidden = true, includeOff = true }
 
 local function Suggestions(text)
   local CS = ns.ContactService

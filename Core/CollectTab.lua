@@ -2727,7 +2727,7 @@ do
     return marked
   end
 
-  -- Whether the rows draw the marks: the Mail page's Expiry marks (on by
+  -- Whether the rows draw the marks: the Time left card's Expiry marks (on by
   -- default). Off, a row's time left is drawn as it was before the marks,
   -- amber alone; the tooltip's "On expiry:" line stays either way.
   function RV.MarksShown()

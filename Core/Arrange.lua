@@ -6628,8 +6628,8 @@ do
         local ui = UI()
         if ui and ui.SetQualityIcon then ui.SetQualityIcon(on) end
       end },
-    -- The expiry marks, on the Time left card where they are drawn (the
-    -- Mail page has the same switch). The time column is measured again:
+    -- The expiry marks, on the Time left card where they are drawn (their
+    -- only switch). The time column is measured again:
     -- a one-line row's widens by the mark.
     { card = "time", title = "OPT_EXPIRY_MARKS_TITLE", desc = "OPT_EXPIRY_MARKS_DESC",
       get = function()

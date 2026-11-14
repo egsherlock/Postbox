@@ -1878,6 +1878,10 @@ do
     local gen = MM.sentGen
     MM.sentGen = gen + 1
     if MM._SentAdded then MM._SentAdded(entry, gen) end
+    -- Sent to another of the player's characters: its count moves now (the
+    -- character list, the minimap), not at the next minute, as a return's.
+    local realm, name = Me()
+    if MM.SentTarget and MM.SentTarget(entry, realm, name) then CharactersChanged() end
     PruneHistory(list, entry.t)
     return entry
   end
@@ -4590,6 +4594,14 @@ do
       if a.me ~= b.me then return a.me end
       return By(a, b, played[a] or nil, played[b] or nil, false)
     end,
+    -- Warnings first while Warn about is Deleted: the characters it warns
+    -- of (MM.Warns), then by name and realm, as MM.Characters' own sort.
+    deleted = function(a, b)
+      if a.me ~= b.me then return a.me end
+      local x, y = MM.Warns(a, "deleted"), MM.Warns(b, "deleted")
+      if x ~= y then return x end
+      return ByName(a, b)
+    end,
   }
 
   function MM.CharactersInOrder()
@@ -4599,8 +4611,10 @@ do
     -- Warnings first while Warn about expiring mail is Off: its own next
     -- rule, by name then realm (MM.Characters' sort without st.warn), which
     -- is Name's. The saved choice is kept and comes back with the warnings.
-    if order == "warnings" and UI and type(UI.GetMemoryWarn) == "function" and UI.GetMemoryWarn() == "off" then
-      order = "name"
+    -- Under Deleted, the warnings it gives lead (ORDERS.deleted).
+    if order == "warnings" and UI and type(UI.GetMemoryWarn) == "function" then
+      local mode = UI.GetMemoryWarn()
+      if mode == "off" then order = "name" elseif mode == "deleted" then order = "deleted" end
     end
     local sortBy = ORDERS[order]
     if not sortBy then return all end

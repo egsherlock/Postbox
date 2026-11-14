@@ -126,7 +126,8 @@ end
 
 local OPTION_DEFAULTS = {
   gridDock        = true,
-  showTabCounts   = true,
+  -- (showTabCounts, Show mail counts, is retired: counts always show. A
+  -- value an old profile saved for it is read by nothing.)
   -- The collect screen's single-line mail rows. On: with the figures packed
   -- to the right edge a one-line row carries everything a list is scanned
   -- for, and half again as many mails fit. The two-line row is one click away.
@@ -300,9 +301,8 @@ function UI.SetOption(key, value)
   -- recipient tables live at the saved-variables root instead (see Postbox.lua).
   if profile then profile[key] = value == true end
   ForgetSettings()
-  -- Expiry marks are on the Time left card while arranging as well as on
-  -- the options' Mail tab: switched from either, the card shows it at once
-  -- (the options' own checkbox follows the card through RefreshControls).
+  -- Expiry marks are switched on the Time left card while arranging: the
+  -- card shows it at once.
   if key == "expiryMarks" then
     local AR = ns.Arrange
     if AR and type(AR.ListWideChanged) == "function" then AR.ListWideChanged() end
@@ -479,6 +479,10 @@ local function ApplyResetLive(partial)
   if send then ResetStep(send.RefreshSendHint) end
   -- And the recipient pin, back on.
   if send then ResetStep(send.ApplyPinOption) end
+  -- The Offer switches, back on: the Send tab's names and Manage
+  -- Recipients follow them, as each switch's own setter has them do.
+  local contacts = ns.ContactService
+  if contacts then ResetStep(contacts.SourcesChanged) end
 end
 
 -- What stops a reset now: "collect" while Postbox is taking mail out of the
@@ -1256,19 +1260,15 @@ function UI.SetDividerLook(look)
 end
 
 -- Whether the bar shows the number of finished mail after its words
--- (profile.dividerCount), a switch of its own. Until it is first read it
--- followed Show mail counts, which is retired: counts always show, so
--- nothing stored (a new profile, or one Reset to defaults cleared) reads as
--- on, and is stored so.
+-- (profile.dividerCount), a switch of its own. Nothing stored (a new
+-- profile, or one Reset to defaults cleared) reads as on, and is left
+-- unstored: asking writes nothing.
 function UI.GetBarCount()
   local memo = Settings()
   if memo.barCount ~= nil then return memo.barCount end
   local profile = DividerProfile()
   local stored = profile and profile.dividerCount
-  if stored == nil then
-    stored = true
-    if profile then profile.dividerCount = stored end
-  end
+  if stored == nil then stored = true end
   memo.barCount = stored == true
   return memo.barCount
 end
@@ -1594,11 +1594,14 @@ function UI.SetHistoryDays(days)
   if not (days and HISTORY_DAYS[days]) then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
   if profile then profile.historyDays = tostring(days) end
+  local memory = ns.MailMemory
+  -- What is counted within the days kept (the typing order's people you
+  -- mail, ContactService's Rank.Counts) is counted again.
+  if memory and type(memory.sentGen) == "number" then memory.sentGen = memory.sentGen + 1 end
   -- "Never" keeps nothing from the moment it is chosen: every character's
   -- record goes now, not at the next login. Once stored, so the pruning
   -- reads 0 days; a record already empty makes this a lookup.
   if days == 0 then
-    local memory = ns.MailMemory
     if memory and type(memory.PruneAllHistory) == "function" then pcall(memory.PruneAllHistory) end
   end
   local panel, collect = CollectPanel(), ns.CollectTab
