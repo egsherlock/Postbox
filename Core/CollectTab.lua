@@ -5542,8 +5542,10 @@ function RV.HistoryShows(on, entry, sent)
 end
 
 -- A list's runs sorted in place: each stretch between its headings (a
--- character's name over every box's matches) and the arrivals Mail Memory
--- puts first (`pending`) is sorted by `by`, which breaks ties by the place
+-- character's name over every box's matches, or the one over the mail sent
+-- another box since its last visit), its lines (`line`, the box's own under
+-- that mail) and the arrivals Mail Memory puts first (`pending`) is sorted
+-- by `by`, which breaks ties by the place
 -- each held (RV.POS), so the order is the same every time. The places and
 -- a stretch go in tables kept for it, emptied when the sort is done;
 -- nothing is made per call. The places are noted a stretch at a time, so
@@ -5556,11 +5558,11 @@ function RV.SortRuns(list, by)
   local i, n = 1, #list
   while i <= n do
     local item = list[i]
-    if item.header or item.pending then
+    if item.header or item.pending or item.line then
       i = i + 1
     else
       local from, k = i, 0
-      while i <= n and not (list[i].header or list[i].pending) do
+      while i <= n and not (list[i].header or list[i].pending or list[i].line) do
         k = k + 1
         run[k] = list[i]
         pos[list[i]] = i
@@ -5639,6 +5641,17 @@ function RV.ShapeRows(panel, rows, order, show)
       if headAt and headAt == #out then out[headAt] = nil end
       out[#out + 1] = mail
       headAt = #out
+    elseif mail.line then
+      -- The box's own line under the mail sent it since (Mail Memory's
+      -- SentBlock): only while some of that mail is still listed; with none,
+      -- its heading goes too, and the list says what it says without them.
+      local last = out[#out]
+      if last and last.sent then
+        out[#out + 1] = mail
+      elseif headAt and headAt == #out then
+        out[headAt] = nil
+        headAt = nil
+      end
     elseif mail.pending or not show or RV.Shows(show, mail.money, mail.items, mail.read) then
       out[#out + 1] = mail
     end
@@ -7002,7 +7015,9 @@ function AV.Build(panel, query)
   local earned, spent = 0, 0
   for i = 1, #rows do
     local mail = rows[i]
-    if not mail.header and not mail.pending then
+    -- What the box held when seen: not what is known to have come since,
+    -- nor the mail Postbox sent it since (Mail Memory's SentBlock).
+    if not mail.header and not mail.pending and not mail.sent and not mail.note then
       earned = earned + (tonumber(mail.money) or 0)
       spent = spent + (tonumber(mail.paid) or 0) + (tonumber(mail.cod) or 0)
     end

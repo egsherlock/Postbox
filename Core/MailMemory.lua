@@ -740,7 +740,9 @@ end
 
 -- realm, name, now -> what there is to say about that character's mail.
 --   waiting    mails in its snapshot still waiting
---   pending    the mail the auction house's notices named since
+--   pending    the mail the auction house's notices named since, and `sent`
+--   sent       the mail Postbox sent it from another character since
+--              (MM.SentSince; never on the character being played)
 --   uncounted  mail came since that nothing named (Uncounted): the count
 --              is waiting + pending and more (MM.CountText)
 --   soon       how many of them are short (three days, one for C.O.D.) and
@@ -756,7 +758,7 @@ local function Status(realm, name, now)
   -- the table is sized once rather than grown twice; the ones left nil are
   -- set below, or there, when they apply.
   local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
-    soon = nil, soonest = nil, held = nil, pending = 0, uncounted = false, unseenDays = nil, warn = false,
+    soon = nil, soonest = nil, held = nil, pending = 0, sent = 0, uncounted = false, unseenDays = nil, warn = false,
     gone = nil, goneSoonest = nil, goneText = nil,
     me = nil, hidden = nil, label = nil, text = nil }
   local mails = snap and snap.mails or {}
@@ -795,6 +797,14 @@ local function Status(realm, name, now)
   end
   local watch = WatchFor(realm, name, false)
   st.pending = LivePendingCount(watch, now)
+  -- And the mail Postbox sent it from another of the player's characters
+  -- since its last visit (MM.SentSince), counted with the mail known to
+  -- be on its way. Never the character being played: its own box knows.
+  local myRealm, myName = Me()
+  if not (realm == myRealm and name == myName) and MM.SentSince then
+    st.sent = MM.SentSince(realm, name, st.seenAt, now)
+    st.pending = st.pending + st.sent
+  end
   if watch then
     st.uncounted = Uncounted(watch, st.seenAt, now)
     local since = watch.newAt
@@ -1411,17 +1421,32 @@ end
 
 -- Postbox just sent mail to `toName`. If that is one of the player's own
 -- characters, mail is now waiting in its box -- and nothing else would know,
--- if that character is not played for a month.
-function MM.NoteSentTo(toName)
+-- if that character is not played for a month. `recorded`: the Sent entry
+-- the send wrote (2d), or nil where none was (History off). A mail with a
+-- record is counted where that character's box is listed (MM.SentSince),
+-- so it is noted as an arrival only; one without is noted uncounted ("new",
+-- "N+": nothing names it to that character's count). On Forever mail stays
+-- on its ruleset, so only the characters on this one are looked at.
+function MM.NoteSentTo(toName, recorded)
   if not MemoryEnabled() or type(toName) ~= "string" or toName == "" then return end
+  local myRealm, myName = Me()
+  if type(recorded) == "table" and MM.SentTarget then
+    local realm, name = MM.SentTarget(recorded, myRealm, myName)
+    if realm then
+      NoteArrival(realm, name, nil, false)
+      -- The count it shows under is read where the list is built.
+      CharactersChanged()
+      return
+    end
+  end
   local R = ns.Recipients
   if not (R and type(R.Key) == "function") then return end
   local key = R.Key(toName)
   local alts = ns.Store and ns.Store.Get and ns.Store.Get("alts")
   if not key or type(alts) ~= "table" then return end
-  local myRealm, myName = Me()
+  local two = ns.Helpers.TwoPartNames()
   for realm, names in pairs(alts) do
-    if type(names) == "table" then
+    if type(names) == "table" and not (two and realm ~= myRealm) then
       for i = 1, #names do
         local name = names[i]
         if not (realm == myRealm and name == myName)
@@ -1517,6 +1542,11 @@ end
 -- so a list built from the records (CollectTab's History) knows exactly
 -- when what it built from has changed.
 MM.recordWrites = 0
+-- The same for the Sent records alone: an entry written, entries dropped, a
+-- record made or let go. What is built from them for the player's own
+-- characters' boxes (2d, MM.SentSince) is built again when it moves; a
+-- collect, which writes History, leaves it be.
+MM.sentGen = 0
 
 -- What runs past the cap before it is cut back: a twentieth of it (50 at
 -- 1000, 250 at 5000), so the pass that moves the list comes once in that
@@ -1537,6 +1567,9 @@ local function PruneHistory(list, now)
   if n - drop > cap + math.floor(cap / 20) then drop = n - cap end
   if drop > 0 then
     MM.recordWrites = MM.recordWrites + 1
+    -- And the mail sent to the player's own characters, read from the
+    -- records (2d, MM.SentSince), is read again.
+    MM.sentGen = MM.sentGen + 1
     for i = 1, n - drop do list[i] = list[i + drop] end
     for i = n, n - drop + 1, -1 do list[i] = nil end
   end
@@ -1611,6 +1644,10 @@ do
   function MM.SentChanged()
     gens.mailSent = gens.mailSent + 1
     MM.recordWrites = MM.recordWrites + 1
+    -- A record made or let go ("Never" empties them all): the counts of the
+    -- mail sent to the player's own characters move with it.
+    MM.sentGen = MM.sentGen + 1
+    CharactersChanged()
   end
 
   local function MeFirst(a, b)
@@ -1765,6 +1802,12 @@ do
     entry.t = entry.t or time()
     list[#list + 1] = entry
     MM.recordWrites = MM.recordWrites + 1
+    -- What is built from the records for the player's own characters'
+    -- boxes takes the one entry (below); a cut back to the cap builds it
+    -- again.
+    local gen = MM.sentGen
+    MM.sentGen = gen + 1
+    if MM._SentAdded then MM._SentAdded(entry, gen) end
     PruneHistory(list, entry.t)
     return entry
   end
@@ -1804,6 +1847,298 @@ do
       end
     end
     return into
+  end
+
+  -- Mail sent to the player's own characters, by the character it went
+  -- to: what that character's box holds that its last snapshot cannot
+  -- know. Read from the records above, every character's (several may
+  -- have mailed one alt): each entry whose `s` is one of the characters
+  -- in the census (`alts`), by the census's own key (Recipients.
+  -- CharacterKey, as Mail.OwnCharacterKeys keys them), and not the one
+  -- that sent it. On Forever mail cannot cross a ruleset, so an entry is
+  -- matched only to the characters on its sender's.
+  --
+  -- Each character it went to (a target) holds one part per character
+  -- that sent it some: the entries themselves, oldest first as the record
+  -- has them, so nothing is sorted. Built when first asked and kept until
+  -- the records move (MM.sentGen: entries dropped, a record made or let
+  -- go), the census grows, or the roots are replaced; a mail sent adds its
+  -- one entry where it goes (MM._SentAdded) rather than build again. Never
+  -- per refresh. A row is made for an entry the first time a box lists it
+  -- (SentRow) and kept while the entry is (weak keys), so a refresh makes
+  -- nothing.
+  local built = { gen = -1, root = false, alts = false, altsN = -1, two = false, targets = false, own = false,
+    keys = false }
+  local rowOf = setmetatable({}, { __mode = "k" })
+  local LETTER = "Interface\\Icons\\INV_Letter_02"
+  -- Where the newest-first walk over a target's parts stands in each part
+  -- (SentWalk): one table for every walk, emptied after it.
+  local cursor = {}
+
+  local function CensusCount(alts)
+    local n = 0
+    for _, names in pairs(alts) do
+      if type(names) == "table" then n = n + #names end
+    end
+    return n
+  end
+
+  -- An address as written in a record (`s`) -> its recipient key, or false.
+  -- Kept per build: a record names few recipients many times.
+  local function KeyOf(s)
+    local keys = built.keys
+    local key = keys[s]
+    if key == nil then
+      local R = ns.Recipients
+      key = (R and type(R.Key) == "function") and (R.Key(s)) or false
+      if type(key) ~= "string" or key == "" then key = false end
+      keys[s] = key
+    end
+    return key
+  end
+
+  -- entry, realm, name (of the character whose record holds it) -> the
+  -- target it went to, or nil.
+  local function TargetOf(e, sRealm, sName)
+    local s = type(e) == "table" and e.s or nil
+    if type(s) ~= "string" or not tonumber(e.t) then return nil end
+    local own = built.own
+    local mine = (not built.two) and own or own[sRealm]
+    local key = mine and KeyOf(s)
+    local target = key and mine[key]
+    if target and not (target.realm == sRealm and target.name == sName) then return target end
+    return nil
+  end
+
+  -- One entry onto its target, in the part of the character that sent it.
+  local function Add(target, e, sRealm, sName)
+    local parts = target.parts
+    if not parts then
+      parts = {}
+      target.parts = parts
+    end
+    local part
+    for i = 1, #parts do
+      if parts[i].realm == sRealm and parts[i].name == sName then
+        part = parts[i]
+        break
+      end
+    end
+    if not part then
+      part = { realm = sRealm, name = sName }
+      parts[#parts + 1] = part
+    end
+    part[#part + 1] = e
+  end
+
+  local function Build(root, alts, two)
+    local b = built
+    b.targets, b.own, b.keys, b.two = {}, {}, {}, two
+    local R = ns.Recipients
+    if not (R and type(R.Key) == "function") then return end
+    for realm, names in pairs(alts) do
+      if type(names) == "table" then
+        for i = 1, #names do
+          local name = names[i]
+          local key = type(name) == "string" and name ~= "" and ((type(R.CharacterKey) == "function")
+            and R.CharacterKey(name, realm) or (R.Key(name .. "-" .. realm))) or nil
+          if type(key) == "string" and key ~= "" then
+            local target = { realm = realm, name = name, parts = false }
+            b.targets[realm] = b.targets[realm] or {}
+            b.targets[realm][name] = target
+            if two then
+              b.own[realm] = b.own[realm] or {}
+              b.own[realm][key] = target
+            else
+              b.own[key] = target
+            end
+          end
+        end
+      end
+    end
+    for sRealm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for sName, list in pairs(byRealm) do
+          if type(list) == "table" then
+            for i = 1, #list do
+              local e = list[i]
+              local target = TargetOf(e, sRealm, sName)
+              if target then Add(target, e, sRealm, sName) end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  -- -> `built`, current, or nil without records or a census.
+  local function Fresh()
+    local get = ns.Store and ns.Store.Get
+    local root = get and get("mailSent")
+    local alts = get and get("alts")
+    if type(root) ~= "table" or type(alts) ~= "table" then return nil end
+    local n = CensusCount(alts)
+    local two = ns.Helpers.TwoPartNames() and true or false
+    local b = built
+    if not (b.targets and b.gen == MM.sentGen and b.root == root and b.alts == alts and b.altsN == n and b.two == two) then
+      Build(root, alts, two)
+      b.gen, b.root, b.alts, b.altsN = MM.sentGen, root, alts, n
+    end
+    return b
+  end
+
+  local function TargetFor(realm, name)
+    local b = Fresh()
+    local byRealm = b and b.targets[realm]
+    return byRealm and byRealm[name] or nil
+  end
+
+  -- The record of the character played took `entry` (MM.SentRecord), and
+  -- `gen` is what MM.sentGen was before: what is built stays current with
+  -- the entry added where it goes, if it was current before.
+  function MM._SentAdded(entry, gen)
+    local b = built
+    if not (b.targets and b.gen == gen) then return end
+    local realm, name = Me()
+    local target = TargetOf(entry, realm, name)
+    if target then Add(target, entry, realm, name) end
+    b.gen = MM.sentGen
+  end
+
+  -- entry, realm, name (of the character that sent it, the one played) ->
+  -- the realm and name of the player's own character it went to, or nil.
+  function MM.SentTarget(entry, realm, name)
+    if type(entry) ~= "table" or not (realm and name) or not Fresh() then return nil end
+    local target = TargetOf(entry, realm, name)
+    if not target then return nil end
+    return target.realm, target.name
+  end
+
+  -- target, after, cutoff -> the newest entry of its parts newer than both
+  -- (the walk's cursor moved past it) and its part, or nil when none is.
+  -- The cursor starts at each part's end (SentWalk).
+  local function NextNewest(parts, after, cutoff)
+    local best, bestPart, bestAt, bestT = nil, nil, 0, nil
+    for p = 1, #parts do
+      local at = cursor[p]
+      local e = at > 0 and parts[p][at] or nil
+      local t = e and (tonumber(e.t) or 0)
+      if t and t > after and t >= cutoff and (not bestT or t > bestT) then
+        best, bestPart, bestAt, bestT = e, p, at, t
+      end
+    end
+    if not best then return nil end
+    cursor[bestPart] = bestAt - 1
+    return best, parts[bestPart]
+  end
+
+  -- realm, name, seenAt, now -> how many of the mails sent to that
+  -- character are newer than `seenAt` (its box's last visit; nil: none
+  -- recorded, every one) and still within the days History keeps. 0 while
+  -- History is off: nothing is recorded then.
+  function MM.SentSince(realm, name, seenAt, now)
+    local keep = HistoryKeep()
+    if keep <= 0 then return 0 end
+    local target = TargetFor(realm, name)
+    local parts = target and target.parts
+    if not parts then return 0 end
+    local after, cutoff = tonumber(seenAt) or -1, (now or time()) - keep
+    local n = 0
+    for p = 1, #parts do
+      local part = parts[p]
+      for i = #part, 1, -1 do
+        local t = tonumber(part[i].t) or 0
+        if t <= after or t < cutoff then break end
+        n = n + 1
+      end
+    end
+    return n
+  end
+
+  -- entry, part (its sender), realm (of the box) -> the row a box lists
+  -- for it: a mail as a snapshot keeps one (section 1), with `sent` set
+  -- and no `expires` (nothing here says when it goes), its sender the
+  -- character that sent it, as a box names a sender: bare on the box's own
+  -- realm, "Name-Realm" from another; on Forever the full name. Its items
+  -- as a capture lists them, id and count in turn; its subject the one it
+  -- went with, or its first item's name.
+  local function SentRow(e, part, toRealm)
+    local row = rowOf[e]
+    if row then return row end
+    local sender = part.name
+    if part.realm ~= toRealm and not ns.Helpers.TwoPartNames() then
+      sender = part.name .. "-" .. (part.realm:gsub("[%s%-]", ""))
+    end
+    local list, first, firstId = nil, nil, nil
+    if type(e.it) == "table" then
+      for k = 1, #e.it do
+        local item = e.it[k]
+        local link = type(item) == "table" and item.l or nil
+        local id = type(link) == "string" and tonumber((link:match("item:(%d+)"))) or nil
+        if id then
+          list = list or {}
+          local at = #list
+          list[at + 1] = id
+          list[at + 2] = tonumber(item.n) or 1
+          if not first then first, firstId = item, id end
+        end
+      end
+    end
+    local subject = type(e.sub) == "string" and e.sub or ""
+    if subject == "" and first then subject = first.l:match("|h%[(.-)%]|h") or "" end
+    local icon
+    if firstId and C_Item and type(C_Item.GetItemIconByID) == "function" then icon = C_Item.GetItemIconByID(firstId) end
+    row = { sent = true, t = tonumber(e.t), stuck = false, icon = icon or LETTER, sender = sender, subject = subject,
+      money = tonumber(e.m) or 0, cod = tonumber(e.c) or 0, items = list and #list / 2 or 0, read = false,
+      link = first and first.l or false, id = firstId, kind = false, paid = false,
+      count = first and (tonumber(first.n) or 1) or false, it = list }
+    rowOf[e] = row
+    return row
+  end
+
+  -- out, realm, name, seenAt, now, oldest -> how many rows were appended
+  -- to `out`: the mails MM.SentSince counts, newest first whoever sent
+  -- them (`oldest`: the other way round).
+  function MM.SentRowsInto(out, realm, name, seenAt, now, oldest)
+    local keep = HistoryKeep()
+    if keep <= 0 then return 0 end
+    local target = TargetFor(realm, name)
+    local parts = target and target.parts
+    if not parts then return 0 end
+    local after, cutoff = tonumber(seenAt) or -1, (now or time()) - keep
+    for p = 1, #parts do cursor[p] = #parts[p] end
+    local at, n = #out, 0
+    while true do
+      local e, part = NextNewest(parts, after, cutoff)
+      if not e then break end
+      n = n + 1
+      out[at + n] = SentRow(e, part, realm)
+    end
+    for p = #cursor, 1, -1 do cursor[p] = nil end
+    if oldest then
+      for i = 1, math.floor(n / 2) do
+        out[at + i], out[at + n + 1 - i] = out[at + n + 1 - i], out[at + i]
+      end
+    end
+    return n
+  end
+
+  -- realm, name -> the heading over that character's sent rows and the
+  -- line under them (its box's own, MM.SeenText), made once per build and
+  -- kept on its target, so a refresh makes neither. The heading is a
+  -- heading of the box it stands in (header, its realm and name), drawn as
+  -- words alone (`note`); the line's words are set by the list that shows
+  -- it.
+  function MM.SentNotes(realm, name)
+    local target = TargetFor(realm, name)
+    if not target then return nil end
+    local head = target.head
+    if not head then
+      head = { header = true, note = true, realm = realm, name = name, label = L["MEMORY_SENT_SINCE"] }
+      target.head = head
+      target.line = { note = true, line = true, label = "" }
+    end
+    return head, target.line
   end
 end
 
@@ -3288,6 +3623,14 @@ local function Figures(mail, now, fs)
     slots = T.Colorize("textSecondary", text)
   end
 
+  -- Mail sent the box since its last visit (MM.SentRowsInto): nothing
+  -- recorded says when it goes, so no time is shown for it.
+  if mail.sent then
+    if R and money and not R.MoneyShown(moneyKind) then money = nil end
+    if R and slots and not R.Shows("slots") then slots = nil end
+    return money, slots, nil, nil, nil, false, moneyKind == "cod" and money ~= nil
+  end
+
   -- Time left by the mail list's own rule (ExpiryState): the player's
   -- threshold, amber when genuinely short -- and "expired" always shows.
   local expiryText, expired = ExpiryText(mail.expires, now)
@@ -3342,7 +3685,7 @@ local function RowTexts(mail, now, fs)
   local texts = rowTexts
   texts.time, texts.money, texts.slots, texts.facts = nil, nil, nil, nil
   texts.expiryText, texts.expired, texts.cod = nil, nil, nil
-  if mail.header then return texts end
+  if mail.header or mail.note then return texts end
   if mail.pending then
     local last = LastShownFigure(R)
     if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"]) end
@@ -3417,7 +3760,7 @@ do
     if not R.Shows("sender") then cap = 0 end
     for i = 1, #rows do
       local mail = rows[i]
-      if not mail.header and cols.sender < cap then
+      if not (mail.header or mail.note) and cols.sender < cap then
         local label = R.OutcomeSender(mail.kind) or R.DisplaySender(mail.sender) or ""
         cols.sender = math.min(math.max(cols.sender, Width(widths, owner, R, sample.Sender, label) + 2), cap)
       end
@@ -3443,7 +3786,7 @@ do
       FN.Begin(owners)
       for i = 1, #rows do
         local mail = rows[i]
-        if not mail.header then FN.Note(owners, R.DisplaySender(mail.sender)) end
+        if not (mail.header or mail.note) then FN.Note(owners, R.DisplaySender(mail.sender)) end
       end
       cols.firsts = owners
     end
@@ -3474,7 +3817,50 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   local R = Rules()
   local T = ns.Theme
   T.StyleMailRow(row, position, false)
+  -- A line of words is not a row of the list: no band of its own.
+  if row._bg then row._bg:SetShown(not mail.note) end
   row.onHeader = onHeader
+  if mail.note then
+    -- Words of the list's own (MM.SentNotes): the heading over the mail
+    -- sent a box since its last visit, and the box's own line under it.
+    -- No icon, no mark, no figure, nothing under the pointer.
+    row.itemLink, row.itemID = nil, nil
+    row.expiryTip, row.stuck = nil, nil
+    row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
+    row.headerRealm, row.headerName = nil, nil
+    if row.HeaderWash then
+      row.HeaderWash:Hide()
+      row.HeaderRule:Hide()
+    end
+    row.HeaderHit:Hide()
+    MM.Icons.Release(row.Icon)
+    row.Icon:Hide()
+    if row.IconHit then row.IconHit:Hide() end
+    row.Indicator:Hide()
+    if row.Indicator.__pbShade then row.Indicator.__pbShade:Hide() end
+    row.Warning:Hide()
+    row.ColTime:Hide()
+    row.ColMoney:Hide()
+    row.ColSlots:Hide()
+    local width = row:GetParent():GetWidth() or 0
+    if width < 100 then width = WINDOW_WIDTH - 44 end
+    if R and R.Anchor then
+      R.Anchor(row, row.Sender, 1, 6, 0)
+      R.Wash(row, nil)
+    end
+    if R and R.PaintSender then R.PaintSender(row.Sender, nil) end
+    T.SetColor(row.Sender, "textSecondary")
+    row.Sender:Show()
+    row.Subject:Show()
+    T.FitText(row.Sender, width - 12, mail.label, nil)
+    T.FitText(row.Subject, 1, "", nil)
+    if R and R.PaintQuality then R.PaintQuality(row, nil) end
+    if R and R.PaintNameMark then R.PaintNameMark(row, nil) end
+    if R and R.PaintCount then R.PaintCount(row, nil, nil) end
+    row:SetAlpha(1)
+    row:Show()
+    return
+  end
   if mail.header then
     -- A search across characters: the name the matches below belong to.
     row.itemLink, row.itemID = nil, nil
@@ -3812,6 +4198,8 @@ do
         if Holds(mails[i], now) then return true end
       end
     end
+    -- Mail sent it from another character since its last visit (Status).
+    if MM.SentSince(realm, name, snap and snap.seenAt or nil, now) > 0 then return true end
     local watch = WatchFor(realm, name, false)
     if not watch then return false end
     if LivePendingCount(watch, now) > 0 then return true end
@@ -3916,12 +4304,16 @@ local function BoxTotal(snapshot, pending, now)
 end
 
 -- realm, name -> another character's whole box, for its plate on the Mail
--- tab: the count MM.RowsFor gives that box as info.box; and whether more
--- came than it holds (Uncounted; MM.CountText says them together).
+-- tab: the count MM.RowsFor gives that box as info.box, the mail sent it
+-- since its last visit included (MM.SentSince); and whether more came than
+-- it holds (Uncounted; MM.CountText says them together).
 function MM.BoxCount(realm, name)
   local now = time()
   local snapshot, watch = SnapshotFor(realm, name), WatchFor(realm, name, false)
-  return BoxTotal(snapshot, LivePendingCount(watch, now), now), Uncounted(watch, snapshot and snapshot.seenAt, now)
+  local seenAt = snapshot and snapshot.seenAt or nil
+  local myRealm, myName = Me()
+  local sent = (realm == myRealm and name == myName) and 0 or MM.SentSince(realm, name, seenAt, now)
+  return BoxTotal(snapshot, LivePendingCount(watch, now) + sent, now), Uncounted(watch, seenAt, now)
 end
 
 -- The foot of the list, standing for the characters the player hid: one
@@ -4520,9 +4912,48 @@ local function SnapshotOf(realm, name)
   return SnapshotFor(realm, name)
 end
 
+-- The mail Postbox sent another of the player's characters since its last
+-- visit (MM.SentRowsInto), gathered here on its way into a list: one table
+-- for every list, emptied as it is read.
+local sentScratch = {}
+
+-- rows, realm, name, snapshot, now, query, order -> rows with the mail sent
+-- that character since its last visit at their top, under their heading
+-- and over the box's own line (MM.SentNotes), each through the search as
+-- the box's own mail goes; and how many. In the box's order, newest first
+-- ("oldest": the other way round); they have no expiry to sort by. `rows`
+-- is the list RowsFor made for this call, moved down in place.
+local function SentBlock(rows, realm, name, snapshot, now, query, order)
+  local sc = sentScratch
+  local n = MM.SentRowsInto(sc, realm, name, snapshot and snapshot.seenAt or nil, now, order == "oldest")
+  local k = 0
+  for i = 1, n do
+    local row = sc[i]
+    sc[i] = nil
+    if query == "" or Matches(row, query) then
+      k = k + 1
+      sc[k] = row
+    end
+  end
+  if k == 0 then return rows, 0 end
+  local head, line = MM.SentNotes(realm, name)
+  line.label = MM.SeenText(snapshot, true)
+  local m, shift = #rows, k + 2
+  for i = m, 1, -1 do rows[i + shift] = rows[i] end
+  rows[1] = head
+  for i = 1, k do
+    rows[i + 1] = sc[i]
+    sc[i] = nil
+  end
+  rows[k + 2] = line
+  return rows, k
+end
+
 -- Every character's matches, each under a heading with its name. A hidden
 -- character is not searched: the search of every box browses the other
--- characters, and the player took that one out of them.
+-- characters, and the player took that one out of them. The mail sent
+-- another character since its last visit is searched with its box, and
+-- listed first under its heading (SentBlock's order).
 local function SearchAll(query, now, order, all)
   local rows, characters = {}, 0
   all = all or MM.Characters()
@@ -4535,10 +4966,28 @@ local function SearchAll(query, now, order, all)
     local mails = snap and snap.mails
     local copy = (snap ~= nil and snap == live) and Frozen or nil
     local found = 0
+    local headed = false
+    if not st.hidden and not st.me and (st.sent or 0) > 0 then
+      local sc = sentScratch
+      local n = MM.SentRowsInto(sc, st.realm, st.name, snap and snap.seenAt or nil, now, order == "oldest")
+      for j = 1, n do
+        local row = sc[j]
+        sc[j] = nil
+        if Matches(row, query) then
+          if not headed then
+            headed = true
+            characters = characters + 1
+            rows[#rows + 1] = { header = true, realm = st.realm, name = st.name,
+              label = MM.ClassName(st.realm, st.name) }
+          end
+          rows[#rows + 1] = row
+        end
+      end
+    end
     for j = 1, mails and #mails or 0 do
       local mail = mails[j]
       if Matches(mail, query) then
-        if found == 0 then
+        if found == 0 and not headed then
           characters = characters + 1
           rows[#rows + 1] = { header = true, realm = st.realm, name = st.name,
             label = MM.ClassName(st.realm, st.name) }
@@ -4596,7 +5045,8 @@ end
 -- opts.characters: an MM.Characters() list already built for this refresh.
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
 -- (in the box but past the record's cap), box (the whole box, BoxTotal,
--- whatever the search), matched, onCharacters.
+-- whatever the search), matched, onCharacters, sent (the mail sent another
+-- character since its last visit listed at the top, SentBlock).
 function MM.RowsFor(realm, name, opts)
   opts = opts or {}
   local myRealm, myName = Me()
@@ -4628,10 +5078,13 @@ function MM.RowsFor(realm, name, opts)
     for i = 1, count do rows[#rows + 1] = mails[i] end
   end
 
-  local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = count }
+  local info = { realm = realm, name = name, me = me, snapshot = snapshot, total = count, sent = 0 }
   info.hidden = snapshot and math.max(0, (tonumber(snapshot.total) or count) - count) or 0
+  -- Another character's box: the mail sent it since its last visit, which
+  -- the box holds too (MM.SentSince), listed at the top below.
+  local sentN = me and 0 or MM.SentSince(realm, name, snapshot and snapshot.seenAt or nil, now)
   -- The rows so far are the arrivals, then the record.
-  info.box = BoxTotal(snapshot, #rows - count, now)
+  info.box = BoxTotal(snapshot, #rows - count + sentN, now)
 
   local query = opts.query or ""
   if query ~= "" then
@@ -4648,6 +5101,13 @@ function MM.RowsFor(realm, name, opts)
       rows = kept
       info.matched = #rows
     end
+  end
+  -- The sent mail over the box (SentBlock), but in a search of every box,
+  -- which lists it under each box's heading (SearchAll). `info.sent`: how
+  -- many it lists.
+  if sentN > 0 and not (query ~= "" and opts.all) then
+    rows, info.sent = SentBlock(rows, realm, name, snapshot, now, query, opts.sort)
+    if info.matched then info.matched = info.matched + info.sent end
   end
   -- This character's box at a mailbox is this visit's look (SearchAll makes
   -- its own copies).
@@ -4730,10 +5190,12 @@ function MM.PreviewRelease()
 end
 
 -- snapshot -> "Last seen 27 min ago." or the words for none / an empty box.
-function MM.SeenText(snapshot)
+-- `sentAbove`: the mail sent the box since stands over it (MM.RowsFor), and
+-- an empty box was empty then.
+function MM.SeenText(snapshot, sentAbove)
   if not snapshot then return L["MEMORY_EMPTY"] end
   if #(snapshot.mails or {}) == 0 then
-    return string.format(L["MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt))
+    return string.format(L[sentAbove and "MEMORY_ASOF_EMPTY_THEN" or "MEMORY_ASOF_EMPTY"], AgeText(snapshot.seenAt))
   end
   return string.format(L["MEMORY_LASTSEEN"], AgeText(snapshot.seenAt))
 end
@@ -5616,7 +6078,7 @@ function Refresh(frame)
   if frame._topHidden then MM.HideTopRow(frame) end
 
   -- The foot: when the box was seen, or what a search found.
-  local text = MM.SeenText(info.snapshot)
+  local text = MM.SeenText(info.snapshot, (info.sent or 0) > 0)
   if (info.hidden or 0) > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], info.hidden) end
   if info.matched then
     text = ns.Plural("MEMORY_MATCHES", info.matched)

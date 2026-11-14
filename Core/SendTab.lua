@@ -1010,10 +1010,11 @@ local function FinishSend(outcome)
     -- is not a recipient the player has mailed.
     Contacts().SaveRecipient(pending.toName)
     -- And into Sent, one entry per mail the server took (8d).
-    ST.RecordSent(pending)
+    local recorded = ST.RecordSent(pending)
     -- Mail to one of the player's own characters is mail that character has
-    -- waiting, whether or not it is played again this month.
-    if ns.MailMemory and ns.MailMemory.NoteSentTo then ns.MailMemory.NoteSentTo(pending.toName) end
+    -- waiting, whether or not it is played again this month: counted there
+    -- from its Sent entry where one was written.
+    if ns.MailMemory and ns.MailMemory.NoteSentTo then ns.MailMemory.NoteSentTo(pending.toName, recorded) end
     -- The window's status line counts it, one per mail the server took, so
     -- each mail of a press counts as its success arrives (MailboxUI,
     -- UI.NoteSent).
@@ -1481,18 +1482,21 @@ do
   end
 
   -- The server took the mail `pending` sent: its record kept, and counted
-  -- to the press it belongs to.
+  -- to the press it belongs to. -> the entry as Sent keeps it, or nil when
+  -- nothing was kept (History off).
   function ST.RecordSent(pending)
     local entry = pending.record
-    if not entry then return end
+    if not entry then return nil end
     pending.record = nil
     entry.t = time()
     local MM = ns.MailMemory
-    if MM and type(MM.SentRecord) == "function" then MM.SentRecord(entry) end
+    local kept = nil
+    if MM and type(MM.SentRecord) == "function" then kept = MM.SentRecord(entry) end
     local press = pending.press
     if press then press[#press + 1] = entry end
     local CT = ns.CollectTab
     if CT and type(CT.SentChanged) == "function" then CT.SentChanged() end
+    return kept
   end
 
   -- The last mail of a press went and the draft was settled: the line says
