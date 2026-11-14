@@ -7056,14 +7056,18 @@ do
   -- none is the dash), Collected and Sent as the count.
   --
   -- Where the line cannot hold it all (a long translation, large figures,
-  -- a large text size), the labels give way first: each is held to one
+  -- a large text size, a long name), Earned and Spent from ten thousand
+  -- gold up are written short first, as the Mail tab's money column writes
+  -- them, their tooltips saying the whole sum; then the character's name
+  -- in the heading is cut, down to the heading's own words, whole under
+  -- the pointer. Then the labels give way: each is held to one
   -- width, the widest that fits, never under the shortest label's own, and
   -- cut there by the house fit rule (Theme.FitText), whole under the
   -- pointer; where that is not enough, Earned's and Spent's labels are left
   -- out (their figures in the positive and negative inks with the coin,
   -- their tooltips titled with them), then Collected's and Sent's too, each
-  -- said under the pointer. Only then is the heading cut, the same way, so
-  -- whose week it is goes last. The figures and the switch are never cut
+  -- said under the pointer. Only then is the heading cut further, its own
+  -- words too. The figures and the switch are never cut
   -- (Week.Fit, Week.FORMS).
   -- Read from History, Sent and the deposits paid (MailMemory.Week): gold
   -- taken from mail, and gold out for mail and auctions -- auctions bought,
@@ -7184,6 +7188,27 @@ do
     GameTooltip:AddLine(text, m, m, m, true)
   end
 
+  -- Earned's or Spent's title: the figure's name, and at the line's right
+  -- the week's whole sum exactly, every coin, in its tone and with coins
+  -- sized for the title's font -- the figure the card may write short
+  -- (Week.Fit) said in full, on the line the tooltip has anyway. With
+  -- nothing to sum, the name alone.
+  local function TipHead(label, copper, tone)
+    local T = ns.Theme
+    local F = ns.Core and ns.Core.Formatting
+    if not (copper and copper > 0) then
+      T.TipTitle(L[label])
+      return
+    end
+    local amount
+    if F and F.FormatMoneyIcons then
+      amount = F.FormatMoneyIcons(copper, nil, nil, Coins(_G.GameTooltipHeaderText))
+    else
+      amount = ns.Helpers.FormatMoney(copper)
+    end
+    GameTooltip:AddDoubleLine(L[label], T.TipTone(tone, amount), 1, 1, 1, 1, 1, 1)
+  end
+
   -- Collected's and Sent's (and Earned's and Spent's with nothing added
   -- up): their label whole, where it was cut (Week.Fit).
   local function FigureEnter(self)
@@ -7202,13 +7227,13 @@ do
     end
     T.TipBegin(self, "ANCHOR_TOP")
     if self.fig == 2 then
-      T.TipTitle(L["OPT_WEEK_SPENT"])
+      TipHead("OPT_WEEK_SPENT", w.spent, "negative")
       TipGold("OPT_WEEK_BOUGHT", w.bought, "negative")
       TipGold("OPT_WEEK_COD", w.cod, "negative")
       TipGold("OPT_WEEK_GOLD_SENT", w.gold, "negative")
       TipGold("OPT_WEEK_DEP_PAID", w.depPaid, "negative")
     else
-      T.TipTitle(L["OPT_WEEK_EARNED"])
+      TipHead("OPT_WEEK_EARNED", w.earned, "positive")
       TipGold("OPT_WEEK_SALES", w.sales, "positive")
       TipGold("OPT_WEEK_DEP_BACK", w.depBack, "muted")
       TipGold("OPT_WEEK_OTHER", w.other, "positive")
@@ -7296,15 +7321,29 @@ do
   end
 
   -- The line laid out for what it says now (Week.Paint): the heading, then
-  -- each figure GAP after it, FIG_GAP apart, the switch at the right. What
-  -- the room cannot hold is taken from the labels first, in the forms of
+  -- each figure GAP after it, FIG_GAP apart, the switch at the right. When
+  -- it all fits nothing is shortened. What the room cannot hold is taken
+  -- from the gold first (written short), then the name, then the labels, in the forms of
   -- Week.FORMS, the first that fits: in each, the labels it keeps are held
   -- to one width `cap`, the widest that fits the line, never under the
   -- shortest kept label's own width; the labels it leaves out are said
   -- under the pointer. What is still over in the last form is taken from
   -- the heading. Each cut by Theme.FitText, said whole under the pointer.
   -- Answers nothing; the widths go in Week's own slots.
-  function Week.Fit(d, heading, linkW)
+  -- The heading's own words with the cut's ellipsis where the name stood
+  -- (OPT_WEEK_ON before its %s): the least the name gives way to. Made
+  -- once.
+  function Week.HeadWords()
+    local words = Week.headWords
+    if not words then
+      words = (tostring(L["OPT_WEEK_ON"]):match("^(.-)%%s") or "") .. "..."
+      Week.headWords = words
+    end
+    return words
+  end
+
+  -- `named`: the heading names a character (not the count of them all).
+  function Week.Fit(d, heading, linkW, named)
     local T = ns.Theme
     local lw, room, vw = Week.lw, Week.room, Week.vw
     local labels, values, zones, title = d.labels, d.values, d.zones, d.head.Title
@@ -7319,6 +7358,36 @@ do
     end
     local avail = LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - linkW
     local whole = titleW + GAP + labelsW + 4 * Week.LABEL_GAP + valuesW + 3 * Week.FIG_GAP - avail
+    -- Over: first Earned and Spent from ten thousand gold up are written
+    -- short, as the Mail tab's money column writes them ("12.9k", "482k",
+    -- "1.3m"; under ten thousand they stay exact), their tooltips saying
+    -- the whole sum (TipHead).
+    local sums = d.goldSums
+    if whole > 0 and sums then
+      local F = ns.Core and ns.Core.Formatting
+      for j = 1, 2 do
+        local copper = j == 1 and sums.earned or sums.spent
+        if F and F.FormatMoneyCompactCoins and copper and copper >= 100000000 then
+          local v = values[j]
+          v:SetText("|c" .. (j == 1 and d.upHex or d.downHex) .. F.FormatMoneyCompactCoins(copper, true, Coins(v)) .. "|r")
+          local w = TextW(v)
+          whole = whole - vw[j] + w
+          vw[j] = w
+        end
+      end
+    end
+    -- Then the character's name in the heading, down to the heading's own
+    -- words: its words, the labels and the counts stay whole while a name
+    -- can give the room (cut by Theme.FitText, said whole under the
+    -- pointer: HeadEnter).
+    local give = 0
+    if whole > 0 and named then
+      title:SetText(Week.HeadWords())
+      local least = TextW(title)
+      title:SetText(heading)
+      give = math.min(whole, math.max(0, titleW - least))
+      whole = whole - give
+    end
     local FORMS = Week.FORMS
     local keep, cap, over = FORMS[1], math.huge, whole
     for f = 1, #FORMS do
@@ -7355,7 +7424,7 @@ do
     end
     for j = 1, 4 do room[j] = keep[j] and math.min(lw[j], cap) or 0 end
     -- The heading: whole, or cut by what is still over.
-    local titleRoom = math.max(1, titleW - math.max(0, over))
+    local titleRoom = math.max(1, titleW - give - math.max(0, over))
     T.FitText(title, titleRoom, heading, d.head)
     local x = NAME_X + math.min(titleW, titleRoom) + GAP
     for j = 1, 4 do
@@ -7463,7 +7532,9 @@ do
       T.SetColor(v, off and "textDisabled" or "textPrimary")
       v:SetText(words)
     end
-    Week.Fit(d, heading, linkW)
+    -- What Week.Fit writes short where the line is over, in the same inks.
+    d.goldSums, d.upHex, d.downHex = sums, "ff" .. up, "ff" .. down
+    Week.Fit(d, heading, linkW, not (chars > 1 and who == "all"))
   end
 
   -- `/postbox debug card <n>` (Postbox.lua): the card filled with n sample
