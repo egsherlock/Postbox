@@ -1704,25 +1704,59 @@ do
     R:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
     M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
     M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-    -- The magnifier, as the template places it, grown with the box.
-    local k = h / BOX_H
-    if not bare and HasAtlas(GLASS) then
-      local glass = wrap:CreateTexture(nil, "ARTWORK")
-      if Atlas(glass, GLASS, false) then
-        glass:SetSize(GLASS_SIZE * k, GLASS_SIZE * k)
-        glass:SetPoint("LEFT", wrap, "LEFT", GLASS_X * k, GLASS_Y * k)
-        pieces[4] = glass
-      end
-    end
+    if not bare then pieces[4] = Parts.Glass(wrap, h) end
     return pieces
+  end
+
+  -- The magnifier, as the template places it, grown with the box, or nil.
+  function Parts.Glass(wrap, h)
+    if not HasAtlas(GLASS) then return nil end
+    local k = h / BOX_H
+    local glass = wrap:CreateTexture(nil, "ARTWORK")
+    if not Atlas(glass, GLASS, false) then return nil end
+    glass:SetSize(GLASS_SIZE * k, GLASS_SIZE * k)
+    glass:SetPoint("LEFT", wrap, "LEFT", GLASS_X * k, GLASS_Y * k)
+    return glass
+  end
+
+  -- A field with a key joined to it (Theme.JoinCell: the Mail tab's and
+  -- Mail Memory's search with their sort, Manage Recipients' search and the
+  -- Send tab's Recipient box with their keys) wears the key's own rim: the
+  -- small dark button's art (Parts.LaySmall), the strip's first cell, its
+  -- middle running on to the key's left edge, where the key's art (the
+  -- strip's last cell, its one-unit line at its left) takes it on, as
+  -- Received and Sent are joined. Its key hidden (a search with its sort
+  -- taken out), the field is a whole button of that art. At rest always: a
+  -- field is not pressed. `strip` the three pieces; the magnifier as the
+  -- fourth on a search.
+  local function LayStrip(wrap, strip, cell)
+    local h = wrap:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local joined = (cell and cell.__pbBlizzSeg and cell:IsShown()) and true or false
+    if strip.joined == joined and strip.h == h then return end
+    strip.joined, strip.h = joined, h
+    Parts.LaySmall(strip, wrap, "up", joined and "first" or "alone", 0, h)
+    if joined then
+      strip[2]:SetPoint("BOTTOMRIGHT", cell, "BOTTOMLEFT", 0, -Parts.SmallGeo("up", h).outB)
+    end
+  end
+
+  local function Strip(wrap, search)
+    local strip = Parts.SmallArt(wrap)
+    if not strip then return nil end
+    strip.strip = true
+    local h = wrap:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    if search then strip[4] = Parts.Glass(wrap, h) end
+    return strip
   end
 
   -- A search box: the art, and its words after the magnifier as the
   -- template places them, grown with the box.
-  local function LaySearch(wrap, search)
+  local function LaySearch(wrap, search, strip)
     local h = wrap:GetHeight()
     if type(h) ~= "number" or h <= 0 then h = 24 end
-    local pieces = Parts.SearchArt(wrap, h)
+    local pieces = strip and Strip(wrap, true) or Parts.SearchArt(wrap, h)
     if pieces and pieces[4] then
       local lead = math.floor(TEXT_X * h / BOX_H + 0.5)
       wrap.__pbTextLead = lead
@@ -1776,6 +1810,7 @@ do
   function Parts.FieldEnd(wrap, cell)
     local pieces = wrap.__pbBlizzField
     if not pieces or pieces.tall then return end
+    if pieces.strip then return LayStrip(wrap, pieces, cell) end
     local joined = (cell and cell.__pbBlizzSeg and cell:IsShown()) and true or false
     if pieces.joined == joined then return end
     pieces.joined = joined
@@ -1793,8 +1828,12 @@ do
     wrap.__pbBlizzField = false
     local search = wrap.__pbSearch
     local pieces
+    -- A field with a key joined to it wears the key's rim (LayStrip).
+    local joins = not wrap._scroll and Parts.JoinedCell(wrap) ~= nil
     if type(search) == "table" then
-      pieces = LaySearch(wrap, search)
+      pieces = LaySearch(wrap, search, joins)
+    elseif joins then
+      pieces = Strip(wrap, false)
     elseif wrap._scroll then
       -- Many lines tall: sunk, with the rows' ground inside (above). The
       -- lists' own dark ground stays under it for the dark list.
@@ -2108,6 +2147,7 @@ do
     return art
   end
   Parts.LaySmall = Lay
+  Parts.SmallGeo = Geo
 
   -- The rim's own column, one unit wide, at the right end of a cell with a
   -- cell after it: the metal at rest, the selected art's white beside a lit
