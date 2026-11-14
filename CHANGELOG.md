@@ -158,6 +158,14 @@
 - **Options > Mail tab: shorter descriptions** for Finished mail's seven
   settings and for the tab's own text about Arrange. Each says only what
   its row can't show.
+- **Send tab: the Sent clock is part of the Send mail button,** in a cell
+  of its own at its left, in the Postbox, EllesmereUI and ElvUI styles.
+- **Dropdown lists that scroll line up with their box,** and the
+  highlight runs right up to the scroll bar.
+- **Options: the footer's tooltips stand by their button** (Reset to
+  defaults, Report a bug), and each reset's tooltip stands beside the menu.
+- **Every window's close X sits level with the cog,** the same distance
+  from its edge.
 - **Reset has its own button** at the foot of the sort menus, lit only
   when there is something to reset.
 - **On the game's own UI, Postbox opens in its Postbox style** unless you
