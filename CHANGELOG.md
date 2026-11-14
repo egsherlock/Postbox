@@ -260,6 +260,10 @@
 
 ### Fixed
 
+- **Send tab: the Recipient box keeps a name you typed in full.** With
+  "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
+- **Send tab: your own character is no longer suggested to itself** when
+  you favorited it on another character.
 - **The bank and other game windows work after a visit to the mailbox.**
   With Dock beside game windows on, the bank works as usual after the
   mailbox, in WoW Forever too: docking leaves the game's window layout
