@@ -340,7 +340,8 @@ on new mail)
 and **Characters** (Class icons, Character order, Hidden characters). The
 sound is one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
-through LibSharedMedia, such as ElvUI's or a SharedMedia pack's (with a button to hear
+through LibSharedMedia, such as ElvUI's or a SharedMedia pack's, or
+EllesmereUI's own alert sounds while it is loaded (with a button to hear
 it first; it stays quiet for your own auction house purchases, which the
 game already announces). The options open beside
 whatever opened them: right of the Postbox

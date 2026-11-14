@@ -73,13 +73,13 @@
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
-  playing is always first. Warnings first is offered while Warn about
-  expiring mail is on.
+  playing is always first. Warnings first stays in the list, gray, while
+  Warn about expiring mail is Off.
 - **Hidden characters** (Options > General > Characters) is one list:
   tick a name to hide that character, tick it again to show it, or Show
   all. The Inbox button keeps its class icon and character list while your
   other characters are all hidden, so they are one click away under
-  Hidden.
+  Hidden. The row stays usable while Remember mailboxes is off.
 - The mail list opens at its top after a visit that ended in a search, a
   filter or another character's mail.
 
@@ -108,6 +108,10 @@
 - **Choose where suggested names come from** (Options > Send tab): your
   alts, your guild, your friends, people you mailed recently, and players
   you grouped with recently. Favorites stay whatever you switch off.
+- **Send tab: All tells the people you mailed from the people you grouped
+  with.** The people you mailed are under Recently mailed, and a new
+  Recently grouped section, above Guild, lists the five you grouped with
+  last. Manage Recipients' Category says Recently mailed too.
 - **Send tab: the names offered as you type put the people you mail
   first:** favorites, then the people you mail most, then everyone else.
   Only names that match what you typed are listed, as before.
@@ -118,6 +122,11 @@
 - **Manage Recipients: Delete on a name your guild or friends list still
   offers also hides it,** so the Send tab stops offering it, and the
   question says so. Show, under Hidden, brings it back.
+- **Manage Recipients lists a hidden name only under Hidden.** After Hide
+  or Delete the row leaves the list you are on; Hidden is the one place to
+  find it and Show it.
+- **Sound on new mail** (Options > General > Alerts) also offers
+  EllesmereUI's own alert sounds while EllesmereUI is loaded.
 
 ### Options and Arrange
 
@@ -262,13 +271,17 @@
 ### WoW Forever
 
 - Mail rows can show senders by first name (Arrange > Sender column).
+- An auction mail's tooltip names the auction house it came from (Mail
+  tab), since WoW Forever has three.
 
 ### Fixed
 
 - **Mail tab: an auction mail the game gives no title shows the item it
   holds.** Where the game's subject stays "Retrieving data", the row, its
   tooltip and the opened mail name the item inside, and History and Mail
-  Memory keep it under that name.
+  Memory keep it under that name. With no title to say how the auction
+  ended, the row says **AH Mail** where the sender goes and its tooltip
+  says why; All mail collects it.
 - **Send tab: the Recipient box keeps a name you typed in full.** With
   "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
 - **Send tab: your own character is no longer suggested to itself** when
