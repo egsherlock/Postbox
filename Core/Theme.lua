@@ -5248,8 +5248,9 @@ Theme.AtlasSets = {
 --     (OptionsPanel's Ctx.window; the round6 mockup's LINK and LINKX). One
 --     of the small family (`px`), its cut ends on whole units.
 --   link-10  Phosphor's bold link, its whole box 10 units square (the ink
---     10 by 8): the options' pointer lines that open another tab
---     (OptionsPanel's Rows.Note with an onClick), in the accent. Fitted by
+--     10 by 8): the options' buttons that open another tab (Options >
+--     General's Minimap marker, OptionsPanel's Rows.Button), in the
+--     caption's ink. Fitted by
 --     icons-r13's rules, a quarter unit right for the most ink in whole
 --     pixels, Phosphor's stroke kept (.dev/design/pointer-build/
 --     gen_link10.py).
