@@ -266,6 +266,10 @@
 
 ### Fixed
 
+- **Mail tab: an auction mail the game gives no title shows the item it
+  holds.** Where the game's subject stays "Retrieving data", the row, its
+  tooltip and the opened mail name the item inside, and History and Mail
+  Memory keep it under that name.
 - **Send tab: the Recipient box keeps a name you typed in full.** With
   "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
 - **Send tab: your own character is no longer suggested to itself** when
