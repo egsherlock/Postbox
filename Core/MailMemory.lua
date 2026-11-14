@@ -4197,6 +4197,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     end
     if R and R.PaintSender then R.PaintSender(row.Sender, nil) end
     T.SetColor(row.Sender, "textSecondary")
+    -- A look that draws such a line as a plate of its own lays it and inks
+    -- the words on it (the Blizzard style's, between its papers).
+    if T.NoteGround then T.NoteGround(row) end
     row.Sender:Show()
     row.Subject:Show()
     T.FitText(row.Sender, width - 12, mail.label, nil)

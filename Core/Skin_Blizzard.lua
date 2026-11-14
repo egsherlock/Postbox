@@ -1868,9 +1868,11 @@ do
 
   -- The three pieces laid on `box` by the rim, for a box `h` units tall:
   -- the art's height that puts its line on the box's top and foot. Again
-  -- where the height moves (the same points set anew).
-  function Parts.EdgeOn(pieces, box, h)
-    local out = h * RIM_Y / (ART_H - 2 * RIM_Y)
+  -- where the height moves (the same points set anew). `inY`: the units the
+  -- line stands inside `box` at its top and its foot (nil: on them), `h`
+  -- then the height between the two lines.
+  function Parts.EdgeOn(pieces, box, h, inY)
+    local out = h * RIM_Y / (ART_H - 2 * RIM_Y) - (inY or 0)
     local L, M, R = pieces[1], pieces[2], pieces[3]
     L:SetWidth(CAP)
     L:SetPoint("TOPLEFT", box, "TOPLEFT", -RIM_X, out)
@@ -1910,8 +1912,8 @@ do
   -- pieces' black middle), laid on `box`, `h` units tall: the strip's own
   -- box, or a frame that moves (the bar over finished mail's island shape),
   -- which the art then follows by its anchors alone. Answers the pieces and
-  -- the marble.
-  function Parts.GoldEdge(owner, box, h, layer, sub, mLayer, mSub)
+  -- the marble. `inY` as Parts.EdgeOn's.
+  function Parts.GoldEdge(owner, box, h, layer, sub, mLayer, mSub, inY)
     local pieces = {}
     for i = 1, 3 do
       local t = owner:CreateTexture(nil, layer, nil, sub)
@@ -1920,14 +1922,19 @@ do
       t:SetTexCoord(c[1], c[2], c[3], c[4])
       pieces[i] = t
     end
-    Parts.EdgeOn(pieces, box, h)
+    Parts.EdgeOn(pieces, box, h, inY)
     local marble = owner:CreateTexture(nil, mLayer, nil, mSub)
     marble:SetTexture(MARBLE, "REPEAT", "REPEAT")
     marble:SetHorizTile(true)
     marble:SetVertTile(true)
-    marble:SetPoint("TOPLEFT", box, "TOPLEFT", MARBLE_IN, -MARBLE_IN)
-    marble:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -MARBLE_IN, MARBLE_IN)
+    Parts.MarbleIn(marble, box, inY)
     return pieces, marble
+  end
+
+  -- The marble inside the line, MARBLE_IN past it (`inY` as above).
+  function Parts.MarbleIn(marble, box, inY)
+    marble:SetPoint("TOPLEFT", box, "TOPLEFT", MARBLE_IN, -MARBLE_IN - (inY or 0))
+    marble:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -MARBLE_IN, MARBLE_IN + (inY or 0))
   end
 
   function Parts.Totals(band)
@@ -4062,6 +4069,7 @@ do
     if not T or T.RowGround then return end
     T.RowGround = Skin.RowGround
     T.ListGround = Skin.ListGround
+    T.NoteGround = Skin.NoteGround
     -- The game's UI scale or the screen moved: the papered rows laid again
     -- on their new pixels (Skin.ApplyScale does it for the window scale).
     if type(CreateFrame) == "function" then
@@ -4322,10 +4330,58 @@ do
     LayBands(L)
   end
 
+  -- A line of words in a mail list (Mail Memory's "Sent by you since its
+  -- last visit" and the box's own line, MM.SentNotes) is not mail and gets
+  -- no paper. Between papers it is drawn as the island over finished mail
+  -- is: the gold edge with the marble inside it (Parts.GoldEdge), across
+  -- the row, the words in the game's gold. The art's whole picture, its
+  -- shadow included, stands inside the row (the line a tenth of the row's
+  -- height inside its top and its foot: 2.6 units of 26), so nothing of it
+  -- lies over the paper above or below. Only on a parchment: on the dark
+  -- list the line stays the gray words it was. Four textures on the row,
+  -- made the first time that row shows such a line and kept; put away by
+  -- the next bind's RowGround, which every binder of the row calls first,
+  -- and laid again only where the row's height moved.
+  local function NoteOff(row)
+    row.__pbNoteOn = nil
+    local n = row.__pbNote
+    for i = 1, 4 do n[i]:Hide() end
+  end
+
+  -- Theme.NoteGround: `row` was just bound as such a line, its words set
+  -- and inked by the binder.
+  function Skin.NoteGround(row)
+    local mode = R.mode
+    if mode ~= "light" and mode ~= "dark" then return end
+    local h = row:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 26 end
+    local n = row.__pbNote
+    if not n then
+      local pieces, marble = Parts.GoldEdge(row, row, h * 0.8, "BACKGROUND", 2, "BORDER", -1, h * 0.1)
+      n = pieces
+      n[4] = marble
+      n.h = h
+      row.__pbNote = n
+    elseif n.h ~= h then
+      n.h = h
+      Parts.EdgeOn(n, row, h * 0.8, h * 0.1)
+      Parts.MarbleIn(n[4], row, h * 0.1)
+    end
+    if not row.__pbNoteOn then
+      row.__pbNoteOn = true
+      for i = 1, 4 do n[i]:Show() end
+    end
+    local words = row.Sender
+    if words and type(words.SetTextColor) == "function" then
+      words:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+    end
+  end
+
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
   -- mail, a heading in Mail Memory's list); `gap`: the units between one
   -- row and the next in its list (nil: none, the rows touch).
   function Skin.RowGround(row, position, gap)
+    if row.__pbNoteOn then NoteOff(row) end
     local mode = R.mode
     local paper = row.__pbPaper
     if position == nil or mode == "none" then
