@@ -10269,6 +10269,43 @@ function Footer.Glyph(parent, name, size)
   return glyph
 end
 
+-- The footer's tooltips, one rule for all: each stands right over what it
+-- is for, as a tooltip over a control stands elsewhere in the panel (the
+-- 7-day card's, ANCHOR_TOP), not beside the panel, and lined up as the
+-- control is on the band: Reset at its left end has its tooltip's left
+-- edge on its own, as its menu does under it; Report a bug in the middle
+-- has it centred over its mark and words. Over the band, so never over the
+-- menu Reset opens under itself. `x`: where along `owner` the tooltip is
+-- centred (Report a bug's words on the band), else it starts at `owner`'s
+-- left edge.
+function Footer.Tip(owner, title, text, x)
+  local T = ns.Theme
+  local tip = T.TipBegin(owner, "ANCHOR_NONE")
+  T.TipTitle(title or "")
+  T.TipLine(text)
+  tip:ClearAllPoints()
+  if x then
+    tip:SetPoint("BOTTOM", owner, "TOPLEFT", x, 0)
+  else
+    tip:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, 0)
+  end
+  tip:Show()
+end
+
+-- A Reset menu row's tooltip: beside the menu, level with the row, so it
+-- covers neither the menu nor the footer it opened from.
+function Footer.RowTip(row, title, text)
+  local T = ns.Theme
+  local tip = T.TipBegin(row, "ANCHOR_NONE")
+  T.TipTitle(title or "")
+  T.TipLine(text)
+  tip:ClearAllPoints()
+  tip:SetPoint("TOPLEFT", row, "TOPRIGHT", Footer.ROW_TIP_X, 0)
+  tip:Show()
+end
+-- The row's right edge to the menu card's (its padding), and a little air.
+Footer.ROW_TIP_X = 4 + 4
+
 function Footer.Build(frame, above)
   local T = ns.Theme
   local statusBand = CreateFrame("Button", nil, frame, "BackdropTemplate")
@@ -10504,8 +10541,7 @@ function Footer.Build(frame, above)
       else
         text = L["OPT_RESET_EVERYTHING_TIP"]
       end
-      Tip.Begin(row, item.name, text)
-      Tip.Show(row)
+      Footer.RowTip(row, item.name, text)
     end
     local function ResetUntip() GameTooltip:Hide() end
 
@@ -10534,8 +10570,7 @@ function Footer.Build(frame, above)
     reset:SetScript("OnEnter", function(self)
       Quiet(false)
       if menu and menu:IsShown() then return end
-      Tip.Begin(self, L["OPT_RESET_DEFAULTS"], L["OPT_RESET_DEFAULTS_DESC"])
-      Tip.Show(self)
+      Footer.Tip(self, L["OPT_RESET_DEFAULTS"], L["OPT_RESET_DEFAULTS_DESC"])
     end)
     reset:SetScript("OnLeave", function()
       Quiet(true)
@@ -10555,8 +10590,11 @@ function Footer.Build(frame, above)
   statusBand:SetScript("OnEnter", function(self)
     T.SetColor(statusText, "textPrimary")
     if bug then T.SetColor(bug, "textPrimary") end
-    Tip.Begin(self, L["OPT_BUG_TIP_TITLE"], L["OPT_BUG_TIP_DESC"])
-    Tip.Show(self)
+    -- Over its mark and words, wherever along the band the pointer is.
+    local f = S.footer
+    local x = f.bugX and (f.bugX + (TextW(statusText) - (f.bugMark > 0 and (f.bugGap + 19) or 0)) / 2)
+      or (self:GetWidth() or 0) / 2
+    Footer.Tip(self, L["OPT_BUG_TIP_TITLE"], L["OPT_BUG_TIP_DESC"], x)
   end)
   statusBand:SetScript("OnLeave", function()
     T.SetColor(statusText, "textSecondary")
@@ -10590,6 +10628,8 @@ function Footer.Fit()
   x = math.floor(x + 0.5)
   f.bugText:ClearAllPoints()
   f.bugText:SetPoint("LEFT", f.band, "LEFT", x + mark + gap, 0)
+  -- Where its words start along the band: its tooltip centres over them.
+  f.bugX = x + mark + gap
   S.footH = math.max(FOOT_BOTTOM,
     Footer.VERSION_GAP + math.ceil(f.version:GetStringHeight() or 0) + Footer.VERSION_FOOT)
 end
