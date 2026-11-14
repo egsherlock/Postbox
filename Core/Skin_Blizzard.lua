@@ -797,10 +797,12 @@ do
   -- window's stone: the band's own fill, line and grain are not drawn. The
   -- button is the band's height (24, the height the words are centred in),
   -- its face PAD units past the words at each side, as a button of that
-  -- height carries them, except where that would pass the band's own end
-  -- (Reset's left, What's new?'s right): there the face ends where the band
-  -- does, so the outer buttons line up with the panes above. The words, the
-  -- marks and the version line do not move.
+  -- height carries them. The two outer faces end where the band does, so
+  -- they line up with the panes above, and their words are moved in to keep
+  -- the same PAD there: Reset to defaults with its mark PAD in from the
+  -- band's left end, What's new? PAD in from its right (Ends; Footer.Fit
+  -- reads the two from `resetX` and `newsX`). Report a bug and the version
+  -- line do not move.
   --
   -- The art is laid on the frame that owns the words (Reset's and What's
   -- new?'s buttons, the band for Report a bug), under them, round a box of
@@ -862,6 +864,27 @@ do
     band:SetHitRectInsets(left, right, 0, 0)
   end
 
+  -- The two outer items moved in from the band's ends: Reset's frame so
+  -- that its mark (2 into the frame; its words 4 in where there is no mark)
+  -- starts PAD from the band's left end, What's new?'s so that its words
+  -- end PAD from the band's right. Footer.Fit keeps Report a bug clear of
+  -- the two where they now stand.
+  local function Ends(f, band)
+    if f.reset and f.resetText then
+      local x = PAD - (f.resetArrow and 2 or 4)
+      f.reset:ClearAllPoints()
+      f.reset:SetPoint("TOPLEFT", band, "TOPLEFT", x, 0)
+      f.reset:SetPoint("BOTTOMLEFT", band, "BOTTOMLEFT", x, 0)
+      f.resetX = x
+    end
+    if f.news and f.newsText then
+      f.news:ClearAllPoints()
+      f.news:SetPoint("TOPRIGHT", band, "TOPRIGHT", -PAD, 0)
+      f.news:SetPoint("BOTTOMRIGHT", band, "BOTTOMRIGHT", -PAD, 0)
+      f.newsX = PAD
+    end
+  end
+
   function Parts.FooterButtons(band)
     local f = band.__pbFooter
     if type(f) ~= "table" or band.__pbBlizzFootArt ~= nil then return end
@@ -871,6 +894,7 @@ do
     if type(h) ~= "number" or h <= 0 then h = 24 end
     local half = h / 2
     band.__pbBlizzFootArt = true
+    Ends(f, band)
     -- The band itself is not drawn.
     Fade(band.Center)
     for i = 1, #BACKDROP_EDGES do Fade(band[BACKDROP_EDGES[i]]) end
@@ -898,8 +922,8 @@ do
       box:SetPoint("TOPLEFT", band, "TOPLEFT", 0, 0)
       box:SetPoint("BOTTOMRIGHT", last, "RIGHT", PAD, -half)
       if BoxArt(reset, box) then
-        -- The click area out to the art: the frame stands 4 in from the
-        -- band's end, and ends 18 past its words (4 without a caret).
+        -- The click area out to the art: the frame stands in from the
+        -- band's end (Ends), and ends 18 past its words (4 without a caret).
         local _, _, _, x = reset:GetPoint(1)
         local over = (f.resetCaret and 12 or 0) + PAD - (f.resetCaret and 18 or 4)
         reset:SetHitRectInsets(-(tonumber(x) or 0), -math.max(0, over), 0, 0)
@@ -1376,19 +1400,18 @@ end
 -- Every list's bar (Theme.SlimScrollBar: Postbox's own slider and step
 -- buttons, in the gutter it has) wears the game's minimal scroll bar
 -- (MinimalScrollBar, the bar every one of the game's own lists carries):
--- its track, its small thumb and its two arrows, each with the game's hover
--- and pressed art. The bar's own drawing is faded or hidden; the slider,
--- its range, its steps and its clicks are untouched.
+-- its track and its small thumb, with the game's hover and pressed art, and
+-- no arrows: the step buttons at the bar's two ends are not drawn and take
+-- no clicks, and the bar runs through their room, so the track is as long
+-- as the bar and its two buttons were. The wheel, the thumb and a click on
+-- the track move the list. The bar's own drawing is faded; the slider, its
+-- range and its steps are untouched.
 --
 -- Laid by its rim (measured): the track's art is 8 wide with a clear unit
 -- at each side, so on the 6-unit bar it is drawn a unit past each side and
 -- its visible track is the bar; the thumb's art is 8 wide and solid, a unit
 -- past the bar each side, as the game's thumb stands past its track; its
--- middle is cut to the thumb's length, never squashed. The arrows keep the
--- art's own proportions, scaled down whole to the room between the bar's
--- middle and the inside of the list's bevel (8 units of the art's 17), and
--- stand on the track's ends in the step buttons' room: nothing of the bar
--- passes the bevel, the list's edge, its top or its foot.
+-- middle is cut to the thumb's length, never squashed.
 do
   local TRACK = { "minimal-scrollbar-track-top", "!minimal-scrollbar-track-middle", "minimal-scrollbar-track-bottom" }
   local THUMB = {
@@ -1396,22 +1419,12 @@ do
     over = { "minimal-scrollbar-small-thumb-top-over", "minimal-scrollbar-small-thumb-middle-over", "minimal-scrollbar-small-thumb-bottom-over" },
     down = { "minimal-scrollbar-small-thumb-top-down", "minimal-scrollbar-small-thumb-middle-down", "minimal-scrollbar-small-thumb-bottom-down" },
   }
-  local ARROWS = {
-    top = { up = "minimal-scrollbar-arrow-top", over = "minimal-scrollbar-arrow-top-over", down = "minimal-scrollbar-arrow-top-down" },
-    bottom = { up = "minimal-scrollbar-arrow-bottom", over = "minimal-scrollbar-arrow-bottom-over", down = "minimal-scrollbar-arrow-bottom-down" },
-  }
-  -- The list's rim the arrows stay inside: the inset bevel's side tile.
-  local EDGE = "!UI-Frame-InnerRightTile"
 
   local function HasAll(list)
     for i = 1, #list do
       if not HasAtlas(list[i]) then return false end
     end
     return true
-  end
-
-  local function HasArrows(set)
-    return HasAtlas(set.up) and HasAtlas(set.over) and HasAtlas(set.down)
   end
 
   -- Three pieces stacked down `host`'s height, `out` past each side: the
@@ -1472,55 +1485,30 @@ do
   local function BarDown(bar) local a = bar.__pbBlizzBar if a then a.down = true PaintThumb(bar) end end
   local function BarUp(bar) local a = bar.__pbBlizzBar if a then a.down = false PaintThumb(bar) end end
 
-  local function PaintArrow(btn)
-    local art = btn.__pbBlizzArrow
-    if not art then return end
-    local state = (art.down and "down") or (art.over and "over") or "up"
-    if art.state == state then return end
-    art.state = state
-    Atlas(art.tex, art.names[state], false)
+  -- A step button, unseen and out of the pointer's way (the bar shows and
+  -- hides it with itself, so it is faded, not hidden). -> its height, the
+  -- room it leaves the bar.
+  local function NoStep(btn)
+    if not btn then return 0 end
+    btn:SetAlpha(0)
+    btn:EnableMouse(false)
+    local h = btn:GetHeight()
+    return type(h) == "number" and h > 0 and h or 0
   end
 
-  local function ArrowEnter(btn) local a = btn.__pbBlizzArrow if a then a.over = true PaintArrow(btn) end end
-  local function ArrowLeave(btn) local a = btn.__pbBlizzArrow if a then a.over, a.down = false, false PaintArrow(btn) end end
-  local function ArrowDown(btn) local a = btn.__pbBlizzArrow if a then a.down = true PaintArrow(btn) end end
-  local function ArrowUp(btn) local a = btn.__pbBlizzArrow if a then a.down = false PaintArrow(btn) end end
-
-  -- The step button's own chevron hidden, the game's arrow in its place:
-  -- in the art's own proportions, no wider than `maxW`, its foot on the
-  -- track's top end (the top arrow) or its head on the track's bottom end,
-  -- so it stands in the step button's room and never above or below it.
-  local function Arrow(btn, names, maxW, top)
-    if not btn or btn.__pbBlizzArrow then return end
-    for i = 1, select("#", btn:GetRegions()) do
-      local r = select(i, btn:GetRegions())
-      if r and r.Hide then r:Hide() end
-    end
-    local tex = btn:CreateTexture(nil, "ARTWORK")
-    local w, h = Parts.Size(names.up)
-    w, h = w or 17, h or 11
-    if maxW and w > maxW then
-      h = h * maxW / w
-      w = maxW
-    end
-    -- Never taller than the step button's own room.
-    local room = btn:GetHeight()
-    if type(room) == "number" and room > 0 and h > room then
-      w = w * room / h
-      h = room
-    end
-    tex:SetSize(w, h)
-    if top then
-      tex:SetPoint("BOTTOM", btn, "BOTTOM", 0, 0)
-    else
-      tex:SetPoint("TOP", btn, "TOP", 0, 0)
-    end
-    btn.__pbBlizzArrow = { tex = tex, names = names }
-    PaintArrow(btn)
-    btn:HookScript("OnEnter", ArrowEnter)
-    btn:HookScript("OnLeave", ArrowLeave)
-    btn:HookScript("OnMouseDown", ArrowDown)
-    btn:HookScript("OnMouseUp", ArrowUp)
+  -- The bar through its two step buttons' room: its top and its foot each
+  -- moved out by that button's height (Theme.SlimScrollBar hangs the bar by
+  -- its top right and bottom right corners, a button's height in from the
+  -- span it was given). Anything else, and the bar keeps its place.
+  local function TakeStepRoom(bar)
+    local up, down = NoStep(bar.Up), NoStep(bar.Down)
+    if bar:GetNumPoints() ~= 2 then return end
+    local p1, r1, rp1, x1, y1 = bar:GetPoint(1)
+    local p2, r2, rp2, x2, y2 = bar:GetPoint(2)
+    if p1 ~= "TOPRIGHT" or p2 ~= "BOTTOMRIGHT" or type(y1) ~= "number" or type(y2) ~= "number" then return end
+    bar:ClearAllPoints()
+    bar:SetPoint(p1, r1, rp1, x1, y1 + up)
+    bar:SetPoint(p2, r2, rp2, x2, y2 - down)
   end
 
   function Parts.ScrollBar(bar)
@@ -1559,21 +1547,8 @@ do
     bar:HookScript("OnLeave", BarLeave)
     bar:HookScript("OnMouseDown", BarDown)
     bar:HookScript("OnMouseUp", BarUp)
-    -- The arrows, centred on the bar and no wider than the room between
-    -- the bar's middle and the inside of the list's rim (the inset bevel,
-    -- one tile wide): on the 6-unit bar four units in from its list's edge,
-    -- 8 units, the art scaled down whole. Nothing of them stands over the
-    -- bevel, past the list's edge or into the rows beside the bar.
-    local maxW
-    local _, _, _, x = bar:GetPoint(1)
-    if type(x) == "number" and x <= 0 then
-      local rim = Parts.Size(EDGE) or 3
-      local room = -x - rim
-      if room < 0 then room = 0 end
-      maxW = 2 * (w / 2 + room)
-    end
-    if HasArrows(ARROWS.top) then Arrow(bar.Up, ARROWS.top, maxW, true) end
-    if HasArrows(ARROWS.bottom) then Arrow(bar.Down, ARROWS.bottom, maxW, false) end
+    -- No arrows: the bar takes its step buttons' room.
+    TakeStepRoom(bar)
   end
 end
 

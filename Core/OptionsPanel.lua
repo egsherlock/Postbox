@@ -10823,7 +10823,8 @@ end
 
 -- Measured on every open, after the skins have had their say about fonts,
 -- and in whatever language the client speaks. The ends are held: Reset to
--- defaults 4 in from the band's left, What's new? 8 in from its right.
+-- defaults 4 in from the band's left, What's new? 8 in from its right (a
+-- skin that moves either says where in `resetX` / `newsX`).
 -- Report a bug, its mark and its words as one, stands in the band's middle;
 -- only where that would bring it nearer either end's item than MID_GAP (a
 -- long translation) does it move, to the middle of the room between them.
@@ -10831,10 +10832,10 @@ end
 function Footer.Fit()
   local f = S.footer
   if not f then return end
-  local resetR = 4 + f.FitReset()
+  local resetR = (f.resetX or 4) + f.FitReset()
   local newsW = math.max(1, math.ceil(TextW(f.newsText)))
   f.news:SetWidth(newsW)
-  local newsL = Footer.BAND_W - 8 - newsW
+  local newsL = Footer.BAND_W - (f.newsX or 8) - newsW
   -- Centred as the mark and words were before the gap after the mark, so
   -- the mark keeps its place; the gap counts toward the room it needs.
   local mark, gap = f.bugMark, f.bugGap or 0
