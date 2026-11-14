@@ -2238,12 +2238,19 @@ do
     wrap.__pbBlizzField = false
     local search = wrap.__pbSearch
     local pieces
-    -- A field with a key joined to it wears the key's rim (LayStrip).
+    -- A field with a key joined to it wears the key's rim (LayStrip); so
+    -- does the Send tab's Subject box under the Recipient field, a whole
+    -- button of it as a joined field is with its key hidden.
     local joins = not wrap._scroll and Parts.JoinedCell(wrap) ~= nil
+    local parent = wrap:GetParent()
+    local subject = not joins and parent ~= nil and parent.SubjectWrap == wrap
     if type(search) == "table" then
       pieces = LaySearch(wrap, search, joins)
     elseif joins then
       pieces = Strip(wrap, false)
+    elseif subject then
+      pieces = Strip(wrap, false)
+      if pieces then LayStrip(wrap, pieces, nil) end
     elseif wrap._scroll then
       -- Many lines tall: sunk, with the rows' ground inside (above). The
       -- lists' own dark ground stays under it for the dark list.
