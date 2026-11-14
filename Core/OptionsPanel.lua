@@ -7974,7 +7974,8 @@ function State.RowLayout()
 end
 
 -- Mail Memory's switch: the rows it governs grey with it -- Character
--- order and Hidden characters, the expiring-mail warnings under Alerts, the
+-- order (Hidden characters stays live: hiding acts without it), the
+-- expiring-mail warnings under Alerts, the
 -- marker and
 -- what else the Minimap tab makes from it there -- and the summary made
 -- from it says so (Dash), its strip and its tile grey too.
@@ -7982,6 +7983,8 @@ function State.Memory()
   local on = ns.MailboxUI.GetOption("mailMemory") and true or false
   Rows.SetBlock(S.memoryBlock, on)
   Rows.SetBlock(S.warnBlock, on)
+  -- Character order says again why Warnings first is faint, where it is.
+  State.CharacterOrder()
   State.Warnings()
   State.MinimapRows()
   if S.tab == "general" then Ctx.Paint("general") end
@@ -9341,37 +9344,32 @@ end
 -- the Mail tab and in Mail Memory's window) offers the characters in; a
 -- pick reorders an open list at once (UI.SetCharacterOrder). Warnings
 -- first, the default, is the order it always had. While Warn about expiring
--- mail is Off there are no warnings to put first: Warnings first is not on
--- offer (State.CharacterOrder), and a saved Warnings first shows as Name,
--- the order the list then has (MM.CharactersInOrder), and stays saved, so
--- it is back by itself when the warnings are, as a saved Class icons style
--- not on offer shows as Game (State.ClassIconsRow).
+-- mail is Off there are no warnings to put first: Warnings first stays in
+-- the list, faint, and a click on it changes nothing, and the row says why
+-- without greying (State.CharacterOrder), as When to show on the Minimap
+-- tab keeps its unusable choices (State.MinimapRows). A saved Warnings
+-- first stays saved and shows in the box as it is, as a saved When to show
+-- does; the list meanwhile is in the order it then has, by name
+-- (MM.CharactersInOrder), and it is back by itself when the warnings are.
 function State.CharacterOrderRow(col)
   local UI = ns.MailboxUI
   if not (UI and UI.GetCharacterOrder) then return end
-  local on = {
+  local items = {
     { id = "warnings", name = L["OPT_CHARACTER_ORDER_WARNINGS"] },
     { id = "expiring", name = L["OPT_CHARACTER_ORDER_EXPIRING"] },
     { id = "mail", name = L["OPT_CHARACTER_ORDER_MAIL"] },
     { id = "name", name = L["OPT_CHARACTER_ORDER_NAME"] },
     { id = "played", name = L["OPT_CHARACTER_ORDER_PLAYED"] },
   }
-  local off = { on[2], on[3], on[4], on[5] }
   local cell = Rows.Dropdown(col, {
     title = L["OPT_CHARACTER_ORDER_TITLE"],
     text = L["OPT_CHARACTER_ORDER_DESC"] .. "\n\n" .. L["OPT_CHARACTER_ORDER_WARN_NOTE"],
-    items = State.WarnOn() and on or off,
-    get = function()
-      local id = UI.GetCharacterOrder()
-      if id == "warnings" and not State.WarnOn() then return "name" end
-      return id
-    end,
+    items = items,
+    get = UI.GetCharacterOrder,
     set = function(id) UI.SetCharacterOrder(id) end,
   })
-  -- The order as saved, offered now or not: Reset this tab puts back a
-  -- saved order the row shows as Name too (TabReset.Units).
-  cell.moreGet = UI.GetCharacterOrder
-  S.orderCell, S.orderItems = cell, { on = on, off = off }
+  Rows.Why(cell, "OPT_WARN_WHY")
+  S.orderCell, S.orderWarnings = cell, items[1]
   S.refresh[#S.refresh + 1] = State.CharacterOrder
   return cell
 end
@@ -9382,19 +9380,17 @@ function State.WarnOn()
   return ((UI and UI.GetMemoryWarn and UI.GetMemoryWarn()) or "any") ~= "off"
 end
 
--- Character order's choices for Warn about expiring mail as it is now:
--- the list handed over again only where it changed (never changed in
--- place), the box painted from `get`.
+-- Character order for Warn about expiring mail as it is now: Warnings
+-- first faint while it is Off (its list draws it so on each open), and the
+-- row's text leading with what turns it on; while Mail Memory's block has
+-- the row grey, the block's reason stands (Rows.Say). The box painted from
+-- `get`.
 function State.CharacterOrder()
-  local cell, lists = S.orderCell, S.orderItems
-  if not (cell and lists) then return end
-  local items = State.WarnOn() and lists.on or lists.off
-  if cell.items ~= items then
-    cell.items = items
-    if cell.dd.SetItems then cell.dd:SetItems(items) end
-    -- The search's index lists the choices as they are when next used.
-    S.findIndex = nil
-  end
+  local cell, warnings = S.orderCell, S.orderWarnings
+  if not (cell and warnings) then return end
+  local on = State.WarnOn()
+  warnings.off = not on
+  Rows.Say(cell, on and not cell.blockOff)
   Rows.PaintDropdown(cell)
 end
 
@@ -10053,9 +10049,8 @@ function Pages.general(col)
   State.ClassIconsRow(col)
 
   -- What the switch governs here, grey with it, saying so: the order of the
-  -- character list and who is left out of the lists. (The expiring-mail
-  -- warnings it governs are under Alerts, above; the marker is the Minimap
-  -- tab's.)
+  -- character list. (The expiring-mail warnings it governs are under
+  -- Alerts, above; the marker is the Minimap tab's.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
 
@@ -10065,11 +10060,14 @@ function Pages.general(col)
   -- (MM.HasOthers answers no) and Mail Memory's window does not open, so
   -- there is nothing for it to order.
   State.CharacterOrderRow(block)
+  Rows.EndBlock(block)
 
   -- Hidden characters, last: who is left out of Mail Memory's lists, a
-  -- dropdown to hide or show each (State.HiddenRow).
-  State.HiddenRow(block)
-  Rows.EndBlock(block)
+  -- dropdown to hide or show each (State.HiddenRow). Outside the block:
+  -- hiding still acts with the switch off (the 7-day card, made from
+  -- History, leaves the hidden out, MM.IsHidden reading the saved list
+  -- whatever the switch), so its row stays live, the one way back.
+  State.HiddenRow(col)
 end
 
 -- Alerts, on General between Memory and history and Characters, under one
@@ -10077,15 +10075,15 @@ end
 -- Warn about first -- the one rule for both expiring-mail warnings, made
 -- from Mail Memory and grey with it (its block). Then Sound on new mail,
 -- chosen from Postbox's own, the game's and other addons' (State.ToneItems)
--- and heard from the button beside it. Then one row of two: Chat line at
--- login, the line in chat that follows Warn about (MailMemory.lua,
+-- and heard from the button beside it. Then Minimap marker: a row whose
+-- button opens the Minimap tab at the marker that follows Warn about too
+-- (Pages.OpenMarker), live whatever greys here. Last, one row of two: Chat
+-- line at login, the line in chat that follows Warn about (MailMemory.lua,
 -- MM.Warns), read at the next login, and Flash on new mail, drawn on the
 -- minimap icon. The pair stands outside Warn about's block, Flash needing
 -- no Mail Memory: Chat line greys for Mail Memory off or Warn about Off
 -- (State.Warnings), Flash with the minimap icon (State.Minimap), each
--- saying what turns it on. Last, Minimap marker: a row whose button opens
--- the Minimap tab at the marker that follows Warn about too
--- (Pages.OpenMarker), live whatever greys here. Neither the sound nor the flash needs Mail Memory, so the
+-- saying what turns it on. Neither the sound nor the flash needs Mail Memory, so the
 -- heading stays live with it. The inspector shows their words alone, under
 -- General's cards, as every General text.
 function Pages.Alerts(col)
@@ -10103,8 +10101,8 @@ function Pages.Alerts(col)
     State.Warnings()
     -- The marker, on the Minimap tab, and its look grey with Warn about too.
     State.MinimapRows()
-    -- Character order offers Warnings first only while there are warnings,
-    -- and an open character list takes the order it now has.
+    -- Character order's Warnings first is faint while there are no
+    -- warnings, and an open character list takes the order it now has.
     State.CharacterOrder()
     local MM = ns.MailMemory
     if MM and type(MM.ReloadPicker) == "function" then MM.ReloadPicker() end
@@ -10143,6 +10141,18 @@ function Pages.Alerts(col)
   S.toneCell = sound
   S.refresh[#S.refresh + 1] = State.Tone
 
+  -- Where the marker that follows Warn about is set: a row named as the
+  -- marker's own row is on the Minimap tab, its button where a dropdown
+  -- stands and as wide as one, which opens that tab at the marker's group
+  -- (Pages.OpenMarker). Outside Warn about's block, so it stays live
+  -- whatever greys here; in the options search as every row is.
+  local tab = L["OPT_MINIMAP_HEADING"]
+  local group = L["OPT_MINIMAP_GROUP_MARKER"]
+  Rows.Button(col, {
+    title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_OPEN_DESC"], tab, group),
+    caption = L["OPT_MARKER_OPEN"], glyph = "link-10", minWidth = DD_W, onClick = Pages.OpenMarker,
+  })
+
   local pair = Rows.Pair(col, {
     title = L["OPT_WARN_CHAT_TITLE"], text = L["OPT_WARN_CHAT_DESC"],
     get = function() return ns.MailboxUI.GetOption("warnAtLogin") end,
@@ -10162,18 +10172,6 @@ function Pages.Alerts(col)
   S.warnCells = { chat = chat }
   S.flashCell = pair.pair[2]
   Rows.Why(S.flashCell, "OPT_ALERT_FLASH_WHY")
-
-  -- Where the marker that follows Warn about is set: a row named as the
-  -- marker's own row is on the Minimap tab, its button where a dropdown
-  -- stands and as wide as one, which opens that tab at the marker's group
-  -- (Pages.OpenMarker). Outside Warn about's block, so it stays live
-  -- whatever greys here; in the options search as every row is.
-  local tab = L["OPT_MINIMAP_HEADING"]
-  local group = L["OPT_MINIMAP_GROUP_MARKER"]
-  Rows.Button(col, {
-    title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_OPEN_DESC"], tab, group),
-    caption = L["OPT_MARKER_OPEN"], glyph = "link-10", minWidth = DD_W, onClick = Pages.OpenMarker,
-  })
 end
 
 -------------------------------------------------------------
