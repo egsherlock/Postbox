@@ -2811,6 +2811,55 @@ do
     local mark = RV.FateTipMark(fate)
     Th().TipFact(L0["TIP_ON_EXPIRY"], mark and (mark .. value) or value)
   end
+
+  -- A mail the player returned to one of their own characters (Mail
+  -- Memory's MM.ReturnRecord), on History > Sent and in that character's
+  -- box: the expiry marks' "goes back to its sender" arrow before the word
+  -- Returned, both in the row's quiet ink (textSecondary): it says what the
+  -- row IS, not a warning, so neither the warning amber nor the Expiry
+  -- marks switch touches it. Where its column cannot hold both, the arrow
+  -- alone (RV.FigureText reads the arrow as the text's short form, F.plain).
+  -- fs: the string it is drawn in, which sizes the arrow as the expiry
+  -- marks are sized. Made once per mark height and ink; registered with the
+  -- marked texts, so its measured width carries the arrow's (RV.FateExtra),
+  -- again whenever those are let go.
+  local RET = { hex = false, clean = false, byH = {}, short = {}, w = {} }
+  function RV.ReturnedText(fs)
+    local T = Th()
+    local hex = T.InkHex("textSecondary")
+    local clean = type(T.InkOnLight) == "function" and T.InkOnLight("textSecondary") or false
+    if hex ~= RET.hex or clean ~= RET.clean then
+      for k in pairs(RET.byH) do RET.byH[k] = nil end
+      for k in pairs(RET.short) do RET.short[k] = nil end
+      for k in pairs(RET.w) do RET.w[k] = nil end
+      RET.hex, RET.clean = hex, clean
+    end
+    local size
+    if fs and fs.GetFont then size = select(2, fs:GetFont()) end
+    local h = RV.MarkHeight(size)
+    local full = RET.byH[h]
+    if not full then
+      local r, g, b = T.Ink("textSecondary")
+      local esc, w = RV.FateEscape("back", h, r, g, b, clean)
+      local word = T.Colorize("textSecondary", L()["STATUS_RETURNED"])
+      full = esc and (esc .. word) or word
+      RET.byH[h], RET.short[full], RET.w[full] = full, esc or false, w or 0
+    end
+    local esc = RET.short[full]
+    if esc and not F.marked[full] then
+      F.marked[full], F.plain[full] = RET.w[full], esc
+      F.n = F.n + 1
+    end
+    return full
+  end
+
+  -- The tooltip's line for it: the same arrow, at the tooltip's size and
+  -- in its quiet grey (RV.FateTipMark), before the word. Built on hover.
+  function RV.ReturnedTip()
+    local word = L()["STATUS_RETURNED"]
+    local mark = RV.FateTipMark("back")
+    return mark and (mark .. word) or word
+  end
 end
 
 -------------------------------------------------------------
@@ -4412,6 +4461,8 @@ do
   -- The expiry marks (RV.FateText) and their tooltip line, and when a mail
   -- is short, for Mail Memory's rows and its expiry alert.
   R.FateText, R.TipFate, R.ShortDays, R.FateMarkW = RV.FateText, RV.TipFate, RV.ShortDays, RV.FateMarkW
+  -- A returned mail's mark (RV.ReturnedText) and its tooltip line.
+  R.ReturnedText, R.ReturnedTip = RV.ReturnedText, RV.ReturnedTip
   -- kind -> whether it is an auction's mail (its row says the outcome).
   function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
 end
@@ -5530,7 +5581,9 @@ function RV.HistoryShows(on, entry, sent)
   if sent then
     if on.gold and (entry.m or 0) <= 0 then return false end
     if on.items and not (entry.it ~= nil and #entry.it > 0) then return false end
-    if on.cod and (entry.c or 0) <= 0 then return false end
+    -- A mail returned (`r`) asked no C.O.D. of anyone: what it held is the
+    -- other character's.
+    if on.cod and ((entry.c or 0) <= 0 or entry.r) then return false end
     return true
   end
   local k = entry.k
@@ -8949,7 +9002,10 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   -- Sent (HV.Sent): the recipient where the sender goes, after a dim "to";
   -- the gold sent as spent, the C.O.D. asked as a C.O.D.
   local sent = panel._hsent == true
-  local kind = sent and HV.SentKind(entry) or HV.MoneyKind(entry)
+  -- A mail returned to one of the player's characters (`r`, Sent only):
+  -- its mark where the money stands, no sum (RV.ReturnedText).
+  local returned = sent and entry.r == true
+  local kind = (not returned) and (sent and HV.SentKind(entry) or HV.MoneyKind(entry)) or nil
   row.sentRow = sent
   -- A system mail's sender is recorded as "": that is "unknown", not a name.
   local named = (entry.s ~= "" and entry.s) or nil
@@ -8969,8 +9025,12 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   RV.PaintSender(row.Sender, not outcome and named or nil, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   local coins = RV.RowCoins(layout, row.Money)
-  text.money = MoneyShown(kind, layout)
-    and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
+  if returned then
+    text.money = RV.ReturnedText(row.Money)
+  else
+    text.money = MoneyShown(kind, layout)
+      and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
+  end
   -- For the tooltip (HV.RowTip): whether the row shows less of the sender
   -- than the record has, the realm the record is from, and which money the
   -- row shows.
@@ -9493,7 +9553,7 @@ function HV.BuildHistoryList(panel, query)
       c = c + 1
       if chars then
         head = chars[c]
-        list = (sent and Memory.SentOf or Memory.HistoryOf)(head) or HV.NONE
+        list = (sent and (Memory.SentListedOf or Memory.SentOf) or Memory.HistoryOf)(head) or HV.NONE
       end
       headed = false
       local first, last = max(1, #list - held + 1), #list
@@ -9522,8 +9582,11 @@ function HV.BuildHistoryList(panel, query)
   for k = 1, #out do
     local entry = out[k]
     if not entry.header then
-      earned = earned + (entry.m or 0)
-      spent = spent + (entry.c or 0) + (entry.p or 0)
+      -- A mail returned (`r`) is no money of this character's either way.
+      if not entry.r then
+        earned = earned + (entry.m or 0)
+        spent = spent + (entry.c or 0) + (entry.p or 0)
+      end
       local to = entry.s
       if sent and showSender then
         -- Sent: every recipient whole, so the column is its widest name
@@ -9562,7 +9625,15 @@ function HV.BuildHistoryList(panel, query)
       -- Its sum's class (HV.LetterText), and whether the column shows its
       -- kind: earned and spent as the column's choice says, a C.O.D. always.
       local class, amount, shown = nil, entry.m or 0, true
-      if amount > 0 then
+      if entry.r then
+        -- A mail returned: its mark where the money stands (HV.Returned),
+        -- the arrow's width with it (RV.FateExtra, from MeasureWith).
+        local text = RV.ReturnedText(sample.ColMoney)
+        local width = mw[text]
+        if not width then width = HV.Keep(moneyW, text, MeasureWith(panel, sample.ColMoney, text)) end
+        if width > colMoney then colMoney = width end
+        amount = 0
+      elseif amount > 0 then
         if sent then class, shown = 2, showSpent else class, shown = 1, showEarned end
       else
         amount = entry.c or 0
@@ -9949,10 +10020,12 @@ end
 function HV.Record(panel, Memory, sent)
   if not Memory then return HV.NONE end
   local who = panel._alt
+  -- Sent lists the mail returned to one of the player's characters too
+  -- (MailMemory.SentListed, marked by HV.Returned).
   if who then
-    return (sent and Memory.SentOf or Memory.HistoryOf)(who) or HV.NONE
+    return (sent and (Memory.SentListedOf or Memory.SentOf) or Memory.HistoryOf)(who) or HV.NONE
   end
-  if sent then return Memory.Sent and Memory.Sent() or HV.NONE end
+  if sent then return (Memory.SentListed or Memory.Sent) and (Memory.SentListed or Memory.Sent)() or HV.NONE end
   return Memory.History and Memory.History() or HV.NONE
 end
 
@@ -10073,8 +10146,16 @@ function HV.SentTip(owner, entries, who, hint)
       local quality = (itemName and type(qualityOf) == "function") and qualityOf(link) or nil
       RV.ItemLine(icon or "Interface\\Icons\\INV_Misc_QuestionMark", itemName, quality, nil, items[i].n)
     end
-    if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("negative", H.FormatMoney(e.m))) end
-    if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(e.c))) end
+    -- A mail returned (`r`): said so, with the arrow its row wears; its
+    -- gold the other character's, not spent; no C.O.D. said, since nothing
+    -- establishes one stays on a mail sent back.
+    if e.r then
+      GameTooltip:AddLine(RV.ReturnedTip(), T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED)
+      if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], H.FormatMoney(e.m)) end
+    else
+      if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("negative", H.FormatMoney(e.m))) end
+      if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(e.c))) end
+    end
     if e.h and now - (tonumber(e.t) or now) < 3600 then arriving = true end
   end
   if arriving then GameTooltip:AddLine(L0["SENT_TIP_ARRIVES"], T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED, true) end

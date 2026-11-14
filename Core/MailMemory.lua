@@ -1712,6 +1712,62 @@ do
     return RecordOf("mailSent", item)
   end
 
+  -- The Sent half as History lists it (CollectTab, HV.Record and the search
+  -- of every character): a character's Sent record with the mail it
+  -- returned to another of the player's characters among it, in time order
+  -- (MM.ReturnRecord; each such entry carries r = true, set again here for
+  -- one kept before it did). Without returns, the Sent record itself, as
+  -- before. A merged list is made once per write and kept, one per
+  -- character, until either record moves (MM.recordWrites, or another
+  -- list); a refresh makes nothing. Read only: neither record is written
+  -- but by its pruning, as every read of them prunes.
+  local listed = {}
+  local NONE_SENT = {}
+  local function Listed(realm, name, sent)
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailReturned")
+    local byRealm = type(root) == "table" and root[realm] or nil
+    local back = type(byRealm) == "table" and byRealm[name] or nil
+    if type(back) ~= "table" or back[1] == nil then return sent end
+    PruneHistory(back, time())
+    if back[1] == nil then return sent end
+    sent = sent or NONE_SENT
+    local mine = listed[realm]
+    if not mine then
+      mine = {}
+      listed[realm] = mine
+    end
+    local kept = mine[name]
+    if kept and kept.writes == MM.recordWrites and kept.sent == sent and kept.back == back
+        and kept.ns == #sent and kept.nb == #back then
+      return kept.list
+    end
+    local list, i, j = {}, 1, 1
+    local ns_, nb = #sent, #back
+    while i <= ns_ or j <= nb do
+      local a, b = sent[i], back[j]
+      if b and (not a or (tonumber(b.t) or 0) < (tonumber(a.t) or 0)) then
+        b.r = true
+        list[#list + 1] = b
+        j = j + 1
+      else
+        list[#list + 1] = a
+        i = i + 1
+      end
+    end
+    mine[name] = { writes = MM.recordWrites, sent = sent, back = back, ns = ns_, nb = nb, list = list }
+    return list
+  end
+
+  function MM.SentListed()
+    local realm, name = Me()
+    if not (realm and name) then return MM.Sent() end
+    return Listed(realm, name, MM.Sent())
+  end
+  function MM.SentListedOf(item)
+    if item.me then return MM.SentListed() end
+    return Listed(item.realm, item.name, RecordOf("mailSent", item))
+  end
+
   -- Whether another character (not hidden) has History to search: asked
   -- whenever History comes on screen, so read straight off the record,
   -- building nothing.
@@ -2074,6 +2130,9 @@ do
     if type(to) ~= "string" or to == "" then return nil end
     entry.s = to
     entry.t = entry.t or time()
+    -- Told apart from a mail sent where History > Sent lists both
+    -- (MM.SentListed).
+    entry.r = true
     if not Fresh() then return nil end
     local target = TargetOf(entry, realm, name)
     if not target then return nil end
@@ -3371,7 +3430,9 @@ function MM.RowTip(row, owner)
   T.TipTitle(title)
   -- A mail the box had returned to it (MM.ReturnRecord), whether or not the
   -- row's time column shows it so.
-  if mail.returned then T.TipLine(T.TipTone("muted", L["STATUS_RETURNED"])) end
+  if mail.returned then
+    T.TipLine(T.TipTone("muted", (R.ReturnedTip and R.ReturnedTip()) or L["STATUS_RETURNED"]))
+  end
 
   if named and (not R.Shows("sender") or row.tipShort or row.Sender.__pbOverflowText) then
     T.TipFact(L["TIP_FROM"], R.TipSender(named, row.boxRealm))
@@ -3700,12 +3761,16 @@ local function Figures(mail, now, fs)
 
   -- Mail sent the box since its last visit (MM.SentRowsInto): nothing
   -- recorded says when it goes, so no time is shown for it. One the box
-  -- had returned to it says Returned where the time would stand.
+  -- had returned to it says Returned where the time would stand, after the
+  -- expiry marks' arrow back, in the row's quiet ink (the rules'
+  -- ReturnedText, as History > Sent writes it).
   if mail.sent then
     if R and money and not R.MoneyShown(moneyKind) then money = nil end
     if R and slots and not R.Shows("slots") then slots = nil end
     local mark = nil
-    if mail.returned and not (R and not R.Shows("time")) then mark = T.Colorize("textSecondary", L["STATUS_RETURNED"]) end
+    if mail.returned and not (R and not R.Shows("time")) then
+      mark = (R and R.ReturnedText) and R.ReturnedText(fs) or T.Colorize("textSecondary", L["STATUS_RETURNED"])
+    end
     return money, slots, mark, nil, nil, false, moneyKind == "cod" and money ~= nil
   end
 
