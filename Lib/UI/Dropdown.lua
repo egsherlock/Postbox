@@ -51,6 +51,11 @@ local LIST_GAP = 2
 -- scrolls instead of growing (opts.maxListHeight overrides).
 local DEFAULT_MAX_LIST_HEIGHT = 248
 local SCROLLBAR_INSET = 3
+-- The scroll bar's track (and its thumb) is this wide, SCROLLBAR_INSET in
+-- from the list's right edge; a scrolling list's rows run right up to it, so
+-- the bar takes the room of the two and the rows' wash meets the track.
+local SCROLLBAR_W = 3
+local SCROLLBAR_ROOM = SCROLLBAR_INSET + SCROLLBAR_W
 -- A divider ({ divider = true }) in a select's list: a hairline with this
 -- much room above it and below it, in the list's own rule tone.
 local DIVIDER_PAD = 4
@@ -453,8 +458,9 @@ end
 local function Scroller(list, contentHeight, viewport, step, foot)
   local scroll = CreateFrame("ScrollFrame", nil, list)
   scroll:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -LIST_PADDING)
-  scroll:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT",
-    -(LIST_PADDING + SCROLLBAR_INSET + 4), LIST_PADDING + foot)
+  -- Out to the track's left edge (SCROLLBAR_ROOM): the rows' wash meets
+  -- the track, where a list that does not scroll runs to its padding.
+  scroll:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_ROOM, LIST_PADDING + foot)
 
   local content = CreateFrame("Frame", nil, scroll)
   content:SetSize(1, contentHeight)
@@ -468,7 +474,7 @@ local function Scroller(list, contentHeight, viewport, step, foot)
   -- the panel owns directly (the thumb survives for exactly this reason
   -- -- its art lives on the thumb frame).
   local trackHolder = CreateFrame("Frame", nil, list)
-  trackHolder:SetWidth(3)
+  trackHolder:SetWidth(SCROLLBAR_W)
   trackHolder:SetPoint("TOPRIGHT", list, "TOPRIGHT", -SCROLLBAR_INSET, -LIST_PADDING)
   trackHolder:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", -SCROLLBAR_INSET, LIST_PADDING + foot)
   local track = trackHolder:CreateTexture(nil, "ARTWORK")
@@ -484,7 +490,7 @@ local function Scroller(list, contentHeight, viewport, step, foot)
   local span = contentHeight - viewport
   local thumbHeight = math.max(20, viewport * viewport / contentHeight)
   local thumb = CreateFrame("Frame", nil, list)
-  thumb:SetSize(3, thumbHeight)
+  thumb:SetSize(SCROLLBAR_W, thumbHeight)
   thumb:EnableMouse(true)
   local thumbArt = thumb:CreateTexture(nil, "OVERLAY")
   thumbArt:SetAllPoints()
@@ -1258,7 +1264,8 @@ function Dropdown.Create(parent, opts)
   -- The list's width that shows every item's words whole, in the face they
   -- wear now: each row's words from where they start in it (`_textX`, the
   -- gutter and any art or colour before them) and a pad after, inside
-  -- the list's own padding, and the scroll bar's room where it scrolls.
+  -- the list's own padding, and on the right the padding or, where it
+  -- scrolls, the scroll bar's room (SCROLLBAR_ROOM), which the rows run to.
   -- With `gutter`, as the rows would stand with that gutter (PlaceRows).
   -- Measured on each open; nothing is made.
   local function ListNeed(gutter)
@@ -1275,7 +1282,7 @@ function Dropdown.Create(parent, opts)
         if w > widest then widest = w end
       end
     end
-    local right = list._scroll and (LIST_PADDING + SCROLLBAR_INSET + 4) or LIST_PADDING
+    local right = list._scroll and SCROLLBAR_ROOM or LIST_PADDING
     return math.ceil(LIST_PADDING + widest + right)
   end
 
@@ -1820,8 +1827,9 @@ function Dropdown.Menu(owner, items, opts)
       if row._glyph then w = w + ACTION.GLYPH + ACTION.GAP end
       if w > widest then widest = w end
     end
-    -- And the scroll bar's room where the choices scroll.
-    if list._scroll then room = room + SCROLLBAR_INSET + 4 end
+    -- And the scroll bar's room where the choices scroll, in place of the
+    -- padding on the right (the rows run to the track, SCROLLBAR_ROOM).
+    if list._scroll then room = room + SCROLLBAR_ROOM - LIST_PADDING end
     local width = math.max(tonumber(opts.minWidth) or 0, math.ceil(widest) + 2 * (LIST_PADDING + MARK_GUTTER) + room)
     list:SetWidth(width)
     local height = list:GetHeight() or 0
