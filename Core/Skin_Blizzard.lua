@@ -2122,29 +2122,29 @@ end
 -------------------------------------------------------------
 
 -- Every one-line field (an input wrap: Recipient, Subject, the gold boxes,
--- Character Groups' name, the bug report's address, the options' words
--- boxes) wears the game's newer box border, the one its search boxes wear
--- (common-search-border-*: bronze on WoW Forever, grey on retail), without
--- the magnifier, its words where they stood; every search box
--- (Theme.CreateSearchBox) the same border with its magnifier at the left,
--- and its words moved right by what the magnifier takes. Art only, on
--- Postbox's own frames: the game's InputBoxTemplate and SearchBoxTemplate
--- are never made (their scripts would take the box's focus, hint and clear
--- button over). The field's own fill, line and grain are faded under the
--- art. The older Common-Input-Border is not drawn anywhere.
+-- Character Groups' boxes, the bug report's address, the options' words
+-- boxes and its Find box) and every search box (Theme.CreateSearchBox)
+-- wears the game's small dark button, the rim and face of the key a field
+-- is joined to: a whole button of it where the field stands alone, the
+-- strip's first cell where a key is joined to it (below). Its words stand
+-- where they stood; a search box (and the Find box) has the game's
+-- magnifier at its left as the search box template lays it, and its words
+-- after it. Art only, on Postbox's own frames: the game's InputBoxTemplate
+-- and SearchBoxTemplate are never made (their scripts would take the box's
+-- focus, hint and clear button over). The field's own fill, line and grain
+-- are faded under the art. The game's search border and the older
+-- Common-Input-Border are not drawn.
 --
--- The border is art for one line (its ends 16 x 40, its middle 224 x 40,
--- measured: the rim stands on the art's own edges), laid on the field's box,
--- its ends scaled with its height. A field many lines tall (the Send tab's
--- Message box) is not stretched into it: it is sunk into the window as the
--- lists are, the game's inset bevel round it, and its ground inside is the
--- rows' (Row texture: the paper, the shaded paper, or the dark ground the
--- lists keep; Parts.MessageGround).
+-- The art is laid by its rim (Parts.LaySmall), its ends scaled with the
+-- box's height. A field many lines tall (the Send tab's Message box) is
+-- not stretched into it: it is sunk into the window as the lists are, the
+-- game's inset bevel round it, and its ground inside is the rows' (Row
+-- texture: the paper, the shaded paper, or the dark ground the lists keep;
+-- Parts.MessageGround).
 --
 -- A cell joined to a field (the Manage Recipients key, the sort) is the
 -- field's last cell (Parts.FieldEnd).
 do
-  local SEARCH = { "common-search-border-left", "common-search-border-middle", "common-search-border-right" }
   local GLASS = "common-search-magnifyingglass"
   -- SearchBoxTemplate's own layout, per its 20-unit box from the art's left
   -- end: the magnifier 10 square at 6 in and 1 down, the words at 21.
@@ -2154,35 +2154,6 @@ do
     Fade(wrap.Center)
     for i = 1, #BACKDROP_EDGES do Fade(wrap[BACKDROP_EDGES[i]]) end
     Fade(wrap.pbSurfaceTexture)
-  end
-
-  -- The search border and its magnifier on `wrap` (h units tall), as the
-  -- template lays them, grown with the box: the three pieces, and the
-  -- magnifier as the fourth where the client has it (none where `bare`: a
-  -- field). Art only.
-  function Parts.SearchArt(wrap, h, bare)
-    for i = 1, 3 do
-      if not HasAtlas(SEARCH[i]) then return nil end
-    end
-    local pieces = {}
-    for i = 1, 3 do
-      local t = wrap:CreateTexture(nil, "BORDER", nil, 1)
-      Atlas(t, SEARCH[i], false)
-      pieces[i] = t
-    end
-    local L, M, R = pieces[1], pieces[2], pieces[3]
-    local lw, lh = Parts.Size(SEARCH[1])
-    local rw, rh = Parts.Size(SEARCH[3])
-    L:SetWidth(lw and lh and lw * h / lh or h * 0.4)
-    L:SetPoint("TOPLEFT", wrap, "TOPLEFT", 0, 0)
-    L:SetPoint("BOTTOMLEFT", wrap, "BOTTOMLEFT", 0, 0)
-    R:SetWidth(rw and rh and rw * h / rh or h * 0.4)
-    R:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
-    R:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
-    M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
-    M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
-    if not bare then pieces[4] = Parts.Glass(wrap, h) end
-    return pieces
   end
 
   -- The magnifier, as the template places it, grown with the box, or nil.
@@ -2230,10 +2201,10 @@ do
 
   -- A search box: the art, and its words after the magnifier as the
   -- template places them, grown with the box.
-  local function LaySearch(wrap, search, strip)
+  local function LaySearch(wrap, search)
     local h = wrap:GetHeight()
     if type(h) ~= "number" or h <= 0 then h = 24 end
-    local pieces = strip and Strip(wrap, true) or Parts.SearchArt(wrap, h)
+    local pieces = Strip(wrap, true)
     if pieces and pieces[4] then
       local lead = math.floor(TEXT_X * h / BOX_H + 0.5)
       wrap.__pbTextLead = lead
@@ -2246,18 +2217,21 @@ do
   end
 
   -- The options' title-bar Find box (Core/OptionsPanel.lua, Find.Build:
-  -- tagged __pbFindBox): the same art in place of its hairline and its own
-  -- magnifier; its words stay where they stand, already clear of the
-  -- magnifier. One magnifier, the game's: Postbox's own is hidden as well as
-  -- faded (faded alone, it was still drawn beside the game's in the game),
-  -- and nothing of the options shows it again.
+  -- tagged __pbFindBox): a whole button of the small dark art, as the
+  -- fields standing alone, with the game's magnifier where the search box
+  -- template lays it, in place of its hairline and its own magnifier; its
+  -- words stay where they stand, already clear of the magnifier. One
+  -- magnifier, the game's: Postbox's own is hidden as well as faded (faded
+  -- alone, it was still drawn beside the game's in the game), and nothing
+  -- of the options shows it again.
   function Parts.Find(wrap)
     if wrap.__pbBlizzFind ~= nil then return end
     wrap.__pbBlizzFind = false
     local h = wrap:GetHeight()
     if type(h) ~= "number" or h <= 0 then return end
-    local pieces = Parts.SearchArt(wrap, h)
+    local pieces = Strip(wrap, true)
     if not pieces then return end
+    LayStrip(wrap, pieces, nil)
     wrap.__pbBlizzFind = pieces
     Fade(wrap.Line)
     local glyph = wrap.Glyph
@@ -2305,19 +2279,15 @@ do
     wrap.__pbBlizzField = false
     local search = wrap.__pbSearch
     local pieces
-    -- A field with a key joined to it wears the key's rim (LayStrip); so
-    -- does the Send tab's Subject box under the Recipient field, a whole
-    -- button of it as a joined field is with its key hidden.
+    -- A field with a key joined to it wears the key's rim (LayStrip); a
+    -- one-line field standing alone is a whole button of it, as a joined
+    -- field is with its key hidden.
     local joins = not wrap._scroll and Parts.JoinedCell(wrap) ~= nil
-    local parent = wrap:GetParent()
-    local subject = not joins and parent ~= nil and parent.SubjectWrap == wrap
     if type(search) == "table" then
-      pieces = LaySearch(wrap, search, joins)
+      pieces = LaySearch(wrap, search)
+      if pieces and not joins then LayStrip(wrap, pieces, nil) end
     elseif joins then
       pieces = Strip(wrap, false)
-    elseif subject then
-      pieces = Strip(wrap, false)
-      if pieces then LayStrip(wrap, pieces, nil) end
     elseif wrap._scroll then
       -- Many lines tall: sunk, with the rows' ground inside (above). The
       -- lists' own dark ground stays under it for the dark list.
@@ -2327,9 +2297,11 @@ do
       if Parts.MessageGround then Parts.MessageGround(wrap) end
       return
     else
-      local h = wrap:GetHeight()
-      if type(h) ~= "number" or h <= 0 then h = 24 end
-      pieces = Parts.SearchArt(wrap, h, true)
+      -- A one-line field standing alone (the Subject box, the gold boxes,
+      -- Character Groups' boxes, the bug report's address, the options'
+      -- words boxes): a whole button of the same art.
+      pieces = Strip(wrap, false)
+      if pieces then LayStrip(wrap, pieces, nil) end
     end
     if not pieces then return end
     wrap.__pbBlizzField = pieces
