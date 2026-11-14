@@ -161,12 +161,14 @@
 - **Reset to defaults** (Options footer): Reset everything and Reset
   settings ask in fewer words. One line says what happens, then what is
   cleared and what is kept, recipient pins included.
-- **Warn about** (Options > General > Alerts): the choices are now Off,
+- **Warn about expiring mail** (Options > General > Alerts), the new name
+  of Warn about: the choices are now Off,
   Deleted, and Deleted or sent back.
 - **The expiring-mail marker is set on the Minimap tab** (Options >
   Minimap > Expiring mail marker): Minimap marker and its shape, color,
   anchor, offsets and Larger when alone. Alerts (Options > General) keeps
-  Warn about, the chat line, and new mail's sound and flash, and a line
+  Warn about expiring mail, the chat line, and new mail's sound and flash,
+  and a line
   there opens the Minimap tab at the marker's settings.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next

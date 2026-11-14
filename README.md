@@ -219,7 +219,7 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
 - **Warnings** name any character with mail holding gold or items (or a
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
-  character you're on included. One choice, **Warn about** (Options >
+  character you're on included. One choice, **Warn about expiring mail** (Options >
   General), sets what both warnings cover: **Deleted**,
   **Deleted or sent back**, or **Off** (mail last seen
   before 1.60 counts as possibly deleted, to be safe). They come as a
@@ -294,7 +294,7 @@ icon steps aside.
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back. **Minimap
   marker** (Options > Minimap > Expiring mail marker) switches it on, and
-  **Warn about** (Options > General) says which mail counts.
+  **Warn about expiring mail** (Options > General) says which mail counts.
   Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
@@ -310,7 +310,7 @@ icon steps aside.
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
-  out while it is off, and the marker's look also while Warn about is Off.
+  out while it is off, and the marker's look also while Warn about expiring mail is Off.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first, then each of your other
