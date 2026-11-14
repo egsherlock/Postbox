@@ -159,7 +159,8 @@
 - **The expiring-mail marker is set on the Minimap tab** (Options >
   Minimap > Expiring mail marker): Minimap marker and its shape, color,
   anchor, offsets and Larger when alone. Alerts keeps Warn about, the chat
-  line, and new mail's sound and flash.
+  line, and new mail's sound and flash, and a line there (Options >
+  Alerts > Expiring mail) opens the Minimap tab at the marker's settings.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
