@@ -121,10 +121,27 @@ local function HasAtlas(name)
 end
 
 -- SetAtlas, only for an atlas this client has: a missing piece is left
--- blank, never an error.
+-- blank, never an error. The whole piece: the client keeps a crop the
+-- texture already carried (SetTexCoord, a template's own) and applies it
+-- inside the new piece, so the crop is cleared here and a caller that wants
+-- one sets it after this.
 local function Atlas(texture, name, useSize)
   if not HasAtlas(name) then return false end
-  return pcall(texture.SetAtlas, texture, name, useSize and true or false) and true or false
+  if not pcall(texture.SetAtlas, texture, name, useSize and true or false) then return false end
+  texture:SetTexCoord(0, 1, 0, 1)
+  return true
+end
+
+-- A button's hover glow from an atlas (SetHighlightAtlas), whole: the game's
+-- classic button, which Postbox's push buttons are made from, crops its own
+-- highlight file (its left five eighths, its top eleven sixteenths), and
+-- that crop would cut the new glow the same way and throw its light to the
+-- bottom right. -> the glow's texture, or nil.
+local function Glow(button, name)
+  if not (HasAtlas(name) and pcall(button.SetHighlightAtlas, button, name)) then return nil end
+  local glow = button:GetHighlightTexture()
+  if glow then glow:SetTexCoord(0, 1, 0, 1) end
+  return glow
 end
 
 local function Fade(region)
@@ -725,14 +742,12 @@ do
     Fade(button.Middle)
     Fade(button.Right)
     -- The game's glow over the whole art, as its template sets it.
-    if pcall(button.SetHighlightAtlas, button, names.highlight) then
-      local glow = button:GetHighlightTexture()
-      if glow then
-        glow:ClearAllPoints()
-        glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
-        glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
-        art.glow = glow
-      end
+    local glow = Glow(button, names.highlight)
+    if glow then
+      glow:ClearAllPoints()
+      glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
+      glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+      art.glow = glow
     end
     Paint(button)
     button:HookScript("OnMouseDown", Down)
@@ -827,14 +842,12 @@ do
     owner.__pbBlizzButton = art
     dressed[owner] = true
     box.__pbOwner = owner
-    if pcall(owner.SetHighlightAtlas, owner, RED.highlight) then
-      local glow = owner:GetHighlightTexture()
-      if glow then
-        glow:ClearAllPoints()
-        glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
-        glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
-        art.glow = glow
-      end
+    local glow = Glow(owner, RED.highlight)
+    if glow then
+      glow:ClearAllPoints()
+      glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
+      glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+      art.glow = glow
     end
     Paint(owner)
     owner:HookScript("OnMouseDown", Down)
