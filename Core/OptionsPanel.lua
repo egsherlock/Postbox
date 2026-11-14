@@ -6258,9 +6258,9 @@ do
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
   -- The 7-day card under this one (Week.Build), one line: its height; the
   -- gaps between a figure's label and its value and between two figures
-  -- (the title keeps GAP before the first); the gap before the switch and
-  -- between its words and the underline under the chosen one.
-  local Week = { LINE = ROW_H, LABEL_GAP = 4, FIG_GAP = 16, SWITCH_GAP = 14, MARK_GAP = 2, MARK_H = 2,
+  -- (the title keeps GAP before the first); the gap before the switch, and
+  -- the switch's size (the search boxes' every-character toggle, 14).
+  local Week = { LINE = ROW_H, LABEL_GAP = 4, FIG_GAP = 16, SWITCH_GAP = 14, SWITCH_W = 14,
     LABELS = { "OPT_WEEK_EARNED", "OPT_WEEK_SPENT", "OPT_WEEK_COLLECTED", "OPT_WEEK_SENT" },
     -- What the figures were last made from; the card's shows, counted.
     made = { writes = false, who = false, off = false, open = false, shown = false, up = false, down = false },
@@ -6971,12 +6971,13 @@ do
   -- heading is a sentence that says whose: "The last 7 days on Cursed"
   -- (the name as the lists write it, in its class colour) or "The last 7
   -- days on 3 characters" (those counted, the hidden left out:
-  -- MailMemory.Week's `chars`). At the line's right, one quiet link says
-  -- what a click will do -- Show all characters / Show this character --
-  -- muted, brightening and underlined under the pointer, never cut; a
-  -- click flips whose, kept on the profile every character shares
+  -- MailMemory.Week's `chars`). At the line's right, the switch: the
+  -- search boxes' every-character toggle, one figure for this character,
+  -- the pair in the accent for all of them, its tooltip saying what a
+  -- click will do -- Show all characters / Show this character; a click
+  -- flips whose, kept on the profile every character shares
   -- (MailboxUI.GetWeekScope, every character by default). With one
-  -- character counted there is no link, and the heading names it. Between
+  -- character counted there is no switch, and the heading names it. Between
   -- the two, after the heading, four figures, each a quiet label with its
   -- value after it: Earned and Spent written as the Mail tab's totals
   -- write gold (its largest coin, in the positive and the negative ink;
@@ -6990,7 +6991,7 @@ do
   -- out (their figures in the positive and negative inks with the coin,
   -- their tooltips titled with them), then Collected's and Sent's too, each
   -- said under the pointer. Only then is the heading cut, the same way, so
-  -- whose week it is goes last. The figures and the link are never cut
+  -- whose week it is goes last. The figures and the switch are never cut
   -- (Week.Fit, Week.FORMS).
   -- Read from History, Sent and the deposits paid (MailMemory.Week): gold
   -- taken from mail, and gold out for mail and auctions -- auctions bought,
@@ -7008,35 +7009,53 @@ do
   -- open of the panel moved. Nothing while the options are closed or
   -- another tab is up.
   -------------------------------------------------------------
-  -- The link: muted at rest, bright and underlined under the pointer.
+  -- The switch: the search boxes' every-character toggle (Theme's
+  -- CreateSearchBox), drawn as they draw it -- one figure while the line
+  -- shows this character, the pair in the accent's text tone while it
+  -- shows them all -- and what a click does in its tooltip, which follows
+  -- the click. With nothing added up it rests unlit and does nothing.
   local function LinkPaint(b)
     local T = ns.Theme
-    local hot = b.hot and not Week.d.off
-    T.SetColor(b.Text, (Week.d.off and "textDisabled") or (hot and "textPrimary") or "textSecondary")
-    b.Mark:SetShown(hot)
-    if hot then T.FillColor(b.Mark, "textPrimary") end
+    local d = Week.d
+    local on = d.who == "all"
+    T.SetGlyphArt(b.icon, on and "people-on" or "people")
+    if on and not d.off and T.GetAccentTone then
+      b.icon:SetVertexColor(T.GetAccentTone("text"))
+      b.icon:SetAlpha(1)
+    else
+      b.icon:SetVertexColor(T.InkFor(1, 1, 1))
+      b.icon:SetAlpha(0.45)
+    end
+  end
+
+  local function LinkTip(self)
+    local d = Week.d
+    if d.off then return end
+    local T = ns.Theme
+    T.TipBegin(self, "ANCHOR_TOPRIGHT")
+    T.TipTitle(L[d.who == "all" and "OPT_WEEK_SHOW_ME" or "OPT_WEEK_SHOW_ALL"])
+    GameTooltip:Show()
   end
 
   local function LinkEnter(self)
     if Rows.Held(self, LinkEnter) then return end
-    self.hot = true
-    LinkPaint(self)
     Rows.Hover(Week.d.head)
+    LinkTip(self)
   end
 
   local function LinkLeave(self)
-    self.hot = false
-    LinkPaint(self)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     if Rows.HeldLeave(self) then return end
     Rows.Unhover(Week.d.head)
   end
 
-  local function LinkClick()
+  local function LinkClick(self)
     local d = Week.d
     if d.off then return end
     local UI = ns.MailboxUI
     if UI and type(UI.SetWeekScope) == "function" then UI.SetWeekScope(d.who == "all" and "me" or "all") end
     Week.Paint()
+    if GameTooltip:IsOwned(self) then LinkTip(self) end
   end
 
   -- The strip: the inspector, and the whole heading where it was cut.
@@ -7152,7 +7171,7 @@ do
     T.FillChrome(ground, LIFT_A)
 
     -- The line, across the card, in the strip's tone: the heading, the
-    -- figures and the link.
+    -- figures and the switch.
     local head = Spot(card, "Frame", Week.LINE)
     head.entry = S.weekEntry
     head:SetFrameLevel(level + 2)
@@ -7167,18 +7186,14 @@ do
     head:SetScript("OnEnter", HeadEnter)
     head:SetScript("OnLeave", HeadLeave)
 
-    -- The link, at the line's right.
+    -- The switch, at the line's right: the search boxes' toggle, a 14-unit
+    -- button, its figures centred on it (LinkPaint).
     local link = CreateFrame("Button", nil, head)
     link:SetFrameLevel(level + 3)
-    link:SetHeight(Week.LINE)
-    link.Text = Text(link, "secondary", "CENTER")
-    link.Text:SetPoint("CENTER", link, "CENTER", 0, 0)
-    local mark = link:CreateTexture(nil, "ARTWORK")
-    mark:SetHeight(1)
-    mark:SetPoint("TOPLEFT", link.Text, "BOTTOMLEFT", 0, -Week.MARK_GAP)
-    mark:SetPoint("TOPRIGHT", link.Text, "BOTTOMRIGHT", 0, -Week.MARK_GAP)
-    mark:Hide()
-    link.Mark, link.entry, link.hot = mark, S.weekEntry, false
+    link:SetSize(Week.SWITCH_W, Week.SWITCH_W)
+    link.icon = T.Glyph(link, "people", Week.SWITCH_W, "ARTWORK") or link:CreateTexture(nil, "ARTWORK")
+    link.icon:SetPoint("CENTER")
+    link.entry = S.weekEntry
     link:SetScript("OnEnter", LinkEnter)
     link:SetScript("OnLeave", LinkLeave)
     link:SetScript("OnClick", LinkClick)
@@ -7209,7 +7224,7 @@ do
   end
 
   -- The line laid out for what it says now (Week.Paint): the heading, then
-  -- each figure GAP after it, FIG_GAP apart, the link at the right. What
+  -- each figure GAP after it, FIG_GAP apart, the switch at the right. What
   -- the room cannot hold is taken from the labels first, in the forms of
   -- Week.FORMS, the first that fits: in each, the labels it keeps are held
   -- to one width `cap`, the widest that fits the line, never under the
@@ -7312,7 +7327,11 @@ do
     local down = T.InkHex and T.InkHex("negative") or ""
     local m = Week.made
     local add = m.writes ~= writes or m.who ~= who or m.off ~= off or m.shown ~= Week.shown
-    if not add and m.open == S.openGen and m.up == up and m.down == down then return end
+    if not add and m.open == S.openGen and m.up == up and m.down == down then
+      -- The switch in the accent as it is now (an accent moved since).
+      if d.link:IsShown() then LinkPaint(d.link) end
+      return
+    end
     m.writes, m.who, m.off, m.shown, m.open, m.up, m.down = writes, who, off, Week.shown, S.openGen, up, down
     d.off, d.who = off, who
     -- The sums: MailMemory's one table, filled again only when asked here.
@@ -7330,19 +7349,15 @@ do
       end
     end
 
-    -- The link at its words' width, never cut, and only where there is
-    -- another character to show; the heading and the figures in what is
-    -- left (Week.Fit).
+    -- The switch, only where there is another character to show; the
+    -- heading and the figures in what is left (Week.Fit).
     local chars = sums and sums.chars or d.chars or 1
     d.chars = chars
     local link, linkW = d.link, 0
     if chars > 1 then
-      link.Text:SetText(L[who == "all" and "OPT_WEEK_SHOW_ME" or "OPT_WEEK_SHOW_ALL"])
-      linkW = TextW(link.Text)
-      link:SetWidth(linkW)
       link:Show()
       LinkPaint(link)
-      linkW = linkW + Week.SWITCH_GAP
+      linkW = Week.SWITCH_W + Week.SWITCH_GAP
     else
       link:Hide()
     end
