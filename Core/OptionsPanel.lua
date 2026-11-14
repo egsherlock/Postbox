@@ -9850,9 +9850,9 @@ end
 -- every character's mail as each box was last seen and the ways into Mail
 -- Memory, Character Groups and Manage Recipients (Dash). Under it, what
 -- Postbox remembers: Mail Memory, which the card and the warnings are made
--- from, and how far back History goes; then the characters: their class
--- icons, the order the character list offers them in and the ones hidden
--- from Mail Memory's lists; last, the alerts (Pages.Alerts).
+-- from, and how far back History goes; then the alerts (Pages.Alerts);
+-- last, the characters: their class icons, the order the character list
+-- offers them in and the ones hidden from Mail Memory's lists.
 function Pages.general(col)
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
   local memory = Rows.Check(col, {
@@ -9877,7 +9877,10 @@ function Pages.general(col)
   -- Never (State.HistoryHolds).
   Pages.historyHolds(col)
 
-  -- Characters: how each one's class is drawn on the Inbox button and in
+  -- Alerts, next (Pages.Alerts).
+  Pages.Alerts(col)
+
+  -- Characters, last: how each one's class is drawn on the Inbox button and in
   -- the character list, the order that list offers them in, and who is
   -- left out of Mail Memory's lists, last. Class icons is not Mail Memory's:
   -- the button wears it with the switch off, so the row is live either way;
@@ -9887,7 +9890,7 @@ function Pages.general(col)
 
   -- What the switch governs here, grey with it, saying so: the order of the
   -- character list and who is left out of the lists. (The expiring-mail
-  -- warnings it governs are under Alerts, below; the marker is the Minimap
+  -- warnings it governs are under Alerts, above; the marker is the Minimap
   -- tab's.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
@@ -9903,12 +9906,10 @@ function Pages.general(col)
   -- dropdown to hide or show each (State.HiddenRow).
   State.HiddenRow(block)
   Rows.EndBlock(block)
-
-  -- Alerts, last (Pages.Alerts).
-  Pages.Alerts(col)
 end
 
--- Alerts, last on General, under one heading: what tells you about mail.
+-- Alerts, on General between Memory and history and Characters, under one
+-- heading: what tells you about mail.
 -- Warn about first -- the one rule for both expiring-mail warnings, made
 -- from Mail Memory and grey with it (its block). Then Sound on new mail,
 -- chosen from Postbox's own, the game's and other addons' (State.ToneItems)
