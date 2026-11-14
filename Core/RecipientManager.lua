@@ -520,6 +520,35 @@ function COLLECT.CategoryText(cats)
   return text
 end
 
+-- The game's own lists among an entry's: the ones that still offer a name
+-- once Postbox has forgotten what it stored (Delete takes Recent and, for
+-- one of the player's characters, its census entry with it). Their words as
+-- the Category column joins them, or nil for none; kept per set as above.
+COLLECT.GAME = { guild = true, friends = true, grouped = true }
+COLLECT.keptText = {}
+function COLLECT.KeptText(cats)
+  local mask, game = 0, COLLECT.GAME
+  for i = 1, #BUCKETS do
+    local bucket = BUCKETS[i]
+    mask = mask * 2 + ((game[bucket] and cats[bucket]) and 1 or 0)
+  end
+  if mask == 0 then return nil end
+  local memo = COLLECT.keptText
+  local text = memo[mask]
+  if text then return text end
+  local sep = L["RM_CAT_SEP"]
+  text = ""
+  for i = 1, #BUCKETS do
+    local bucket = BUCKETS[i]
+    if game[bucket] and cats[bucket] then
+      local label = L[BUCKET_LABEL[bucket]]
+      text = text == "" and label or (text .. sep .. label)
+    end
+  end
+  memo[mask] = text
+  return text
+end
+
 local function Collect(countOnly)
   local R = Recipients()
   local entries, byKey = {}, {}
@@ -655,8 +684,12 @@ local function Collect(countOnly)
         entry.rank, entry.category = RANK_SAVED, L["RM_CAT_SAVED"]
       end
       entry.catFirst = entry.category
+      entry.keeps = nil
     else
       entry.category = COLLECT.CategoryText(entry.cats)
+      -- The game's lists that would still offer it after a Delete, which
+      -- then hides it as well (RM.DeleteRecipient).
+      entry.keeps = COLLECT.KeptText(entry.cats)
       -- The first list's word alone: what the column is measured by
       -- (RM.Measure), so a name in several lists never widens the window.
       entry.catFirst = L[BUCKET_LABEL[BUCKETS[entry.rank]]]
@@ -958,7 +991,7 @@ local function EnsureDeleteDialog()
     hideOnEscape = true,
     showAlert = true,
     OnAccept = function(_, data)
-      if type(data) == "table" then RM.DeleteRecipient(data.key, data.display, data.unlisted) end
+      if type(data) == "table" then RM.DeleteRecipient(data.key, data.display, data.unlisted, data.hide) end
     end,
   }
   return true
@@ -993,7 +1026,7 @@ local function EnsureBulkDeleteDialog()
     hideOnEscape = true,
     showAlert = true,
     OnAccept = function(_, data)
-      if type(data) == "table" then RM.ApplyBulkDelete(data.keys, data.unlisted) end
+      if type(data) == "table" then RM.ApplyBulkDelete(data.keys, data.unlisted, data.hide) end
     end,
   }
   return true
@@ -1502,7 +1535,8 @@ function RM.MarkTip(mark, owner)
   else
     Theme.TipTitle(L["RM_BTN_DELETE"])
     if entry.canDelete then
-      Theme.TipLine(L["RM_TIP_DELETE"])
+      -- A name a game list still offers is hidden as well (RM.DeleteRecipient).
+      Theme.TipLine(entry.keeps and L("RM_TIP_DELETE_KEPT", entry.keeps) or L["RM_TIP_DELETE"])
       Theme.TipHint(L["RM_HINT_DELETE"])
     else
       Theme.TipLine(Theme.TipTone("warning", L[entry.deleteReason or "RM_ERR_LIVE_ONLY"]))
@@ -2250,7 +2284,22 @@ function RM.AddRecipient(text)
   ns.Print(L("RM_ADD_DONE", R.Display(key)))
 end
 
+-- key -> the entry the last collect made for it, or nil. Asked on a click,
+-- never per row.
+function RM.EntryFor(key)
+  local entries = RM._entries
+  if not (entries and key) then return nil end
+  for i = 1, #entries do
+    if entries[i].key == key then return entries[i] end
+  end
+  return nil
+end
+
 -- `unlisted`: no list offers the name any more (Recipients.CanDelete).
+-- A name one of the game's lists still offers (its guild, friends or
+-- recently grouped: `entry.keeps`) is hidden once it is deleted, since
+-- those lists would offer it again at once; the question says so, naming
+-- the lists, and how to turn a whole list off.
 function RM.ConfirmDelete(key, display, unlisted)
   local R = Recipients()
   if not R or not key then return end
@@ -2259,26 +2308,42 @@ function RM.ConfirmDelete(key, display, unlisted)
     Notice(L[reason or "RM_ERR_LIVE_ONLY"])
     return
   end
+  local entry = RM.EntryFor(key)
+  local keeps = entry and entry.keeps or nil
   if not EnsureDeleteDialog() or type(StaticPopup_Show) ~= "function" then
-    RM.DeleteRecipient(key, display, unlisted)
+    RM.DeleteRecipient(key, display, unlisted, keeps ~= nil)
     return
   end
   -- One of the player's own characters leaves the census as well, which
   -- From alts, the groups' character list and the Alts list read: said.
   local name = display or key
-  local text = R.IsStoredAlt and R.IsStoredAlt(key) and L("RM_DELETE_CONFIRM_ALT", name, name)
-    or L("RM_DELETE_CONFIRM", name)
+  local text
+  if R.IsStoredAlt and R.IsStoredAlt(key) then
+    text = L("RM_DELETE_CONFIRM_ALT", name, name)
+  elseif keeps then
+    text = L("RM_DELETE_CONFIRM_KEPT", name)
+  else
+    text = L("RM_DELETE_CONFIRM", name)
+  end
+  if keeps then text = text .. "\n\n" .. L("RM_DELETE_KEPT", keeps) end
   Theme.LiftPopup(StaticPopup_Show(DELETE_POPUP, text, nil,
-                                   { key = key, display = display, unlisted = unlisted }))
+                                   { key = key, display = display, unlisted = unlisted, hide = keeps ~= nil }))
 end
 
-function RM.DeleteRecipient(key, display, unlisted)
+-- `hide`: the question said the name would be hidden (a game list still
+-- offers it). It is hidden only if a list still offers it now; one that no
+-- list offers any more simply goes, as any other.
+function RM.DeleteRecipient(key, display, unlisted, hide)
   local R = Recipients()
   if not R or not key then return end
   -- What the question named is checked again before anything goes.
   if not R.CanDelete(key, unlisted) then return end
+  local entry = hide and RM.EntryFor(key) or nil
+  local keeps = entry and entry.keeps
   local removed = R.Delete(key)
-  if not (removed and removed.any) then
+  if keeps then
+    R.SetHidden(entry.liveName or key, true)
+  elseif not (removed and removed.any) then
     ns.Print(L("RM_DELETE_NOTHING", display or key))
   end
   RM.Refresh()
@@ -2342,12 +2407,18 @@ function RM.ApplyBulk(hide, keys)
 end
 
 -- Every name the question named that can still be deleted, deleted; then the
--- list collected again.
-function RM.ApplyBulkDelete(keys, unlisted)
+-- list collected again. `hide`: key -> the name as its list spells it, for
+-- the names the question said would be hidden (a game list still offers
+-- them): each hidden after its delete.
+function RM.ApplyBulkDelete(keys, unlisted, hide)
   local R = Recipients()
   if not R or type(keys) ~= "table" then return end
   for _, key in ipairs(keys) do
-    if R.CanDelete(key, unlisted and unlisted[key]) then R.Delete(key) end
+    if R.CanDelete(key, unlisted and unlisted[key]) then
+      R.Delete(key)
+      local name = hide and hide[key]
+      if name then R.SetHidden(name, true) end
+    end
   end
   RM.Refresh()
 end
@@ -2404,12 +2475,17 @@ function RM.BulkSelected(kind)
   end
 
   -- Delete: the names that can go, the rest skipped and said.
-  local keys, unlisted, skipped, alts = {}, {}, 0, 0
+  local keys, unlisted, hide, skipped, alts, kept = {}, {}, {}, 0, 0, 0
   for i = 1, n do
     local entry = list[i]
     if R.CanDelete(entry.key, entry.unlisted) then
       keys[#keys + 1] = entry.key
       unlisted[entry.key] = entry.unlisted or nil
+      -- A game list still offers it: hidden after its delete.
+      if entry.keeps then
+        hide[entry.key] = entry.liveName or entry.key
+        kept = kept + 1
+      end
       if R.IsStoredAlt and R.IsStoredAlt(entry.key) then alts = alts + 1 end
     else
       skipped = skipped + 1
@@ -2420,13 +2496,14 @@ function RM.BulkSelected(kind)
     return
   end
   if not EnsureBulkDeleteDialog() or type(StaticPopup_Show) ~= "function" then
-    RM.ApplyBulkDelete(keys, unlisted)
+    RM.ApplyBulkDelete(keys, unlisted, hide)
     return
   end
   local msg = ns.Plural("RM_BULK_DELETE_CONFIRM", #keys, scope)
+  if kept > 0 then msg = msg .. "\n\n" .. ns.Plural("RM_BULK_DELETE_HIDDEN", kept) end
   if alts > 0 then msg = msg .. "\n\n" .. ns.Plural("RM_BULK_DELETE_ALTS", alts) end
   if skipped > 0 then msg = msg .. "\n\n" .. ns.Plural("RM_BULK_DELETE_SKIPPED", skipped) end
-  Theme.LiftPopup(StaticPopup_Show(BULK_DELETE_POPUP, msg, nil, { keys = keys, unlisted = unlisted }))
+  Theme.LiftPopup(StaticPopup_Show(BULK_DELETE_POPUP, msg, nil, { keys = keys, unlisted = unlisted, hide = hide }))
 end
 
 -- Total manageable recipients, for the options-panel button badge.
