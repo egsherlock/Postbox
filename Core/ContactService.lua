@@ -1301,7 +1301,14 @@ do
     if not (T and T.SetTextRGB) then return end
     for fs, token in pairs(classTexts) do
       local entry = classColours[token]
-      if entry and entry.moved then T.SetTextRGB(fs, entry.r, entry.g, entry.b) end
+      if entry and entry.moved then
+        -- A name on a look's own row ground (RV.PaintSender marks it) in that
+        -- ground's ink for the colour, as it was painted.
+        local r, g, b = entry.r, entry.g, entry.b
+        local rows = fs.__pbRowInk and T._rowInks
+        if rows then r, g, b = rows.RGB(r, g, b) end
+        T.SetTextRGB(fs, r, g, b)
+      end
     end
   end
 

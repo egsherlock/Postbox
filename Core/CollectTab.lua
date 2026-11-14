@@ -3461,7 +3461,10 @@ end
 -- changes, ContactService repaints the strings it was told wear one
 -- (CS.WearClass), so a bind with the same class still skips the write.
 -- `ground`: "row" on a mail row (Theme.RowGround), whose look may give the
--- class colour an ink of its own there (Theme.SetRowInks).
+-- class colour an ink of its own there (Theme.SetRowInks). A class colour
+-- put through those inks is marked so (__pbRowInk), and ContactService
+-- repaints it through them too; a string painted any other way loses the
+-- mark (nil in every look without row inks).
 function RV.PaintSender(fs, sender, realm, ground)
   if not fs then return end
   local CS = ns.ContactService
@@ -3474,9 +3477,11 @@ function RV.PaintSender(fs, sender, realm, ground)
     fs.__pbClass = token
     local rows = ground and T._rowInks
     if rows then r, g, b = rows.RGB(r, g, b) end
+    if rows or fs.__pbRowInk then fs.__pbRowInk = rows and true or nil end
     T.SetTextRGB(fs, r, g, b)
   else
     fs.__pbClass = false
+    if fs.__pbRowInk then fs.__pbRowInk = nil end
     T.SetColor(fs, T.TextRoles.value.color, ground)
   end
   if CS and CS.WearClass then CS.WearClass(fs, fs.__pbClass or nil) end
