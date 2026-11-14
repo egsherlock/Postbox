@@ -330,13 +330,14 @@ to it, and a panel beside it that explains whatever you point at and shows
 it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
-(Remember mailboxes, Keep History for, History holds), **Characters**
-(Class icons, Character order, Hidden characters) and **Alerts**: Warn
-about, Chat line at login, Flash on new mail and **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
+(Remember mailboxes, Keep History for, History holds), **Alerts** (Warn
+about, Chat line at login, Flash on new mail and **Sound on new mail**)
+and **Characters** (Class icons, Character order, Hidden characters). The
+sound is one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
-through LibSharedMedia, such as ElvUI's or WeakAuras', with a button to hear
+through LibSharedMedia, such as ElvUI's or a SharedMedia pack's (with a button to hear
 it first; it stays quiet for your own auction house purchases, which the
-game already announces) and **Flash on new mail**. The options open beside
+game already announces). The options open beside
 whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that

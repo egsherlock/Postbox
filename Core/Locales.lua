@@ -1043,7 +1043,7 @@ L["LABEL_GOLD"]                = "Gold: "
 -- has no room at all -- the compose screen's tick box, and a row whose C.O.D.
 -- amount is not yet known. The game itself calls this C.O.D. everywhere, so the
 -- abbreviation stays as the game writes it.
-L["LABEL_COD"]                 = "C.O.D.: "
+L["LABEL_COD"]                 = "C.O.D: "
 L["LABEL_COD_SHORT"]           = "C.O.D."
 L["STATUS_READ"]               = "Read"
 L["STATUS_UNREAD"]             = "Unread"

@@ -148,6 +148,11 @@
   match the dropdowns beside them, with room between each icon and its
   words. A dropdown's list with icons (Class icons, Bar icon, Icon style)
   opens flush with its box.
+- **Options: a grayed setting says first why it is gray.** The line that
+  tells you what to turn on opens its description, in your accent color.
+- **The last 7 days** (Options > General) fits big numbers: when the line
+  is tight, large gold is written short (482k), and the Earned and Spent
+  tooltips give the exact sum.
 - **Options: setting names are plain**, white in Dark and dark ink in
   Light, so your accent marks the group headings and the values you have
   chosen. In Light the dropdown arrows and the icons on Arrange, Character
