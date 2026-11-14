@@ -4167,7 +4167,11 @@ end
 
 -- A window already walked at the current skin generation (Theme
 -- SkinGeneration: it moves whenever a frame is tagged for the skins) is
--- left as it is.
+-- left as it is. The generation is kept as it stands after the walk, as
+-- the Postbox style keeps it: a walk that moved it itself (something
+-- dressed tagging a frame, or painting the palette) is not taken for a
+-- change still to be dressed, so the window is not walked again on every
+-- show.
 local walkedAt = setmetatable({}, { __mode = "k" })
 
 function Skin.RefreshWindow(frame)
@@ -4176,7 +4180,7 @@ function Skin.RefreshWindow(frame)
   local gen = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
   if gen ~= nil and walkedAt[frame] == gen then return end
   Skin.Refresh(frame)
-  walkedAt[frame] = gen
+  walkedAt[frame] = T and type(T.SkinGeneration) == "function" and T.SkinGeneration() or nil
 end
 
 -------------------------------------------------------------
