@@ -796,6 +796,7 @@ local S = {
   -- the pointer rests meanwhile (Rows.Hold)
   bodyH = 0,
   textGen = 0,    -- counts changes to a text the inspector can show
+  whys = {},      -- every entry with a grey text that says why (Rows.WhyText)
   -- Where the panel stands (Place): what it was opened from, the opener's
   -- frame or nil, and its key; the side it stands on where that is not the
   -- key's (`side`: the preview's); the side it took this showing (`took`);
@@ -1008,6 +1009,9 @@ do
       idle:Show()
       return
     end
+    -- A grey text in the accent's tone as it is now (Rows.WhyFresh): one
+    -- comparison while it has not moved.
+    Rows.WhyFresh()
     local extra = entry.extra and Ctx.Extra(entry.extra) or nil
     local was = S.extraShown
     if was and was ~= extra then was:Hide() end
@@ -1285,9 +1289,12 @@ do
     if f and f:IsShown() and f.Paint then f.Paint() end
   end
 
-  -- A setting that shows in the drawing changed.
+  -- A setting that shows in the drawing changed. A look's (the accent, the
+  -- palette) moves the grey texts' tone too: the text showing says it in
+  -- the new one at once (Rows.WhyFresh).
   function Ctx.Repaint()
     Ctx.Paint(S.tab)
+    if Rows.WhyFresh() and S.shown then Insp.Repaint() end
   end
 
   -- The mark for the way into arranging: the art the title bar wears for it
@@ -4411,33 +4418,93 @@ do
     col.first = block.first
     -- Each setting in it says what turns the block on while it is grey; a
     -- note is not a setting, and says only what it says.
-    local why = block.why and L[block.why]
-    if why then
+    local why = block.why
+    if why and L[why] then
       for i = 1, #block.cells do
         local cell = block.cells[i]
         local entry = cell.entry
         if cell.kind ~= "note" and entry then
           entry.onText = entry.onText or entry.text
-          entry.blockText = entry.onText .. "\n\n" .. why
+          entry.blockKey = why
+          entry.blockText = Rows.WhyText(entry.onText, why)
+          Rows.WhyKeep(entry)
         end
       end
     end
     return block
   end
 
-  -- A grey row says why: under its description, one line saying what
-  -- turns it on (`key`, a locale key), while another setting has it grey
-  -- (Rows.SetEnabled). Written here, once, and measured with every text
-  -- (Insp.Need): greying a row builds no string. A row that greys for
-  -- more than one reason is given each (the first stands until another is
-  -- named), and Rows.SetEnabled is told which one holds.
+  -- A grey row says why: one line saying what turns it on (`key`, a
+  -- locale key), while another setting has it grey (Rows.SetEnabled).
+  -- Written here, once, and measured with every text (Insp.Need): greying
+  -- a row builds no string. A row that greys for more than one reason is
+  -- given each (the first stands until another is named), and
+  -- Rows.SetEnabled is told which one holds.
   function Rows.Why(cell, key)
     local entry = cell.entry
     entry.onText = entry.onText or entry.text
-    local text = entry.onText .. "\n\n" .. L[key]
+    local text = Rows.WhyText(entry.onText, key)
     entry.why = entry.why or {}
     entry.why[key] = text
     entry.offText = entry.offText or text
+    Rows.WhyKeep(entry)
+  end
+
+  -- A grey text, the one form for every greyed row, block or tile: the
+  -- reason first, right under the title, in the accent's text tone -- the
+  -- line the player acts on, read first -- then the description as it
+  -- is, a blank line between. The same lines as the description with the
+  -- reason after it, so nothing grows. The tone is the one the house
+  -- paints accent text in (Theme.Ink): on a light palette, where text
+  -- never wears the accent, that is the ink. A colour written into a
+  -- string does not follow the accent or the palette by itself, so every
+  -- such text is made again when that tone moves (Rows.WhyFresh), and
+  -- only then: a hover still builds nothing.
+  function Rows.WhyText(onText, key)
+    if not S.whyHex then Rows.WhyFresh() end
+    return "|cff" .. S.whyHex .. L[key] .. "|r\n\n" .. (onText or "")
+  end
+
+  function Rows.WhyKeep(entry)
+    if entry.whyKept then return end
+    entry.whyKept = true
+    S.whys[#S.whys + 1] = entry
+  end
+
+  -- The accent's text tone read now; where it moved, every grey text made
+  -- again in it, and a text showing one of them now shows the new one.
+  -- Answers whether anything moved.
+  function Rows.WhyFresh()
+    local r, g, b = ns.Theme.Ink("accent")
+    local rgb = S.whyRGB
+    if rgb and rgb[1] == r and rgb[2] == g and rgb[3] == b then return false end
+    if not rgb then
+      rgb = {}
+      S.whyRGB = rgb
+    end
+    rgb[1], rgb[2], rgb[3] = r, g, b
+    S.whyHex = string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+      math.floor(b * 255 + 0.5))
+    local list = S.whys
+    for i = 1, #list do
+      local entry = list[i]
+      local was = entry.text
+      if entry.blockKey then
+        local old = entry.blockText
+        entry.blockText = Rows.WhyText(entry.onText, entry.blockKey)
+        if was == old then entry.text = entry.blockText end
+      end
+      local why = entry.why
+      if why then
+        for key, old in pairs(why) do
+          local text = Rows.WhyText(entry.onText, key)
+          why[key] = text
+          if entry.offText == old then entry.offText = text end
+          if was == old then entry.text = text end
+        end
+      end
+    end
+    return true
   end
 
   -- A row `height` tall at the column's cursor, under a hairline unless it
@@ -5557,8 +5624,9 @@ do
     local entry = Entry(spec.title, spec.text)
     entry.onText = spec.text
     if spec.why then
-      entry.offText = spec.text .. "\n\n" .. L[spec.why]
+      entry.offText = Rows.WhyText(spec.text, spec.why)
       entry.why = { [spec.why] = entry.offText }
+      Rows.WhyKeep(entry)
     end
     entry.stage, entry.part = cell.entry.stage, cell.entry.part
     local side = {
@@ -12003,7 +12071,10 @@ local function Build()
   S.idle.general = S.dashEntry
   S.memoryTileEntry = Entry(L["OPT_MEMORY_TITLE"], L["OPT_DASH_MEMORY_DESC"])
   S.memoryTileEntry.onText = S.memoryTileEntry.text
-  S.memoryTileEntry.offText = S.memoryTileEntry.text .. "\n\n" .. L["OPT_MEMORY_WHY"]
+  -- Its grey text in the greyed rows' form (Rows.WhyText).
+  S.memoryTileEntry.offText = Rows.WhyText(S.memoryTileEntry.text, "OPT_MEMORY_WHY")
+  S.memoryTileEntry.why = { OPT_MEMORY_WHY = S.memoryTileEntry.offText }
+  Rows.WhyKeep(S.memoryTileEntry)
   S.groupsEntry = Entry(L["GROUPS_TITLE"], L["GROUPS_OPT_DESC"])
   S.recipientsEntry = Entry(L["RM_OPT_BUTTON"], L["RM_OPT_BUTTON_DESC"])
   S.dashEntry.tab, S.memoryTileEntry.tab = "general", "general"
