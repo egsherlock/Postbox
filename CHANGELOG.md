@@ -14,6 +14,8 @@
   or returned to it since its last mailbox visit, under "Sent by you
   since its last visit", and its count is a number where it said "new".
   It covers mail sent or returned through Postbox while History is on.
+  A mail you returned is also listed in History > Sent, marked Returned
+  with the arrow the expiry marks use.
 - **Minimap icon: New since last visit** (Options > Minimap > When to
   show): the icon shows only while mail has arrived since you last opened
   this character's mailbox. It needs Remember mailboxes.
