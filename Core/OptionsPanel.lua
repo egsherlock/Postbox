@@ -9991,7 +9991,7 @@ function Pages.Alerts(col)
   Rows.Why(chat, "OPT_WARN_WHY")
   S.warnCells = { chat = chat }
   S.flashCell = pair.pair[2]
-  Rows.Why(S.flashCell, "OPT_MINIMAP_WHY_SWITCH")
+  Rows.Why(S.flashCell, "OPT_ALERT_FLASH_WHY")
 
   -- Where the marker that follows Warn about is set: a line that opens the
   -- Minimap tab at its group (Pages.OpenMarker).
