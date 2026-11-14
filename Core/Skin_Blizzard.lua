@@ -3173,6 +3173,41 @@ do
     end
   end
 
+  -- An action in a menu's foot (Dropdown.Menu's `action` item: the sort
+  -- menus' Reset in the Mail tab, Mail Memory and Manage Recipients, and
+  -- Hidden characters' Show all in the options) is its glyph and its words
+  -- alone, as the game's menus write an action: its plate's outline is not
+  -- drawn, and its wash shows only under the pointer while it is live, in
+  -- the menu rows' own hover. The words and glyph keep their place and
+  -- their colours (the body text's while there is something to do, the
+  -- disabled gray while not); the click, tooltip and place are the row's.
+  local function ActionPaint(row)
+    row.__pbActionPaint(row)
+    local fill = row._fill
+    if row._hover and not row._off then
+      local T = ns.Core and ns.Core.UI and ns.Core.UI.Theme
+      local hover = T and T.MenuColors and T.MenuColors.hover
+      if hover then fill:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+      fill:SetAlpha(1)
+    else
+      fill:SetAlpha(0)
+    end
+  end
+
+  function Parts.ActionRow(row)
+    if row.__pbBlizzAction ~= nil then return end
+    row.__pbBlizzAction = false
+    local edges, fill = row._edges, row._fill
+    if type(edges) ~= "table" or not fill or type(row._paintAction) ~= "function" then return end
+    for i = 1, #edges do Fade(edges[i]) end
+    row.__pbActionPaint = row._paintAction
+    row._paintAction = ActionPaint
+    row:HookScript("OnEnter", ActionPaint)
+    row:HookScript("OnLeave", ActionPaint)
+    row.__pbBlizzAction = true
+    ActionPaint(row)
+  end
+
   -- The list's square pieces under the art, faded: no table is made.
   function Parts.ListGround(list)
     Fade(list.Center)
@@ -4396,6 +4431,7 @@ function Parts.DressOne(c)
     Parts.List(c)
   end
   if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end
+  if c._paintAction and c._edges and c.__pbBlizzAction == nil then Parts.ActionRow(c) end
   if c._divider and c.__pbBlizzDivider == nil then Parts.ListDivider(c) end
   if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
   if c.__pbVariant and c.__pbBlizzCell == nil then
