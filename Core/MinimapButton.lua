@@ -2895,6 +2895,9 @@ end
 --     only reads one that is there. Kept as "lsm:" and the sound's name, and
 --     looked up when it plays: one gone since (its addon off) plays the mail
 --     chime instead, never nothing, and the options say so.
+--   * EllesmereUI's: its own alert sounds, where it is loaded, read from
+--     its catalogue at run time (EuiTones, below) and kept as "eui:" and
+--     its id; one gone since plays the mail chime the same way.
 --
 -- Every one plays on the channel PlaySound uses by default, "SFX", so the
 -- player's Sound Effects volume and switch govern them all alike.
@@ -2966,6 +2969,75 @@ function MB.SharedPresent(tone)
   return name ~= nil and SharedSound(name) ~= nil
 end
 
+-- EllesmereUI's own alert sounds, where EllesmereUI is loaded. It shares
+-- them through no LibSharedMedia; it hands every caller fresh tables of
+-- its catalogue (EllesmereUI.BuildAlertSoundTables: paths, names and
+-- order, by its own ids). Read once, the first time the options or an
+-- arrival asks, and kept for the session: the catalogue is fixed data.
+-- Every step is guarded, so an EllesmereUI that has changed it can only
+-- leave the group out; a sound with no file path of its own (its "None")
+-- is left out. Kept as "eui:" and EllesmereUI's id; one gone since plays
+-- the mail chime, as a shared sound gone does.
+local EuiTones = { PREFIX = "eui:", read = false, list = false, byId = false }
+MB.EUI_PREFIX = EuiTones.PREFIX
+
+-- { ids, byId = { [id] = { path, name } } }, or nil without EllesmereUI or
+-- a catalogue it can give.
+function EuiTones.Get()
+  if EuiTones.read then return EuiTones.list or nil end
+  local eui = _G.EllesmereUI
+  if type(eui) ~= "table" then return nil end
+  local build = eui.BuildAlertSoundTables
+  if type(build) ~= "function" then return nil end
+  EuiTones.read = true
+  local ok, paths, names, order = pcall(build)
+  if not (ok and type(paths) == "table" and type(names) == "table" and type(order) == "table") then return nil end
+  local ids, byId = {}, {}
+  for i = 1, #order do
+    local id = order[i]
+    local path = type(id) == "string" and paths[id] or nil
+    local name = type(id) == "string" and names[id] or nil
+    if type(path) == "string" and path ~= "" and type(name) == "string" and name ~= "" and not byId[id] then
+      ids[#ids + 1] = id
+      byId[id] = { path = path, name = name }
+    end
+  end
+  if #ids == 0 then return nil end
+  EuiTones.list = { ids = ids, byId = byId }
+  return EuiTones.list
+end
+
+-- EllesmereUI's sounds for the options: its ids in its order and each
+-- one's { path, name }, and how many; nil, 0 without them.
+function MB.EuiSounds()
+  local list = EuiTones.Get()
+  if not list then return nil, nil, 0 end
+  return list.ids, list.byId, #list.ids
+end
+
+-- A chosen EllesmereUI sound's id, from its stored id; nil for any other.
+function MB.EuiId(tone)
+  local prefix = EuiTones.PREFIX
+  if type(tone) == "string" and tone:sub(1, #prefix) == prefix then
+    local id = tone:sub(#prefix + 1)
+    if id ~= "" then return id end
+  end
+  return nil
+end
+
+-- A stored EllesmereUI sound's file, or nil where it cannot be found now.
+function EuiTones.Path(tone)
+  local id = MB.EuiId(tone)
+  local list = id and EuiTones.Get()
+  local sound = list and list.byId[id]
+  return sound and sound.path or nil
+end
+
+-- Whether a stored EllesmereUI sound can be found now.
+function MB.EuiPresent(tone)
+  return EuiTones.Path(tone) ~= nil
+end
+
 -- The sound chosen: `alertTone`, or, where none has been chosen, what the
 -- old switch said (on: the chime). A sound no longer offered (the group
 -- invite, friend online, ready check and coins of 1.60's first builds)
@@ -2973,7 +3045,7 @@ end
 local function AlertTone(prefs)
   local tone = prefs.alertTone
   if TONE_FILE[tone] or TONE_KIT[tone] then return tone end
-  if MB.SharedName(tone) then return tone end
+  if MB.SharedName(tone) or MB.EuiId(tone) then return tone end
   if type(tone) == "string" and tone ~= "off" then return "chime" end
   if prefs.alertSound == true then return "chime" end
   return "off"
@@ -2992,17 +3064,23 @@ local function PlayFile(path)
   pcall(play, path, MB.TONE_CHANNEL)
 end
 
--- Plays `tone` (an id of ALERT_TONES, or a shared sound's); nothing for
--- "off" or an unknown id. A shared sound that cannot be found plays the
--- mail chime.
+-- Plays `tone` (an id of ALERT_TONES, a shared sound's or EllesmereUI's);
+-- nothing for "off" or an unknown id. A shared or EllesmereUI sound that
+-- cannot be found plays the mail chime.
 function MB.PlayTone(tone)
   local file = TONE_FILE[tone]
   if file then return PlayFile(file) end
   local kit = TONE_KIT[tone]
   if kit then return PlayKit(kit) end
+  local path
+  if MB.EuiId(tone) then
+    path = EuiTones.Path(tone)
+    if path then return PlayFile(path) end
+    return PlayKit(TONE_KIT.chime)
+  end
   local name = MB.SharedName(tone)
   if not name then return end
-  local path = SharedSound(name)
+  path = SharedSound(name)
   if path then return PlayFile(path) end
   PlayKit(TONE_KIT.chime)
 end
@@ -3051,7 +3129,7 @@ function MB.GetAlertTone()
 end
 
 function MB.SetAlertTone(tone)
-  if tone ~= "off" and not (TONE_FILE[tone] or TONE_KIT[tone]) then
+  if tone ~= "off" and not (TONE_FILE[tone] or TONE_KIT[tone] or MB.EuiId(tone)) then
     local name = MB.SharedName(tone)
     if not name or name == "" then return end
   end

@@ -7990,13 +7990,15 @@ function State.Memory()
   if S.tab == "general" then Ctx.Paint("general") end
 end
 
--- Sound on new mail's choices: Off, then Postbox's own, the game's and,
--- where another addon has loaded LibSharedMedia-3.0, the sounds it holds,
--- each group under its name (a heading the list shows and nobody picks).
--- A shared sound chosen and gone since (its addon off) stays in the list,
--- named as not found: the mail chime plays in its place (MinimapButton's
--- PlayTone). Made again only when what it lists has moved -- the shared
--- sounds' count, or the one not found -- so an open builds nothing new.
+-- Sound on new mail's choices: Off, then Postbox's own, the game's,
+-- EllesmereUI's own where it is loaded and, where another addon has loaded
+-- LibSharedMedia-3.0, the sounds it holds, each group under its name (a
+-- heading the list shows and nobody picks). A shared or EllesmereUI sound
+-- chosen and gone since (its addon off) stays in the list, named as not
+-- found: the mail chime plays in its place (MinimapButton's PlayTone).
+-- Made again only when what it lists has moved -- the shared or
+-- EllesmereUI sounds' count, or the one not found -- so an open builds
+-- nothing new.
 local Tones = {
   key = false, items = false,
   NAMES = {
@@ -8015,7 +8017,12 @@ function State.ToneItems()
   local current = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
   local missing = Icon and Icon.SharedName and Icon.SharedName(current) or nil
   if missing and Icon.SharedPresent(current) then missing = nil end
-  local key = count .. "\1" .. (missing or "")
+  -- EllesmereUI's own, where it is loaded, and one chosen and gone since.
+  local euiIds, euiSounds, euiCount
+  if Icon and Icon.EuiSounds then euiIds, euiSounds, euiCount = Icon.EuiSounds() end
+  local euiMissing = Icon and Icon.EuiId and Icon.EuiId(current) or nil
+  if euiMissing and Icon.EuiPresent(current) then euiMissing = nil end
+  local key = count .. "\1" .. (missing or "") .. "\1" .. (euiCount or 0) .. "\1" .. (euiMissing or "")
   if Tones.items and Tones.key == key then return Tones.items end
 
   local items = { { id = "off", name = L["OPT_ALERT_OFF"] } }
@@ -8029,6 +8036,18 @@ function State.ToneItems()
       if group[id] == which then
         items[#items + 1] = { id = id, name = Tones.NAMES[id] and L[Tones.NAMES[id]] or id }
       end
+    end
+  end
+  -- EllesmereUI's group, under its name (a name, the same in every
+  -- language), before the shared sounds'.
+  if (euiCount or 0) > 0 or euiMissing then
+    items[#items + 1] = { heading = true, name = "EllesmereUI" }
+    if euiMissing then
+      items[#items + 1] = { id = current, name = string.format(L["OPT_SOUND_MISSING"], euiMissing) }
+    end
+    for i = 1, euiIds and #euiIds or 0 do
+      local id = euiIds[i]
+      items[#items + 1] = { id = Icon.EUI_PREFIX .. id, name = euiSounds[id].name }
     end
   end
   local first = #items + 1
@@ -10128,8 +10147,8 @@ function Pages.Alerts(col)
   local sound = Rows.Dropdown(col, {
     title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
     items = State.ToneItems(),
-    -- The three groups whole without a scroll; other addons' sounds, as
-    -- many as they have, scroll.
+    -- Off, Postbox's and the game's whole without a scroll; EllesmereUI's
+    -- and other addons' sounds, as many as they have, scroll.
     maxListHeight = 16 * 20 + 8,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertTone() or "off" end,
     set = function(id)
