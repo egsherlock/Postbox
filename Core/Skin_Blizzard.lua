@@ -193,6 +193,66 @@ end
 -- The window frame
 -------------------------------------------------------------
 
+-- The frame stands evenly about the window. The game's layout for it is
+-- not centred on the frame it dresses (its left corners stand 8 units out,
+-- its right ones 4, or 2 on WoW Forever), and the two clients' art carries
+-- its metal at different places in the pieces: so the visible border's inner
+-- edge stood 7.5 units in on the left and 2.5 on the right on retail, 10.5
+-- and 6.5 on Forever, where the bronze is 7 units thick and its foot 6 above
+-- the window's bottom. Postbox's content stands evenly in its windows, so it
+-- sat to the left between the borders, and on Forever touched the left one.
+-- Once the client's layout is laid, the corners are seated again so that the
+-- metal's inner edge stands EDGE units in from the window's left, right and
+-- bottom on both clients; the title band keeps the client's own height.
+--
+-- Where the metal's inner edge stands in each piece, in units from the
+-- piece's outer side (the side the piece is anchored by): the left pieces
+-- from their left, the right pieces from their right, the bottom pieces from
+-- their bottom. Measured from each client's own art where it is more than
+-- half opaque (retail's 2x metal, Forever's c60 bronze). Keyed by the side
+-- piece's own width (Parts.Size), so the numbers are only ever used on the
+-- art they were measured from: a UI pack's own frame art of another size
+-- keeps the client's layout as it is.
+do
+  local EDGE = 4
+  local METAL = {
+    [75] = { left = 15.5, right = 6.5, bottom = 6.5 },   -- retail: metal 13.0-15.5 of 75 wide; foot rows 25.5-28.0 of 32
+    [95] = { left = 18.5, right = 8.5, bottom = 14 },    -- Forever: bronze 11.5-18.5 and 86.5-93.5 of 95; foot rows 86-95 of 100
+  }
+  local CORNERS = {
+    { "TopLeftCorner", "left" }, { "BottomLeftCorner", "left", true },
+    { "TopRightCorner", "right" }, { "BottomRightCorner", "right", true },
+  }
+  -- The four corners seated by the rule, each keeping its anchor point and,
+  -- for the top ones, the client's own height; the edges run between the
+  -- corners, so they follow. All four or none: each anchor is read before
+  -- any moves. -> true if seated.
+  local anchors = {}
+  function Parts.SeatFrame(pieces)
+    local m = METAL[Parts.Size("!UI-Frame-Metal-EdgeLeft") or 0]
+    if not m or type(pieces) ~= "table" then return false end
+    for i = 1, #CORNERS do
+      local piece = pieces[CORNERS[i][1]]
+      if not piece then return false end
+      local point, rel, relPoint, _, y = piece:GetPoint(1)
+      if type(point) ~= "string" or type(relPoint) ~= "string" or type(y) ~= "number" then return false end
+      local a = anchors[i] or {}
+      anchors[i] = a
+      a[1], a[2], a[3], a[4] = point, rel, relPoint, y
+    end
+    for i = 1, #CORNERS do
+      local c, a = CORNERS[i], anchors[i]
+      local piece = pieces[c[1]]
+      local x = c[2] == "left" and (EDGE - m.left) or (m.right - EDGE)
+      local y = c[3] and (EDGE - m.bottom) or a[4]
+      piece:ClearAllPoints()
+      piece:SetPoint(a[1], a[2], a[3], x, y)
+      a[2] = nil
+    end
+    return true
+  end
+end
+
 -- Postbox's windows are BasicFrameTemplateWithInset frames, and that
 -- template has no NineSlice to restyle: its frame is eight loose textures in
 -- the thin pre-metal style (it has no NineSlice and no Inset frame on either
@@ -233,6 +293,7 @@ local function LayFrame(frame)
     for _, piece in pairs(holder.__pbPieces) do Fade(piece) end
     return false
   end
+  pcall(Parts.SeatFrame, holder.__pbPieces)
   frame.__pbBlizzFrame = holder
   return true
 end
