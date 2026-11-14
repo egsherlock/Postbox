@@ -1395,19 +1395,45 @@ local function EnsureEuiOverlay(btn)
 
   -- Their layout passes (their settings, the crafting-order icon, their
   -- first look after a loading screen) begin by setting the button's
-  -- visibility from the game's unread flag. Postbox only ever ADDS to that:
-  -- every "when to show" choice shows the icon at least while the flag is
-  -- up, and the expiry dot on its own needs the button for its place. So
+  -- visibility from the game's unread flag. Postbox mostly ADDS to that:
+  -- every "when to show" choice but New since last visit (OnShow, below)
+  -- shows the icon at least while the flag is up, and the expiry dot on its
+  -- own needs the button for its place. So
   -- when a pass hides a button Postbox wants shown, it is shown again
   -- right here, inside their pass -- before their placement runs, which then
   -- places it like any shown icon. The overlay is ours, so this touches
   -- nothing of theirs; with the flag up, or on "When new mail arrives", it
   -- never fires at all. Their own hide-mail setting is theirs to keep.
   overlay:SetScript("OnHide", function()
+    if euiSkin.reHiding then return end
     if euiSkin.applied and euiSkin.button == btn and view.shown and not btn:IsShown()
       and not EuiHidesMail() then
       btn:Show()
     end
+  end)
+
+  -- The one choice that shows LESS than the flag: New since last visit.
+  -- While it is in force (Mail Memory on, a visit recorded) and says the
+  -- icon is down -- only mail already seen at the last visit is unread, or
+  -- a mailbox is open -- a pass of theirs that shows the button by the flag
+  -- is answered here, as the re-show above answers a hide: the button is
+  -- hidden again inside their pass. Asked afresh (MailMemory.NewSinceVisit),
+  -- never from a reading that could be stale, so the moment mail arrives
+  -- their show stands and nothing fights it; the lone expiry marker keeps
+  -- the button, as it does today. Every other choice never gets past the
+  -- first test. Their button is a plain one, not protected; should it ever
+  -- be, nothing is done in combat. `reHiding` keeps the hide from waking the
+  -- re-show above: no loop between their show and this hide.
+  overlay:SetScript("OnShow", function()
+    if euiSkin.reHiding or ShowMode() ~= "since" then return end
+    if not (euiSkin.applied and euiSkin.button == btn and btn:IsShown()) or view.alone then return end
+    local Memory = ns.MailMemory
+    if not (MemoryOn() and Memory and type(Memory.NewSinceVisit) == "function") then return end
+    if Memory.NewSinceVisit() ~= false then return end
+    if btn:IsProtected() and InCombatLockdown() then return end
+    euiSkin.reHiding = true
+    btn:Hide()
+    euiSkin.reHiding = false
   end)
 
   btn.__pbOverlay = overlay
@@ -1601,9 +1627,11 @@ end
 -- which also starves the event-driven half of EllesmereUI's own visibility
 -- sync -- so that half is performed here. On "When new mail arrives" it is
 -- the exact call their sync makes, and their periodic layout passes, which
--- read HasNewMail() directly, agree. The other choices only ever show MORE
--- than the flag does, and the overlay's OnHide (EnsureEuiOverlay) keeps a
--- layout pass of theirs from taking that back.
+-- read HasNewMail() directly, agree. Mail on any character and Always only
+-- ever show MORE than the flag does, and the overlay's OnHide
+-- (EnsureEuiOverlay) keeps a layout pass of theirs from taking that back;
+-- New since last visit can show less, and the overlay's OnShow keeps a pass
+-- of theirs from bringing the button back while it says down.
 local function SyncEuiButtonShown()
   local btn = euiSkin.button
   if not (btn and euiSkin.applied) then return end
