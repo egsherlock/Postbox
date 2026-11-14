@@ -3757,6 +3757,14 @@ do
     local T = ns.Theme
     if not T or T.RowGround then return end
     T.RowGround = Skin.RowGround
+    -- The game's UI scale or the screen moved: the papered rows laid again
+    -- on their new pixels (Skin.ApplyScale does it for the window scale).
+    if type(CreateFrame) == "function" then
+      local watch = CreateFrame("Frame")
+      watch:RegisterEvent("UI_SCALE_CHANGED")
+      watch:RegisterEvent("DISPLAY_SIZE_CHANGED")
+      watch:SetScript("OnEvent", function() Skin.ApplyScale() end)
+    end
     local style = T.StyleMailRow
     if type(style) == "function" then
       T.StyleMailRow = function(row, position, hovered)
@@ -3840,15 +3848,75 @@ do
     end
   end
 
+  -- The gap between two papered rows, a whole number of screen pixels. The
+  -- client puts each edge of a texture on the nearest pixel, so a gap of 2
+  -- units at 1.2 pixels a unit (2.4 pixels) came out 2 or 3 pixels from one
+  -- row to the next, by where each edge fell. The paper is laid from its row's
+  -- top to the next row's top less a whole `G` pixels (the thinner: `gap`
+  -- units' pixels rounded down, at least 1), and an edge and that edge moved
+  -- a whole number of pixels land on pixels a whole number apart: every gap
+  -- is G. The row itself (its height, pitch and texts) is where it was; the
+  -- paper reaches under a pixel past its foot, and the pointer's wash
+  -- (row._bg) with it. Laid again only when the row's scale, the screen or
+  -- the gap moved (one scale read a bind), and for every papered row on a
+  -- window-scale or UI-scale change (Skin.ApplyScale, the client's events).
+  local screenH
+  local papered = {}
+  local function ScreenH()
+    if not screenH then
+      screenH = 768
+      if type(GetPhysicalScreenSize) == "function" then
+        local _, h = GetPhysicalScreenSize()
+        if type(h) == "number" and h > 0 then screenH = h end
+      end
+    end
+    return screenH
+  end
+
+  local function LayPaper(row, gap, force)
+    local paper = row.__pbPaper
+    local s = row:GetEffectiveScale()
+    local h = ScreenH()
+    if not force and row.__pbPaperS == s and row.__pbPaperH == h and row.__pbPaperGap == gap then return end
+    row.__pbPaperS, row.__pbPaperH, row.__pbPaperGap = s, h, gap
+    local ext = 0
+    local k = (type(s) == "number" and s > 0) and s * h / 768 or 0
+    if gap and gap > 0 and k > 0 then
+      local G = floor(gap * k + 1e-6)
+      if G < 1 then G = 1 end
+      ext = gap - G / k
+    end
+    paper:ClearAllPoints()
+    paper:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    paper:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, -ext)
+  end
+
+  -- Every papered row laid again (a window-scale or UI-scale change, which
+  -- binds nothing by itself).
+  function R.Relay()
+    screenH = nil
+    for i = 1, #papered do
+      local row = papered[i]
+      if row.__pbPaperOn then LayPaper(row, row.__pbPaperGap, true) end
+    end
+  end
+
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
-  -- mail, a heading in Mail Memory's list).
-  function Skin.RowGround(row, position)
+  -- mail, a heading in Mail Memory's list); `gap`: the units between one
+  -- row and the next in its list (nil: none, the rows touch).
+  function Skin.RowGround(row, position, gap)
     local mode = R.mode
     local paper = row.__pbPaper
     if position == nil or mode == "none" then
       if row.__pbGround then
         row.__pbGround, row.__pbPaperOn = nil, nil
         if paper then paper:Hide() end
+        -- The stripe back on the row's own bounds.
+        if row._bg and row.__pbBgOnPaper then
+          row.__pbBgOnPaper = nil
+          row._bg:ClearAllPoints()
+          row._bg:SetAllPoints(row)
+        end
         Texts(row, nil, false)
         -- The sender's colour is painted again by the binder.
         if row.Sender then row.Sender.__pbClass = nil end
@@ -3861,10 +3929,11 @@ do
     if not paper then
       paper = row:CreateTexture(nil, "BACKGROUND", nil, -2)
       paper:SetTexture(PAPER)
-      paper:SetAllPoints(row)
       row.__pbPaper = paper
       row.__pbRowPaint = Wash
+      papered[#papered + 1] = row
     end
+    LayPaper(row, gap)
     local h = row:GetHeight()
     if type(h) ~= "number" or h <= 0 then h = 24 end
     local band = floor(h * BAND_K + 0.5)
@@ -3878,6 +3947,14 @@ do
       paper:SetVertexColor(v, v, v, 1)
       paper:Show()
       if row.Sender then row.Sender.__pbClass = nil end
+      -- The pointer's wash covers the paper, foot included.
+      local bg = row._bg
+      if bg and not row.__pbBgOnPaper then
+        row.__pbBgOnPaper = true
+        bg:ClearAllPoints()
+        bg:SetPoint("TOPLEFT", paper, "TOPLEFT", 0, 0)
+        bg:SetPoint("BOTTOMRIGHT", paper, "BOTTOMRIGHT", 0, 0)
+      end
     end
     -- Each bind: a re-fonted or re-roled string comes back in its ink.
     Texts(row, "row", R.light)
@@ -4001,6 +4078,13 @@ do
     if O.read and type(UI.GetBlizzOpacity) == "function" and UI.GetBlizzOpacity() ~= O.alpha then
       Skin.OpacityChanged()
     end
+  end
+
+  -- The window scale moved (MailboxUI.ApplyWindowScale), or the game's UI
+  -- scale or the screen (the watch in R.Install): what is laid in screen
+  -- pixels laid again.
+  function Skin.ApplyScale()
+    R.Relay()
   end
 end
 

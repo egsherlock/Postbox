@@ -8505,7 +8505,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- from. `position` is the DISPLAYED position, never the inbox index.
   T.StyleMailRow(row, position, false)
   -- The ground the look lays under its rows, where it has one.
-  if T.RowGround then T.RowGround(row, position) end
+  if T.RowGround then T.RowGround(row, position, ROW_GAP) end
   PaintRowSelection(panel, row)
   -- A finished mail is kept, not waiting: it sits back under the divider.
   row:SetAlpha(showDelete and 0.6 or 1)
@@ -9067,7 +9067,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   local layout = HV.Layout()
   row.entry = entry
   T.StyleMailRow(row, position, false)
-  if T.RowGround then T.RowGround(row, position) end
+  if T.RowGround then T.RowGround(row, position, ROW_GAP) end
 
   local icon
   local first = entry.it and entry.it[1]
