@@ -118,6 +118,9 @@ local SCHEMA = {
                               -- (Core/MailMemory.lua, 2c)
   "mailSent",                 -- realm -> name -> what was sent, kept as History
                               -- is (Core/MailMemory.lua, 2d)
+  "mailReturned",             -- realm -> name -> mail returned to the player's
+                              -- own characters, kept as Sent is
+                              -- (Core/MailMemory.lua, 2d, MM.ReturnRecord)
   "auctionPosts",             -- realm -> name -> item name -> { item id, when }:
                               -- what was put up for auction, so a sold
                               -- auction's row shows its item (Core/MailMemory.lua, 2e)

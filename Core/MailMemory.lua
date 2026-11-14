@@ -1582,10 +1582,12 @@ end
 -- each list is in date order, so this touches only what goes. A list left
 -- empty is dropped, so "Never" leaves no character's record behind, and a
 -- record already empty costs one lookup and allocates nothing.
--- What was sent (2d) is kept and pruned by the same rule, in its own root.
+-- What was sent (2d) is kept and pruned by the same rule, in its own root,
+-- and so is what was returned to the player's own characters (2d,
+-- MM.ReturnRecord), in its own.
 local function PruneAllHistory()
-  for pass = 1, 2 do
-    local key = (pass == 1) and "mailHistory" or "mailSent"
+  for pass = 1, 3 do
+    local key = (pass == 1) and "mailHistory" or (pass == 2) and "mailSent" or "mailReturned"
     local root = ns.Store and ns.Store.Get and ns.Store.Get(key)
     if type(root) == "table" then
       local now = time()
@@ -1852,7 +1854,8 @@ do
   -- Mail sent to the player's own characters, by the character it went
   -- to: what that character's box holds that its last snapshot cannot
   -- know. Read from the records above, every character's (several may
-  -- have mailed one alt): each entry whose `s` is one of the characters
+  -- have mailed one alt), and from the mail returned to one
+  -- (MM.ReturnRecord, below): each entry whose `s` is one of the characters
   -- in the census (`alts`), by the census's own key (Recipients.
   -- CharacterKey, as Mail.OwnCharacterKeys keys them), and not the one
   -- that sent it. On Forever mail cannot cross a ruleset, so an entry is
@@ -1910,28 +1913,49 @@ do
     return nil
   end
 
-  -- One entry onto its target, in the part of the character that sent it.
-  local function Add(target, e, sRealm, sName)
+  -- One entry onto its target, in the part of the character that sent it:
+  -- a part per sender and per record, sent (2d) or returned
+  -- (MM.ReturnRecord), so a part's entries stay in their record's order.
+  local function Add(target, e, sRealm, sName, returned)
     local parts = target.parts
     if not parts then
       parts = {}
       target.parts = parts
     end
+    returned = returned and true or false
     local part
     for i = 1, #parts do
-      if parts[i].realm == sRealm and parts[i].name == sName then
-        part = parts[i]
+      local p = parts[i]
+      if p.realm == sRealm and p.name == sName and p.returned == returned then
+        part = p
         break
       end
     end
     if not part then
-      part = { realm = sRealm, name = sName }
+      part = { realm = sRealm, name = sName, returned = returned }
       parts[#parts + 1] = part
     end
     part[#part + 1] = e
   end
 
-  local function Build(root, alts, two)
+  local function AddRecords(root, returned)
+    if type(root) ~= "table" then return end
+    for sRealm, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for sName, list in pairs(byRealm) do
+          if type(list) == "table" then
+            for i = 1, #list do
+              local e = list[i]
+              local target = TargetOf(e, sRealm, sName)
+              if target then Add(target, e, sRealm, sName, returned) end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  local function Build(root, returns, alts, two)
     local b = built
     b.targets, b.own, b.keys, b.two = {}, {}, {}, two
     local R = ns.Recipients
@@ -1956,33 +1980,27 @@ do
         end
       end
     end
-    for sRealm, byRealm in pairs(root) do
-      if type(byRealm) == "table" then
-        for sName, list in pairs(byRealm) do
-          if type(list) == "table" then
-            for i = 1, #list do
-              local e = list[i]
-              local target = TargetOf(e, sRealm, sName)
-              if target then Add(target, e, sRealm, sName) end
-            end
-          end
-        end
-      end
-    end
+    AddRecords(root, false)
+    AddRecords(returns, true)
   end
 
-  -- -> `built`, current, or nil without records or a census.
+  -- -> `built`, current, or nil without a census. The Sent records and the
+  -- returns' (MM.ReturnRecord) are each read where there are any.
   local function Fresh()
     local get = ns.Store and ns.Store.Get
     local root = get and get("mailSent")
+    local returns = get and get("mailReturned")
     local alts = get and get("alts")
-    if type(root) ~= "table" or type(alts) ~= "table" then return nil end
+    if type(alts) ~= "table" then return nil end
+    if type(root) ~= "table" then root = false end
+    if type(returns) ~= "table" then returns = false end
     local n = CensusCount(alts)
     local two = ns.Helpers.TwoPartNames() and true or false
     local b = built
-    if not (b.targets and b.gen == MM.sentGen and b.root == root and b.alts == alts and b.altsN == n and b.two == two) then
-      Build(root, alts, two)
-      b.gen, b.root, b.alts, b.altsN = MM.sentGen, root, alts, n
+    if not (b.targets and b.gen == MM.sentGen and b.root == root and b.returns == returns and b.alts == alts
+        and b.altsN == n and b.two == two) then
+      Build(root, returns, alts, two)
+      b.gen, b.root, b.returns, b.alts, b.altsN = MM.sentGen, root, returns, alts, n
     end
     return b
   end
@@ -1993,15 +2011,16 @@ do
     return byRealm and byRealm[name] or nil
   end
 
-  -- The record of the character played took `entry` (MM.SentRecord), and
-  -- `gen` is what MM.sentGen was before: what is built stays current with
-  -- the entry added where it goes, if it was current before.
-  function MM._SentAdded(entry, gen)
+  -- A record of the character played took `entry` (MM.SentRecord, or
+  -- MM.ReturnRecord with `returned`), and `gen` is what MM.sentGen was
+  -- before: what is built stays current with the entry added where it goes,
+  -- if it was current before.
+  function MM._SentAdded(entry, gen, returned)
     local b = built
     if not (b.targets and b.gen == gen) then return end
     local realm, name = Me()
     local target = TargetOf(entry, realm, name)
-    if target then Add(target, entry, realm, name) end
+    if target then Add(target, entry, realm, name, returned) end
     b.gen = MM.sentGen
   end
 
@@ -2030,6 +2049,56 @@ do
     if not best then return nil end
     cursor[bestPart] = bestAt - 1
     return best, parts[bestPart]
+  end
+
+  -- A mail Postbox returned, the server CONFIRMED (Core/MailService.lua,
+  -- Mail.ReturnMail: the mail has left the inbox by that command), as read
+  -- just before the command went: `entry` { s = its sender as the inbox
+  -- named it, sub, it = { { l = link, n = count } }, m = gold, c = C.O.D. }.
+  -- Kept only when that sender is one of the player's own characters (by
+  -- the census's key, as a Sent entry's recipient is matched), so its box
+  -- lists the mail on its way back with what was sent it (SentRow, marked
+  -- returned). Kept apart from Sent, which lists what this character sent,
+  -- at the root `mailReturned`, realm -> name (the character that returned
+  -- it) -> entries oldest first, `s` turned into the address a Sent entry
+  -- keeps; under History's days and cap as Sent is (PruneHistory), and
+  -- nothing while History is Never. What the game does to a C.O.D. or
+  -- gold on a mail sent back is not established here: what it held is
+  -- recorded, and its row shows no C.O.D. -> the entry, or nil.
+  function MM.ReturnRecord(entry)
+    if type(entry) ~= "table" or type(entry.s) ~= "string" or entry.s == "" or HistoryKeep() <= 0 then return nil end
+    local realm, name = Me()
+    if not (realm and name) then return nil end
+    local R = ns.Recipients
+    local to = R and type(R.Qualify) == "function" and R.Qualify(entry.s) or ""
+    if type(to) ~= "string" or to == "" then return nil end
+    entry.s = to
+    entry.t = entry.t or time()
+    if not Fresh() then return nil end
+    local target = TargetOf(entry, realm, name)
+    if not target then return nil end
+    local root = ns.Store.EnsurePath("mailReturned")
+    local byRealm = root[realm]
+    if type(byRealm) ~= "table" then
+      byRealm = {}
+      root[realm] = byRealm
+    end
+    local list = byRealm[name]
+    if type(list) ~= "table" then
+      list = {}
+      byRealm[name] = list
+      MM.SentChanged()
+    end
+    list[#list + 1] = entry
+    MM.recordWrites = MM.recordWrites + 1
+    local gen = MM.sentGen
+    MM.sentGen = gen + 1
+    MM._SentAdded(entry, gen, true)
+    PruneHistory(list, entry.t)
+    -- Mail on its way to that character, counted where its box is listed.
+    NoteArrival(target.realm, target.name, nil, false)
+    CharactersChanged()
+    return entry
   end
 
   -- realm, name, seenAt, now -> how many of the mails sent to that
@@ -2088,10 +2157,13 @@ do
     if subject == "" and first then subject = first.l:match("|h%[(.-)%]|h") or "" end
     local icon
     if firstId and C_Item and type(C_Item.GetItemIconByID) == "function" then icon = C_Item.GetItemIconByID(firstId) end
-    row = { sent = true, t = tonumber(e.t), stuck = false, icon = icon or LETTER, sender = sender, subject = subject,
-      money = tonumber(e.m) or 0, cod = tonumber(e.c) or 0, items = list and #list / 2 or 0, read = false,
-      link = first and first.l or false, id = firstId, kind = false, paid = false,
-      count = first and (tonumber(first.n) or 1) or false, it = list }
+    -- A mail returned to the box (MM.ReturnRecord) says so, and shows no
+    -- C.O.D.: nothing here establishes that one stays on a mail sent back.
+    local returned = part.returned and true or false
+    row = { sent = true, returned = returned, t = tonumber(e.t), stuck = false, icon = icon or LETTER, sender = sender,
+      subject = subject, money = tonumber(e.m) or 0, cod = (not returned) and (tonumber(e.c) or 0) or 0,
+      items = list and #list / 2 or 0, read = false, link = first and first.l or false, id = firstId, kind = false,
+      paid = false, count = first and (tonumber(first.n) or 1) or false, it = list }
     rowOf[e] = row
     return row
   end
@@ -3297,6 +3369,9 @@ function MM.RowTip(row, owner)
   local named = (mail.sender ~= "" and mail.sender) or nil
   local title = (subject and subject ~= "") and subject or named or L["MEMORY_SENDER_UNKNOWN"]
   T.TipTitle(title)
+  -- A mail the box had returned to it (MM.ReturnRecord), whether or not the
+  -- row's time column shows it so.
+  if mail.returned then T.TipLine(T.TipTone("muted", L["STATUS_RETURNED"])) end
 
   if named and (not R.Shows("sender") or row.tipShort or row.Sender.__pbOverflowText) then
     T.TipFact(L["TIP_FROM"], R.TipSender(named, row.boxRealm))
@@ -3624,11 +3699,14 @@ local function Figures(mail, now, fs)
   end
 
   -- Mail sent the box since its last visit (MM.SentRowsInto): nothing
-  -- recorded says when it goes, so no time is shown for it.
+  -- recorded says when it goes, so no time is shown for it. One the box
+  -- had returned to it says Returned where the time would stand.
   if mail.sent then
     if R and money and not R.MoneyShown(moneyKind) then money = nil end
     if R and slots and not R.Shows("slots") then slots = nil end
-    return money, slots, nil, nil, nil, false, moneyKind == "cod" and money ~= nil
+    local mark = nil
+    if mail.returned and not (R and not R.Shows("time")) then mark = T.Colorize("textSecondary", L["STATUS_RETURNED"]) end
+    return money, slots, mark, nil, nil, false, moneyKind == "cod" and money ~= nil
   end
 
   -- Time left by the mail list's own rule (ExpiryState): the player's

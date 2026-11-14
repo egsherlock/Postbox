@@ -4802,10 +4802,50 @@ function Mail.ReturnMail(index, onDone, expected, stamp, item)
     if onDone then onDone("unavailable") end
     return
   end
+  -- What the mail held, read just before the command goes, and handed to
+  -- Mail Memory only once the mail has left the inbox by it (the judge,
+  -- below): a mail sent back to one of the player's own characters is then
+  -- listed in that character's box (MailMemory.ReturnRecord, which keeps
+  -- only those). Its items as Sent keeps them, one entry per link.
+  local capture
   SingleCommand(function(at)
+    local _, _, sender, subject, money, cod = GetInboxHeaderInfo(at)
+    if type(sender) == "string" and sender ~= "" then
+      local items
+      if type(GetInboxItemLink) == "function" then
+        for slot = 1, MAX_ATTACHMENTS do
+          local link = GetInboxItemLink(at, slot)
+          if type(link) == "string" and link ~= "" then
+            local _, _, _, count = GetInboxItem(at, slot)
+            count = tonumber(count) or 1
+            items = items or {}
+            local merged = false
+            for j = 1, #items do
+              if items[j].l == link then
+                items[j].n = items[j].n + count
+                merged = true
+                break
+              end
+            end
+            if not merged then items[#items + 1] = { l = link, n = count } end
+          end
+        end
+      end
+      money, cod = tonumber(money) or 0, tonumber(cod) or 0
+      capture = { s = sender, sub = tostring(subject or ""), it = items, m = (money > 0) and money or nil,
+        c = (cod > 0) and cod or nil }
+    end
     ReturnInboxItem(at)
     return true
-  end, onDone, index, expected, nil, stamp, item)
+  end, onDone, index, expected, function(where)
+    -- Confirmed: the mail is gone from the inbox (nil), not merely asked.
+    if where == nil and capture then
+      local MM = ns.MailMemory
+      if MM and type(MM.ReturnRecord) == "function" then MM.ReturnRecord(capture) end
+    end
+    capture = nil
+    return true
+  end, stamp, item)
 end
 
 -- Deletes a list of mails, one command at a time, stopping at the first
