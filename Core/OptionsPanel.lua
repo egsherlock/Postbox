@@ -3645,9 +3645,12 @@ do
   -- The number the icon wears here while Count on icon is on.
   local MM = { COUNT = { me = 3, all = 12 } }
   -- Each answer's choices, in MinimapButton's order, and their names.
-  -- Anchor's in reading order, as its grid stands.
+  -- Anchor's in reading order, as its grid stands. When to show's grid
+  -- has three columns, the room for three captions: New since last visit
+  -- (the fourth here) stands in New mail's column while it is the choice,
+  -- the two showing the same in the grid's three situations.
   MM.IDS = {
-    show = { "new", "any", "always" },
+    show = { "new", "any", "always", "since" },
     marker = { "dot", "ring", "square", "bar", "exclamation", "triangle" },
     corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
     color = { "red", "gold", "accent", "class", "white", "custom" },
@@ -3655,7 +3658,7 @@ do
     large = { "off", "on" },
   }
   MM.CAPS = {
-    show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS" },
+    show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS", "OPT_MINIMAP_SHOW_SINCE" },
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
       "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION", "OPT_MINIMAP_MARKER_TRIANGLE" },
     corner = { "OPT_MINIMAP_ANCHOR_TL", "OPT_MINIMAP_ANCHOR_T", "OPT_MINIMAP_ANCHOR_TR", "OPT_MINIMAP_ANCHOR_L",
@@ -3861,7 +3864,9 @@ do
 
   -- What the grid shows for situation `row` (1 no mail anywhere, 2 mail on
   -- another character, 3 new mail here) under When to show `id`: nil for
-  -- nothing, else the look -- MinimapButton's own rule (Evaluate).
+  -- nothing, else the look -- MinimapButton's own rule (Evaluate). New
+  -- since last visit, as New mail: up only for mail here, new mail being
+  -- mail come since the mailbox was last opened.
   local function GridLook(row, id)
     if row == 3 then return "lit" end
     if id == "always" or (row == 2 and id == "any") then return "rest" end
@@ -4012,6 +4017,9 @@ do
         -- The grid, its foot on the captions; plain icons, the count and
         -- the marker left to the drawings that are about them.
         P.mark, P.count = false, 0
+        -- New mail's column, or New since last visit's while it is chosen
+        -- (MM.IDS.show).
+        local first = (current == "since") and 4 or 1
         local labelH = S.mmLabelH or 12
         local y = -4 - (stageH - GridHeight())
         for r = 1, 3 do
@@ -4025,13 +4033,15 @@ do
           local strip = strips[r]
           PlaceStrip(f, strip, y, G.STRIP_H)
           for c = 1, 3 do
-            local look = GridLook(r, ids[c])
+            local i = (c == 1) and first or c
+            local look = GridLook(r, ids[i])
             if look then PaintFigure(strip.figs[c], Icon, look, G.CELL, math.floor(MM.THIRDS[c] * CTX_W + 0.5)) end
           end
           y = y - G.STRIP_H - G.STRIP_GAP
         end
         for c = 1, 3 do
-          PaintCaption(f, caps[c], math.floor(MM.THIRDS[c] * CTX_W + 0.5), capY, keys[c], ids[c] == current, on)
+          local i = (c == 1) and first or c
+          PaintCaption(f, caps[c], math.floor(MM.THIRDS[c] * CTX_W + 0.5), capY, keys[i], ids[i] == current, on)
         end
       elseif mode == "large" then
         -- The marker on its own, as on the icon and larger, side by side.
