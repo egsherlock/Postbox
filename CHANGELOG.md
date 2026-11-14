@@ -98,8 +98,9 @@
   turns the pin off.
 - **Send tab: right-click hides a name** in the suggestions under To and
   in the contact list. The star at the end of a name favorites it. Hidden
-  names wait under Hidden at the foot of the contact list, Favorites
-  included, one click from coming back.
+  names wait under Hidden at the foot of both lists, Favorites included,
+  one click from coming back; under To the line shows up to three names
+  that match what you typed, then See all opens Manage Recipients.
 - **Choose where suggested names come from** (Options > Send tab): your
   alts, your guild, your friends, people you mailed recently, and players
   you grouped with recently. Favorites stay whatever you switch off.
