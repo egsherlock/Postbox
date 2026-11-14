@@ -8998,15 +8998,18 @@ function Pages.window(col)
   -- window wears that style (its skin, chosen or standing in for a host
   -- UI's), as the Postbox style's own rows are built only under it; the
   -- style is claimed once at login, so this holds until a reload. Live,
-  -- without a reload: the skin repaints what it dressed.
-  if Skin and Skin.IsBlizzardStyle then
+  -- without a reload: the skin repaints what it dressed. Asked of ns.Skin
+  -- itself: `Skin` above is only a skin that publishes controls of its own
+  -- for this page (GetSkin), which the Blizzard style does not.
+  local worn = ns.Skin
+  if worn and worn.IsBlizzardStyle then
     local function BlizzRow(spec, setter, changed)
       return Rows.Dropdown(col, {
         title = L[spec.title], text = L[spec.text], items = spec.items,
         get = function() return ns.MailboxUI[spec.get]() end,
         set = function(id)
           ns.MailboxUI[setter](id)
-          if type(Skin[changed]) == "function" then Skin[changed]() end
+          if type(worn[changed]) == "function" then worn[changed]() end
         end,
       })
     end
