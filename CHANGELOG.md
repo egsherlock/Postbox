@@ -106,6 +106,9 @@
 - **Choose where suggested names come from** (Options > Send tab): your
   alts, your guild, your friends, people you mailed recently, and players
   you grouped with recently. Favorites stay whatever you switch off.
+- **Send tab: the names offered as you type put the people you mail
+  first:** favorites, then the people you mail most, then everyone else.
+  Only names that match what you typed are listed, as before.
 - **Manage Recipients shows when you last mailed each name,** and can
   sort by it.
 - Manage Recipients can delete a saved name that no list offers any more,
