@@ -270,6 +270,22 @@
   holds.** Where the game's subject stays "Retrieving data", the row, its
   tooltip and the opened mail name the item inside, and History and Mail
   Memory keep it under that name.
+- **Options: Reset settings and General's Reset this tab keep History
+  holds,** as they keep Keep History for, so History goes on holding the
+  mail it held before the reset.
+- **Character Groups: Other players finds guildmates, friends and the
+  people you mail whatever the Send tab's Offer switches say.** Those
+  switches (Options > Send tab) choose names for the Send tab and Manage
+  Recipients only.
+- **Options > General > Character order: Warnings first follows Warn
+  about expiring mail.** With Warn about set to Deleted, the characters
+  whose mail is about to be deleted come first.
+- Send tab: the names offered as you type follow a change to Keep History
+  for at once, and take less work to order on a large guild.
+- After Reset settings, an open Send tab and Manage Recipients show the
+  lists the reset switched back on.
+- Minimap icon: a mail you send one of your own characters is counted at
+  once (Count on icon > All characters).
 - **Send tab: the Recipient box keeps a name you typed in full.** With
   "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
 - **Send tab: your own character is no longer suggested to itself** when
