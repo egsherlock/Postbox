@@ -560,6 +560,41 @@ local function SinkPanel(c)
 end
 
 -------------------------------------------------------------
+-- One-unit lines
+-------------------------------------------------------------
+
+-- The game's divider (Options_HorizontalDivider, one unit tall) drawn at
+-- least a screen pixel tall, so it shows at any scale: under the tabs, the
+-- band and island rules, the options' tab rule and the group headings'.
+-- Each is kept with the frame it is measured on and laid again when the
+-- window scale, the game's UI scale or the screen moves (Skin.ApplyScale):
+-- laid once, a line drawn at one scale stood under a pixel at a smaller one
+-- (a unit is 0.96 pixels at 1.2 pixels a unit and 80%) or two at a larger.
+do
+  local lines, hosts, units = {}, {}, {}
+
+  local function Lay(i)
+    local h = units[i]
+    local T = ns.Theme
+    local px = T and type(T.OnePixel) == "function" and T.OnePixel(hosts[i]) or 1
+    if px > h then h = px end
+    lines[i]:SetHeight(h)
+  end
+
+  -- `line` (its atlas set) on `frame`: its height, kept for the next scale.
+  function Parts.OneUnit(line, frame, name)
+    local _, h = Parts.Size(name)
+    local n = #lines + 1
+    lines[n], hosts[n], units[n] = line, frame, h or 1
+    Lay(n)
+  end
+
+  function Parts.RelayLines()
+    for i = 1, #lines do Lay(i) end
+  end
+end
+
+-------------------------------------------------------------
 -- The Mail and Send tabs
 -------------------------------------------------------------
 
@@ -680,12 +715,8 @@ do
     if not (dressed and bar and HasAtlas(DIVIDER)) then return end
     local line = frame:CreateTexture(nil, "ARTWORK")
     if not Atlas(line, DIVIDER, false) then return end
-    local _, h = Parts.Size(DIVIDER)
-    h = h or 1
     -- At least a screen pixel, so the line shows at any UI scale.
-    local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
-    if px > h then h = px end
-    line:SetHeight(h)
+    Parts.OneUnit(line, frame, DIVIDER)
     line:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", -DIVIDER_RUN, 0)
     line:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", DIVIDER_RUN, 0)
     frame.__pbBlizzTabLine = line
@@ -1528,12 +1559,7 @@ do
       t:Hide()
       return nil
     end
-    local _, h = Parts.Size(DIVIDER)
-    h = h or 1
-    local T = ns.Theme
-    local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
-    if px > h then h = px end
-    t:SetHeight(h)
+    Parts.OneUnit(t, frame, DIVIDER)
     local edge = foot and "BOTTOM" or "TOP"
     t:SetPoint(edge .. "LEFT", frame, edge .. "LEFT", RULE_IN, 0)
     t:SetPoint(edge .. "RIGHT", frame, edge .. "RIGHT", -RULE_IN, 0)
@@ -2004,12 +2030,7 @@ do
       if HasAtlas(DIVIDER) then
         local rule = f:CreateTexture(nil, "ARTWORK")
         if Atlas(rule, DIVIDER, false) then
-          local _, h = Parts.Size(DIVIDER)
-          h = h or 1
-          local T = ns.Theme
-          local px = T and type(T.OnePixel) == "function" and T.OnePixel(f) or 1
-          if px > h then h = px end
-          rule:SetHeight(h)
+          Parts.OneUnit(rule, f, DIVIDER)
           rule:SetPoint("TOPLEFT", f.Rule, "TOPLEFT", 0, 0)
           rule:SetPoint("TOPRIGHT", f.Rule, "TOPRIGHT", 0, 0)
           rule:Hide()
@@ -3250,11 +3271,7 @@ do
         line:Hide()
         return
       end
-      local _, h = Parts.Size(DIVIDER)
-      h = h or 1
-      local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
-      if px > h then h = px end
-      line:SetHeight(h)
+      Parts.OneUnit(line, frame, DIVIDER)
       line:SetPoint("TOPLEFT", plate, "BOTTOMLEFT", -DIVIDER_RUN, 0)
       frame.__pbBlizzTabRule = line
     end
@@ -3364,12 +3381,7 @@ do
       line:Hide()
       return
     end
-    local _, h = Parts.Size(DIVIDER)
-    h = h or 1
-    local T = ns.Theme
-    local px = T and type(T.OnePixel) == "function" and T.OnePixel(head) or 1
-    if px > h then h = px end
-    line:SetHeight(h)
+    Parts.OneUnit(line, head, DIVIDER)
     line:SetPoint("TOPLEFT", rule, "TOPLEFT", 0, 0)
     line:SetPoint("TOPRIGHT", rule, "TOPRIGHT", 0, 0)
     Fade(rule)
@@ -4107,6 +4119,7 @@ do
   -- pixels laid again.
   function Skin.ApplyScale()
     R.Relay()
+    Parts.RelayLines()
   end
 end
 
