@@ -102,8 +102,11 @@ ROW.END_W = ROW.MARK_EDGE + 3 * ROW.MARK + 2 * ROW.MARK_GAP + ROW.MARK_AIR
 
 -- The columns after the name, left to right. `field` is the entry's string
 -- the cell shows (made once per collect); `right` aligns figures right.
+-- `measure`, where given, is the string the column is measured by instead
+-- (RM.Measure): Category is sized by each name's first list alone, and its
+-- every-list words take only room the row has to spare (RM.Layout).
 local COLS = {
-  { id = "category", key = "RM_COL_CATEGORY", field = "category" },
+  { id = "category", key = "RM_COL_CATEGORY", field = "category", measure = "catFirst" },
   { id = "class",    key = "RM_COL_CLASS",    field = "className" },
   { id = "level",    key = "RM_COL_LEVEL",    field = "levelText",  right = true },
   { id = "played",   key = "RM_COL_PLAYED",   field = "playedText", right = true },
@@ -651,8 +654,12 @@ local function Collect(countOnly)
       else
         entry.rank, entry.category = RANK_SAVED, L["RM_CAT_SAVED"]
       end
+      entry.catFirst = entry.category
     else
       entry.category = COLLECT.CategoryText(entry.cats)
+      -- The first list's word alone: what the column is measured by
+      -- (RM.Measure), so a name in several lists never widens the window.
+      entry.catFirst = L[BUCKET_LABEL[BUCKETS[entry.rank]]]
     end
 
     -- A stored row already carries its own casing, so Display is cheap for it.
@@ -1001,15 +1008,17 @@ end
 -- decides, for the row width the list has, which columns stand and where:
 -- every column while the name keeps NAME_MIN and the Note NOTE_MIN,
 -- otherwise DROP's order, then the room past that to the name (up to its
--- longest), the Note (up to its longest) and the name again; re-decided on
--- resize and never per row. A change of either moves
--- RM._lay.gen, and a row re-anchors its cells only when its gen is old.
+-- longest), the Note (up to its longest), Category (up to its widest words)
+-- and the name again; re-decided on resize and never per row. A change of
+-- either moves RM._lay.gen, and a row re-anchors its cells only when its gen
+-- is old.
 -------------------------------------------------------------
 -- `w` is each column's measured width, `lw` the width the layout gives it
--- (the same, but the Note's, which takes what room there is), `nameWant`
--- the longest name's, up to DEFAULT_NAME.
+-- (the same, but the Note's and Category's, which take what room there is),
+-- `nameWant` the longest name's, up to DEFAULT_NAME, `catWant` Category's
+-- widest words (every list a name is in).
 local LAY = {
-  gen = 0, rowW = 0, nameW = 0, nameWant = 0,
+  gen = 0, rowW = 0, nameW = 0, nameWant = 0, catWant = 0,
   shown = {}, x = {}, w = {}, lw = {},
   rowH = ROW.MIN_H, headH = ROW.HEAD_MIN,
   seen = {},           -- string -> its measured width, for one measuring pass
@@ -1035,8 +1044,28 @@ function RM.Measure(frame)
     local width = math.ceil(Theme.TextWidth(cell))
     local field = col.field
     local flex = col.flex
+    local by = col.measure
+    local want = 0
     for i = 1, #entries do
-      local s = entries[i][field]
+      local s = entries[i][by or field]
+      -- A column measured by another string (Category, by the first list):
+      -- the words it shows measured too, each row's kept for its tooltip
+      -- (RM.RowTip) and the widest as what it would take of spare room
+      -- (RM.Layout). Never the window's width or which columns stay.
+      if by then
+        local full = entries[i][field]
+        local fw = 0
+        if full then
+          fw = seen[full]
+          if not fw then
+            probe:SetText(full)
+            fw = math.ceil(Theme.TextWidth(probe))
+            seen[full] = fw
+          end
+        end
+        entries[i]._catW = fw
+        if fw > want then want = fw end
+      end
       if s then
         local sw = seen[s]
         if not sw then
@@ -1053,6 +1082,7 @@ function RM.Measure(frame)
       end
     end
     w[col.id] = width
+    if by then LAY.catWant = math.max(width, want) end
   end
   probe:SetText("")
 
@@ -1106,6 +1136,16 @@ function RM.Layout(rowW)
     if spare > 0 then
       lw.note = lw.note + math.min(spare, math.max(0, (w.note or 0) - ROW.NOTE_MIN))
     end
+  end
+  -- Then Category, up to its widest words, from what is left past the
+  -- name's longest: it never takes room a name, the Note or another column
+  -- would have, and where it gets less, its words are cut short in the cell
+  -- (the row's tooltip says them whole, RM.RowTip).
+  local more = (LAY.catWant or 0) - (lw.category or 0)
+  if more > 0 then
+    local noteMore = shown.note and (lw.note - ROW.NOTE_MIN) or 0
+    local free = rowW - need - noteMore - LAY.nameWant
+    if free > 0 then lw.category = lw.category + math.min(free, more) end
   end
   local right = rowW - ROW.END_W
   for c = #COLS, 1, -1 do
@@ -1406,6 +1446,11 @@ function RM.RowTip(row, owner)
   Theme.TipBegin(owner or row, "ANCHOR_RIGHT")
   Theme.TipTitle(DecorateName(entry.display, "tooltip"))
   local shown = LAY.shown
+  -- Every list the name is in, where the Category cell cut its words short
+  -- (RM.Layout gives it only spare room past its first list's word).
+  if (entry._catW or 0) > (LAY.lw.category or 0) then
+    Theme.TipFact(L["RM_FACT_CATEGORY"], entry.category)
+  end
   if not shown.class then Theme.TipFact(L["RM_FACT_CLASS"], entry.className) end
   if not shown.level then Theme.TipFact(L["RM_FACT_LEVEL"], entry.levelText) end
   if not shown.played then Theme.TipFact(L["RM_FACT_PLAYED"], entry.playedText) end
