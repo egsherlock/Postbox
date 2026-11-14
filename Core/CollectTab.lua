@@ -8503,7 +8503,7 @@ local function BindRow(panel, row, index, position, compact, done)
   if T.RowGround then T.RowGround(row, position) end
   PaintRowSelection(panel, row)
   -- A finished mail is kept, not waiting: it sits back under the divider.
-  row:SetAlpha(showDelete and (T.ROW and 1 or 0.6) or 1)
+  row:SetAlpha(showDelete and 0.6 or 1)
 
   -- The read mark, or on a stuck mail the warning triangle in its place
   -- (RV.PaintDot; RV.Place shows the triangle).

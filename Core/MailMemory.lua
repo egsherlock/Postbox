@@ -4385,7 +4385,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   -- A mail past its date is PROBABLY gone (returned or deleted by the
   -- server); the row stays listed -- it was true when seen -- but visibly
   -- belongs to the past.
-  row:SetAlpha(expired and (T.ROW and 1 or 0.45) or 1)
+  row:SetAlpha(expired and 0.45 or 1)
   row:Show()
 end
 
