@@ -5247,6 +5247,12 @@ Theme.AtlasSets = {
 --     naming the host UI the look comes from, broken while it is overridden
 --     (OptionsPanel's Ctx.window; the round6 mockup's LINK and LINKX). One
 --     of the small family (`px`), its cut ends on whole units.
+--   link-10  Phosphor's bold link, its whole box 10 units square (the ink
+--     10 by 8): the options' pointer lines that open another tab
+--     (OptionsPanel's Rows.Note with an onClick), in the accent. Fitted by
+--     icons-r13's rules, a quarter unit right for the most ink in whole
+--     pixels, Phosphor's stroke kept (.dev/design/pointer-build/
+--     gen_link10.py).
 --   The tiles' 30-unit art and its self-test:
 --     .dev/design/tile-icons/gen_tile_glyphs.py.
 --   `ink`, where given: the columns the art's ink covers, { first, past
@@ -5329,6 +5335,8 @@ do
     ["search-14"] = { file = MEDIA .. "glyph-search-14.tga", w = 14, h = 14, l = 0.0625, r = 0.9375, t = 0.0625, b = 0.9375, px = true },
     link = { file = MEDIA .. "glyph-link.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
     ["link-broken"] = { file = MEDIA .. "glyph-link-broken.tga", w = 15, h = 8, l = 0.03125, r = 0.5, t = 0.0625, b = 0.5625, px = true },
+    ["link-10"] = { file = MEDIA .. "glyph-link-10.tga", w = 10, h = 10, l = 0.0625, r = 0.6875, t = 0.0625, b = 0.6875, px = true,
+      ink = { 0, 10 } },
     hatch = { file = MEDIA .. "hatch.tga", w = 8, h = 8, l = 0, r = 1, t = 0, b = 1, wrap = "REPEAT" },
   }
 
