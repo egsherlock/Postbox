@@ -522,6 +522,8 @@ local function Scroller(list, contentHeight, viewport, step, foot)
       -LIST_PADDING - (span > 0 and (offset / span) * travel or 0))
   end
   SetOffset(0)
+  -- The track's and thumb's paint, for a skin that lays them its own way.
+  list._track, list._thumbArt = track, thumbArt
   list._setOffset = SetOffset
   list._viewport = viewport
   list._scroll = scroll

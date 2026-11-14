@@ -3145,17 +3145,40 @@ do
     C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT", 0, 0)
     list.__pbBlizzList = pieces
     -- The card's own fill, line and grain, and the popup floor, faded under
-    -- the art (its middle is the game's dark ground at its own strength).
-    Fade(list.Center)
-    for i = 1, #BACKDROP_EDGES do Fade(list[BACKDROP_EDGES[i]]) end
-    Fade(list.pbSurfaceTexture)
-    Fade(list.__pbPopupFloor)
+    -- the art (its middle is the game's dark ground at its own strength),
+    -- and again each time the list opens, after Theme has painted the floor
+    -- whole for the open: the floor is square, and it showed as a dark
+    -- right angle outside the art's cut corners.
+    Parts.ListGround(list)
+    list:HookScript("OnShow", Parts.ListGround)
+    -- A list that scrolls (Dropdown's Scroller): its track and thumb stop a
+    -- unit short of each end, inside the cut corners, which they reached a
+    -- unit into at the top and bottom of the list. Their frames, their
+    -- clicks and the thumb's travel are as they were.
+    local track, thumb = list._track, list._thumbArt
+    if track and thumb then
+      local holder, knob = track:GetParent(), thumb:GetParent()
+      track:ClearAllPoints()
+      track:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -1)
+      track:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0, 1)
+      thumb:ClearAllPoints()
+      thumb:SetPoint("TOPLEFT", knob, "TOPLEFT", 0, -1)
+      thumb:SetPoint("BOTTOMRIGHT", knob, "BOTTOMRIGHT", 0, 1)
+    end
     -- Open, the select's arrow is the open arrow.
     local toggle = list._toggle
     if toggle and toggle.__pbBlizzSelect then
       list:HookScript("OnShow", Parts.ListShown)
       list:HookScript("OnHide", Parts.ListShown)
     end
+  end
+
+  -- The list's square pieces under the art, faded: no table is made.
+  function Parts.ListGround(list)
+    Fade(list.Center)
+    for i = 1, #BACKDROP_EDGES do Fade(list[BACKDROP_EDGES[i]]) end
+    Fade(list.pbSurfaceTexture)
+    Fade(list.__pbPopupFloor)
   end
 
   function Parts.ListShown(list)
@@ -4366,7 +4389,12 @@ function Parts.DressOne(c)
   if c.__pbFooter and c.__pbBlizzFooter == nil then Parts.Footer(c) end
   if c.__pbPopupAlways and c._toggle and c._toggle.__pbFooterOf then Parts.FooterMenu(c) end
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
-  if c.__pbPopupAlways and c._toggle and c.__pbBlizzList == nil then Parts.List(c) end
+  -- A menu or a select's list, and Mail Memory's character list (the one
+  -- its button hangs, MailMemory's NewPickList), which wears the menus' ground.
+  if c.__pbPopupAlways and c.__pbBlizzList == nil
+     and (c._toggle or (c.anchor and c.anchor.__pbPickList == c)) then
+    Parts.List(c)
+  end
   if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end
   if c._divider and c.__pbBlizzDivider == nil then Parts.ListDivider(c) end
   if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
