@@ -166,9 +166,10 @@ local NOTICE_POPUP = "POSTBOX_RM_NOTICE"
 --
 -- A recipient belongs to every source that holds them -- your guildmate who
 -- is also a friend and whom you mailed yesterday is in all three -- so this
--- order decides only which single word the row's Category shows and how the
--- Category sort ranks it. "Alt" beats "guild" beats "friend" because that is
--- the order of how much the fact tells you about the person.
+-- order decides the order the row's Category names them in ("Guild,
+-- Friends, Recent") and how the Category sort ranks it, by the first.
+-- "Alt" beats "guild" beats "friend" because that is the order of how much
+-- the fact tells you about the person.
 local BUCKETS = { "alts", "guild", "friends", "recent", "grouped" }
 local BUCKET_LABEL = {
   alts    = "CONTACT_ALTS",
@@ -488,7 +489,33 @@ local COLLECT = {
   mailed = {},       -- key -> when it was last mailed (MailMemory.LastMailedInto)
   mailedMemo = {},   -- a Sent record's recipient -> its key
   MEMO_MAX = 4000,
+  catText = {},      -- a set of lists, as a number (COLLECT.CategoryText) -> its words
 }
+
+-- An entry's lists -> the Category column's words: every list it is in, in
+-- BUCKETS' order, joined with the locale's list separator. The set is read
+-- as a number, one bit a list, and its words made once and kept: at most
+-- 2^#BUCKETS of them, so a collect builds no string per entry.
+function COLLECT.CategoryText(cats)
+  local mask = 0
+  for i = 1, #BUCKETS do
+    mask = mask * 2 + (cats[BUCKETS[i]] and 1 or 0)
+  end
+  local memo = COLLECT.catText
+  local text = memo[mask]
+  if text then return text end
+  local sep = L["RM_CAT_SEP"]
+  text = ""
+  for i = 1, #BUCKETS do
+    local bucket = BUCKETS[i]
+    if cats[bucket] then
+      local label = L[BUCKET_LABEL[bucket]]
+      text = text == "" and label or (text .. sep .. label)
+    end
+  end
+  memo[mask] = text
+  return text
+end
 
 local function Collect(countOnly)
   local R = Recipients()
@@ -555,10 +582,9 @@ local function Collect(countOnly)
               -- Buckets already hold addresses in the source's own spelling,
               -- so this is a valid To: value as it stands.
               entry.liveName = entry.liveName or name
-              if rank < entry.rank then
-                entry.rank = rank
-                entry.category = L[BUCKET_LABEL[bucket]]
-              end
+              -- Ranked by the first list; the Category's words name them
+              -- all (COLLECT.CategoryText, below).
+              if rank < entry.rank then entry.rank = rank end
             end
           end
         end
@@ -625,6 +651,8 @@ local function Collect(countOnly)
       else
         entry.rank, entry.category = RANK_SAVED, L["RM_CAT_SAVED"]
       end
+    else
+      entry.category = COLLECT.CategoryText(entry.cats)
     end
 
     -- A stored row already carries its own casing, so Display is cheap for it.
