@@ -9860,6 +9860,8 @@ end
 -- last row as the options search marks what it found (Find.Mark), on grey
 -- rows too.
 function Pages.OpenMarker()
+  -- Not a search pick: the last pick's debug record is not this mark's.
+  S.findRec = nil
   Panel.SelectTab("minimap")
   local head = S.markerHead
   if head then Find.Mark(head, S.markerLast) end

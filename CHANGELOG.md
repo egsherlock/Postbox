@@ -58,7 +58,7 @@
   character list: the game's own, Painted, Pixel, Comic, or Glyphs in class
   colors, or the game's round portraits (Game (round)). With EllesmereUI
   installed, its sets are offered too, under a thin rule, and None shows
-  no icon at all.
+  no icon at all. The row's box shows the chosen style's icon at its left.
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
@@ -138,6 +138,13 @@
   after an update.
 - **Every tooltip names its gestures the same way,** one per action:
   `Click: sort · Right-click: reset`.
+- **The sort buttons say their order the same way** in Mail Memory and
+  Manage Recipients as on the Mail tab: `Sort: Name, A to Z`.
+- **The minimap icon's tooltip** wears the same gray as every other
+  Postbox tooltip.
+- **Options > Mail tab: shorter descriptions** for Finished mail's seven
+  settings and for the tab's own text about Arrange. Each says only what
+  its row can't show.
 - **Reset has its own button** at the foot of the sort menus, lit only
   when there is something to reset.
 - **On the game's own UI, Postbox opens in its Postbox style** unless you

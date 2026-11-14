@@ -331,7 +331,8 @@ it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds), **Alerts** (Warn
-about, Chat line at login, Flash on new mail and **Sound on new mail**)
+about expiring mail, **Sound on new mail**, Chat line at login and Flash
+on new mail)
 and **Characters** (Class icons, Character order, Hidden characters). The
 sound is one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
