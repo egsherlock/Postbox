@@ -9985,7 +9985,7 @@ function Pages.Alerts(col)
   local tab = L["OPT_MINIMAP_HEADING"]
   local group = L["OPT_MINIMAP_GROUP_MARKER"]
   Rows.Button(col, {
-    title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_POINTER_DESC"], tab, group),
+    title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_OPEN_DESC"], tab, group),
     caption = L["OPT_MARKER_OPEN"], glyph = "link-10", minWidth = DD_W, onClick = Pages.OpenMarker,
   })
 end
