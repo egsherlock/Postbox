@@ -2466,6 +2466,31 @@ do
     Fade(row._selBar)
     row.__pbChosenMark = Mark
   end
+
+  -- A divider in a list (Lib/UI/Dropdown.lua: an item { divider = true },
+  -- a frame of its own with a hairline `Rule`) wears the divider the game's
+  -- own menus draw between their groups: the file Interface\Common\
+  -- UI-TooltipDivider-Transparent across the rule's span, 13 units tall as
+  -- the menus lay it, on the divider's middle, the hairline faded under it.
+  -- The divider's own room in the list does not change. Where the client
+  -- cannot load the file, the hairline stays.
+  local MENU_DIVIDER, MENU_DIVIDER_H = "Interface\\Common\\UI-TooltipDivider-Transparent", 13
+  function Parts.ListDivider(div)
+    if div.__pbBlizzDivider ~= nil then return end
+    div.__pbBlizzDivider = false
+    local rule = div.Rule
+    if not rule then return end
+    local t = div:CreateTexture(nil, "ARTWORK")
+    if t:SetTexture(MENU_DIVIDER) == false then
+      t:Hide()
+      return
+    end
+    t:SetHeight(MENU_DIVIDER_H)
+    t:SetPoint("LEFT", rule, "LEFT", 0, 0)
+    t:SetPoint("RIGHT", rule, "RIGHT", 0, 0)
+    Fade(rule)
+    div.__pbBlizzDivider = t
+  end
 end
 
 -------------------------------------------------------------
@@ -3233,6 +3258,7 @@ function Parts.DressOne(c)
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
   if c.__pbPopupAlways and c._toggle and c.__pbBlizzList == nil then Parts.List(c) end
   if c._selWash and c.__pbBlizzMark == nil then Parts.Row(c) end
+  if c._divider and c.__pbBlizzDivider == nil then Parts.ListDivider(c) end
   if c.__pbVariant and c.__pbBlizzSeg == nil and Parts.IsSeg(c) then Parts.Seg(c) end
   if c.__pbVariant and c.__pbBlizzCell == nil then
     local p = c:GetParent()
