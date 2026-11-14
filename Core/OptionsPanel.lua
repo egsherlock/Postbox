@@ -757,10 +757,11 @@ local PAIR_FIT = { height = BUTTON_H, padding = 14, minWidth = 0 }
 -- Recipients). It took the Mail Memory tab's place, and its page id: an
 -- opener that asked for "memory" is shown General (Panel.SelectTab).
 -- Window next: the style and the window every other tab is drawn in, then
--- the window's own tabs, Mail and Send, in the window's order.
--- Alerts: what tells the player about mail -- the expiring-mail warnings
--- and new mail's sound and flash (the minimap marker and its look are the
--- Minimap tab's).
+-- the window's own tabs, Mail and Send, in the window's order. What tells
+-- the player about mail -- the expiring-mail warnings and new mail's sound
+-- and flash -- is General's, under Alerts (the minimap marker and its look
+-- are the Minimap tab's); a tab remembered as "alerts", its own tab before,
+-- opens General (Panel.SelectTab).
 -- Everything reads this list by key (the remembered tab, the pages, Reset
 -- this tab, the search index), so its order is only the strip's and the
 -- search results'.
@@ -769,7 +770,6 @@ local TABS = {
   { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
-  { key = "alerts",  caption = "OPT_ALERTS_TAB" },
   { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
 }
 
@@ -1249,8 +1249,7 @@ do
       -- The drawing grows with the text size (Ctx.MiniHeight).
       return CTX_TOP + Ctx.PreviewRoom() + Ctx.MiniHeight() + Ctx.HostRoom() + 10
     end
-    -- Alerts draws the same icon.
-    if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
+    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapHeight() + 10 end
     return 0
   end
 
@@ -1823,7 +1822,7 @@ do
   function Ctx.Keep(key)
     if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() end
     if key == "window" then return CTX_TOP + Ctx.PreviewRoom() end
-    if key == "minimap" or key == "alerts" then return CTX_TOP + 4 + Ctx.MinimapStage() end
+    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() end
     return 0
   end
 
@@ -3758,8 +3757,6 @@ do
   function Ctx.Follow()
     local f = S.ctx.minimap
     if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
-    f = S.ctx.alerts
-    if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
     -- The Mail tab's window rings what the setting pointed at changes.
     local sw = S.mailMini
     if sw and sw:IsVisible() then MW.PaintRing(sw.Mini) end
@@ -4094,11 +4091,6 @@ do
       end
     end
     return f
-  end
-
-  -- Alerts: the same drawing, a copy of its own on Alerts' inspector.
-  function Ctx.alerts(card)
-    return Ctx.minimap(card)
   end
 
   ---------------------------------------------------------
@@ -5654,7 +5646,7 @@ do
 
   -- A quiet line across the row, centred: something to know, not a setting.
   -- `link`, optional, makes it a line that leads somewhere else in the
-  -- options (Options > Alerts' line to the minimap marker, Pages.alerts):
+  -- options (Options > General's line to the minimap marker, Pages.Alerts):
   -- { word, glyph, onClick(row) }. `text` then holds one %s where `word`
   -- stands (a tab's name, as the tab bar says it), painted in the accent
   -- as a heading's words are (Rows.PaintGroup); `glyph` (Theme.GLYPHS)
@@ -7674,7 +7666,7 @@ function State.Minimap()
   local Icon = ns.MinimapButton
   local on = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
   Rows.SetBlock(S.minimapBlock, on)
-  -- Flash on new mail, on Alerts, is drawn on the icon too. The marker's
+  -- Flash on new mail, on General, is drawn on the icon too. The marker's
   -- rows are in the block, and grey for more besides (State.Warnings,
   -- State.MinimapRows).
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
@@ -7682,7 +7674,6 @@ function State.Minimap()
   State.Warnings()
   Tabs.SetSquare("minimap", on and "on" or "off")
   Ctx.Paint("minimap")
-  Ctx.Paint("alerts")
 end
 
 -- The rows that need something else grey while it is not there, each
@@ -7728,18 +7719,20 @@ function State.MinimapRows()
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
 end
 
--- The two warnings that follow Warn about, grey while it is Off, each
--- saying what turns it on. Alerts' Chat line at login, with Mail Memory on
--- (off, its block on Alerts has the row grey, saying to turn it on). The
--- Minimap tab's Minimap marker, in the icon's block (off, the block has it
--- grey, saying to turn the icon on): grey too while Mail Memory, which the
--- warnings are made from, is off.
+-- The two warnings that follow Warn about, grey while it is Off or Mail
+-- Memory, which the warnings are made from, is off, each saying what turns
+-- it on. General's Chat line at login, beside Flash on new mail and so
+-- outside Warn about's block: Mail Memory's reason first, as the block
+-- would say it. The Minimap tab's Minimap marker, in the icon's block
+-- (off, the block has it grey, saying to turn the icon on).
 function State.Warnings()
   local UI, Icon = ns.MailboxUI, ns.MinimapButton
   local memory = UI.GetOption("mailMemory") and true or false
   local warning = (UI.GetMemoryWarn and UI.GetMemoryWarn() or "any") ~= "off"
   local cells = S.warnCells
-  if cells and memory then Rows.SetEnabled(cells.chat, warning, "OPT_WARN_WHY") end
+  if cells then
+    Rows.SetEnabled(cells.chat, memory and warning, (not memory and "OPT_MEMORY_WHY") or "OPT_WARN_WHY")
+  end
   local marker = S.markerCell
   if not marker then return end
   local icon = Icon and Icon.GetEnabled and Icon.GetEnabled() and true or false
@@ -7780,8 +7773,9 @@ function State.RowLayout()
   cell.entry = (larger and cell.largeEntry or cell.plainEntry) or cell.entry
 end
 
--- Mail Memory's switch: the rows it governs grey with it -- Hidden
--- characters here, the expiring-mail warnings on Alerts, the marker and
+-- Mail Memory's switch: the rows it governs grey with it -- Character
+-- order and Hidden characters, the expiring-mail warnings under Alerts, the
+-- marker and
 -- what else the Minimap tab makes from it there -- and the summary made
 -- from it says so (Dash), its strip and its tile grey too.
 function State.Memory()
@@ -9482,7 +9476,7 @@ function Pages.minimap(col)
 
   -- Glow: the glow and its pulse side by side, the one breathing the
   -- other, and the colour it wears -- which the flash when mail arrives
-  -- (Alerts, New mail) wears too. Pulse greys while Glow is off, Glow
+  -- (on General, under Alerts) wears too. Pulse greys while Glow is off, Glow
   -- color while neither Glow nor the flash is on (State.MinimapRows).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
   local glowPair = Rows.Pair(block,
@@ -9504,7 +9498,7 @@ function Pages.minimap(col)
   rows.glow = glowRow
   Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
   -- (Flash on new mail, which wears Glow color and keeps it live while it
-  -- is on, is under Alerts' New mail: Pages.alerts.)
+  -- is on, is on General, under Alerts: Pages.Alerts.)
 
   -- Expiring mail marker: Minimap marker and the marker's look.
   Pages.MinimapMarker(block, modes, rows)
@@ -9572,7 +9566,7 @@ end
 -- The Minimap tab's Expiring mail marker (Pages.minimap), inside its
 -- switch's block, so with the icon off every row of it says to turn the
 -- icon on. Minimap marker first -- Off, With the icon or Always (its saved
--- setting is the old Show marker's) -- which follows Warn about on Alerts
+-- setting is the old Show marker's) -- which follows Warn about on General
 -- and greys while Warn about is Off or Mail Memory, which the warnings are
 -- made from, is off (State.Warnings). Then the marker's look, a row each:
 -- its shape, its colour, the spot on the icon it is anchored to and how far
@@ -9763,8 +9757,8 @@ end
 -- Memory, Character Groups and Manage Recipients (Dash). Under it, what
 -- Postbox remembers: Mail Memory, which the card and the warnings are made
 -- from, and how far back History goes; then the characters: their class
--- icons, the order the character list offers them in and, last, the ones
--- hidden from Mail Memory's lists.
+-- icons, the order the character list offers them in and the ones hidden
+-- from Mail Memory's lists; last, the alerts (Pages.Alerts).
 function Pages.general(col)
   Rows.Group(col, L["OPT_MEMORY_HISTORY_HEADING"])
   local memory = Rows.Check(col, {
@@ -9799,7 +9793,8 @@ function Pages.general(col)
 
   -- What the switch governs here, grey with it, saying so: the order of the
   -- character list and who is left out of the lists. (The expiring-mail
-  -- warnings it governs are Alerts', the marker the Minimap tab's.)
+  -- warnings it governs are under Alerts, below; the marker is the Minimap
+  -- tab's.)
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.memoryBlock = block
 
@@ -9814,28 +9809,37 @@ function Pages.general(col)
   -- dropdown to hide or show each (State.HiddenRow).
   State.HiddenRow(block)
   Rows.EndBlock(block)
+
+  -- Alerts, last (Pages.Alerts).
+  Pages.Alerts(col)
 end
 
--- Alerts: what tells you about mail. Expiring mail first -- Warn about, the
--- one rule for both warnings, and the line in chat at login that follows
--- it (MailMemory.lua, MM.Warns), made from Mail Memory and grey with it;
--- the minimap marker, which follows it too, is the Minimap tab's
--- (Pages.MinimapMarker), and a line under them opens it there. Then New mail, the sound and the flash. The
--- inspector draws the minimap icon (Ctx.alerts).
-function Pages.alerts(col)
+-- Alerts, last on General, under one heading: what tells you about mail.
+-- Warn about first -- the one rule for both expiring-mail warnings, made
+-- from Mail Memory and grey with it (its block). Then Sound on new mail,
+-- chosen from Postbox's own, the game's and other addons' (State.ToneItems)
+-- and heard from the button beside it. Then one row of two: Chat line at
+-- login, the line in chat that follows Warn about (MailMemory.lua,
+-- MM.Warns), read at the next login, and Flash on new mail, drawn on the
+-- minimap icon. The pair stands outside Warn about's block, Flash needing
+-- no Mail Memory: Chat line greys for Mail Memory off or Warn about Off
+-- (State.Warnings), Flash with the minimap icon (State.Minimap), each
+-- saying what turns it on. Last, a line that opens the Minimap tab at the
+-- marker that follows Warn about too (Pages.OpenMarker), live whatever
+-- greys here. Neither the sound nor the flash needs Mail Memory, so the
+-- heading stays live with it. The inspector shows their words alone, under
+-- General's cards, as every General text.
+function Pages.Alerts(col)
+  Rows.Group(col, L["OPT_ALERTS_TAB"])
   -- The rest Mail Memory's switch governs: the expiring-mail warnings.
   local block = Rows.Block(col, "OPT_MEMORY_WHY")
   S.warnBlock = block
 
   -- Warn about: nothing, mail to be deleted, or that and mail to be sent
   -- back (its ids are the old warning's, so a saved choice carries over:
-  -- MailboxUI.GetMemoryWarn) -- and the line in chat at login that follows
-  -- it, read at the next login, grey while Warn about is Off
-  -- (State.Warnings), as the Minimap tab's marker is. Warn about's longest value
-  -- fits its box in English, French, Spanish and Chinese; in German and
-  -- Russian it is cut short, as any dropdown's is, and said whole on hover
-  -- (Rows.Fit).
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_EXPIRY"])
+  -- MailboxUI.GetMemoryWarn). Its longest value fits its box in English,
+  -- French, Spanish and Chinese; in German and Russian it is cut short, as
+  -- any dropdown's is, and said whole on hover (Rows.Fit).
   local function Warned()
     State.Warnings()
     -- The marker, on the Minimap tab, and its look grey with Warn about too.
@@ -9857,27 +9861,8 @@ function Pages.alerts(col)
       Warned()
     end,
   })
-  local chat = Rows.Check(block, {
-    title = L["OPT_WARN_CHAT_TITLE"], text = L["OPT_WARN_CHAT_DESC"],
-    get = function() return ns.MailboxUI.GetOption("warnAtLogin") end,
-    set = function(on) ns.MailboxUI.SetOption("warnAtLogin", on) end,
-  })
-  Rows.Why(chat, "OPT_WARN_WHY")
-  S.warnCells = { chat = chat }
-  -- Where the marker that follows Warn about is set: a line that opens the
-  -- Minimap tab at its group (Pages.OpenMarker), live whatever greys here.
-  local tab = L["OPT_MINIMAP_HEADING"]
-  local group = L["OPT_MINIMAP_GROUP_MARKER"]
-  Rows.Note(block, L["OPT_MARKER_POINTER"], group, string.format(L["OPT_MARKER_POINTER_DESC"], tab, group),
-    { word = tab, glyph = "link-10", onClick = Pages.OpenMarker })
   Rows.EndBlock(block)
 
-  -- New mail: the sound when mail arrives while you are out in the world,
-  -- chosen from Postbox's own, the game's and other addons'
-  -- (State.ToneItems) and heard from the button beside it, and the flash,
-  -- which is drawn on the minimap icon and so greys while the icon is off
-  -- (State.Minimap), saying what turns it on. Neither needs Mail Memory.
-  Rows.Group(col, L["OPT_ALERTS_HEADING"])
   local sound = Rows.Dropdown(col, {
     title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
     items = State.ToneItems(),
@@ -9893,7 +9878,12 @@ function Pages.alerts(col)
   Rows.Play(sound)
   S.toneCell = sound
   S.refresh[#S.refresh + 1] = State.Tone
-  S.flashCell = Rows.Check(col, {
+
+  local pair = Rows.Pair(col, {
+    title = L["OPT_WARN_CHAT_TITLE"], text = L["OPT_WARN_CHAT_DESC"],
+    get = function() return ns.MailboxUI.GetOption("warnAtLogin") end,
+    set = function(on) ns.MailboxUI.SetOption("warnAtLogin", on) end,
+  }, {
     title = L["OPT_ALERT_FLASH_TITLE"], text = L["OPT_ALERT_FLASH_DESC"],
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertFlash() end,
     set = function(on) if ns.MinimapButton then ns.MinimapButton.SetAlertFlash(on) end end,
@@ -9902,7 +9892,19 @@ function Pages.alerts(col)
       Ctx.Repaint()
     end,
   })
+  local chat = pair.pair[1]
+  Rows.Why(chat, "OPT_MEMORY_WHY")
+  Rows.Why(chat, "OPT_WARN_WHY")
+  S.warnCells = { chat = chat }
+  S.flashCell = pair.pair[2]
   Rows.Why(S.flashCell, "OPT_MINIMAP_WHY_SWITCH")
+
+  -- Where the marker that follows Warn about is set: a line that opens the
+  -- Minimap tab at its group (Pages.OpenMarker).
+  local tab = L["OPT_MINIMAP_HEADING"]
+  local group = L["OPT_MINIMAP_GROUP_MARKER"]
+  Rows.Note(col, L["OPT_MARKER_POINTER"], group, string.format(L["OPT_MARKER_POINTER_DESC"], tab, group),
+    { word = tab, glyph = "link-10", onClick = Pages.OpenMarker })
 end
 
 -------------------------------------------------------------
@@ -9919,7 +9921,7 @@ end
 -- still carries over when the new one is unset, the second a value that
 -- counts only beside another (a custom colour's hex beside its choice). A
 -- table's entries are judged one by one: the minimap icon's settings share
--- one table, and its alert sound and its flash are Alerts' rows, the
+-- one table, and its alert sound and its flash are General's rows, the
 -- icon's own, its marker's on/off (Minimap marker) and the marker's look
 -- the Minimap tab's.
 --
@@ -11993,8 +11995,6 @@ local function Build()
   -- over the window's lower part under the pointer (Insp.Room, Insp.Idle).
   S.idle.mail.rise = "mail"
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
-  -- Alerts' first setting's, as the Send tab's: what the warnings warn of.
-  S.idle.alerts = Entry(L["OPT_WARN_TITLE"], L["OPT_WARN_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
 
@@ -12200,7 +12200,7 @@ end
 
 -- The tab the panel shows; kept for the session, so the panel reopens where
 -- it was left. "memory", the Mail Memory tab's id before General took its
--- place, is General.
+-- place, is General, and so is any tab there is no more of ("alerts").
 function Panel.SelectTab(key)
   if key == "memory" then key = "general" end
   if not S.pages[key] then key = "general" end
