@@ -212,7 +212,8 @@ long ago it was seen; it never pretends to be live. Hover a mail to see
 what it holds. A character you no longer play can be hidden (right-click
 it in the list, or tick it under Options > General > Characters > **Hidden
 characters**), and **Character order** above it sets the list's order:
-Warnings first, Expiring soonest, Most mail, Name or Last played.
+Warnings first (while Warn about expiring mail is on), Expiring soonest,
+Most mail, Name or Last played.
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
@@ -272,7 +273,9 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
 one line per name (Category, Class, Level, Played, Mailed, Note):
 double-click a name to favorite it (or click its star), right-click to hide
 it, click its note to write one, Shift- or Ctrl-click to select several, and
-favorite, hide or delete them together.
+favorite, hide or delete them together. Category names every list a name is
+in, and deleting a name your guild or friends list still offers hides it
+too, since Postbox can't take anyone off those lists.
 
 <p align="center">
   <img src="docs/screenshots/recipients.png" width="560" alt="Manage Recipients: favorites, notes, hidden names and class colors" />

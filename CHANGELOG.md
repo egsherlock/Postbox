@@ -62,7 +62,8 @@
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
-  playing is always first.
+  playing is always first. Warnings first is offered while Warn about
+  expiring mail is on.
 - **Hidden characters** (Options > General > Characters) is one list:
   tick a name to hide that character, tick it again to show it, or Show
   all. The Inbox button keeps its class icon and character list while your
@@ -75,7 +76,8 @@
 
 - **Manage Recipients is a table:** one line per name, in columns
   (Category, Class, Level, Played, Mailed), with a note, a hide and a
-  delete mark at the end of each row.
+  delete mark at the end of each row. Category names every list a name is
+  in (Guild, Friends, Recent).
 - **Manage Recipients: double-click a name to favorite it (or click its
   star), right-click to hide it.** Shift-click and Ctrl-click select
   several names, and the buttons at the bottom then favorite, hide or
@@ -97,6 +99,9 @@
   sort by it.
 - Manage Recipients can delete a saved name that no list offers any more,
   and its Guild list fills in by itself once the roster arrives.
+- **Manage Recipients: Delete on a name your guild or friends list still
+  offers also hides it,** so the Send tab stops offering it, and the
+  question says so. Show, under Hidden, brings it back.
 
 ### Options and Arrange
 
@@ -159,7 +164,7 @@
   tells you what to turn on opens its description, in your accent color.
 - **The last 7 days** (Options > General) fits big numbers: when the line
   is tight, large gold is written short (482k), and the Earned and Spent
-  tooltips give the exact sum.
+  tooltips give the exact sum, without coins that are zero.
 - **Options: setting names are plain**, white in Dark and dark ink in
   Light, so your accent marks the group headings and the values you have
   chosen. In Light the dropdown arrows and the icons on Arrange, Character
@@ -175,8 +180,8 @@
   Minimap > Expiring mail marker): Minimap marker and its shape, color,
   anchor, offsets and Larger when alone. Alerts (Options > General) keeps
   Warn about expiring mail, the chat line, and new mail's sound and flash,
-  and a line
-  there opens the Minimap tab at the marker's settings.
+  and its Minimap marker row has a button that opens the Minimap tab at
+  the marker's settings.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
