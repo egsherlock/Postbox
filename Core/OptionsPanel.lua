@@ -9063,13 +9063,26 @@ function Pages.window(col)
   -- scale here; the Postbox style and the creative ones keep it in their
   -- Text group, with the font it sizes.
   local T = ns.Theme
-  -- The Blizzard style also offers the Postbox style's Text style after
-  -- Text size, saved for this style alone; its default is the game's own.
-  local blizzText = worn and worn.IsBlizzardStyle and worn.GetOutlineChoices and worn or nil
+  -- The Blizzard style also offers the Postbox style's Font, Text style and
+  -- Text weight round it, in that style's order (Font, Text size, Text
+  -- style, Text weight), each saved for this style alone; every default is
+  -- the game's own text. Each font's name in that font (`face`).
+  local blizzText = worn and worn.IsBlizzardStyle and worn.GetFontChoices and worn or nil
   local function Faced(list)
     local items = {}
     for i = 1, #list do items[i] = { id = list[i].key, name = list[i].name, face = list[i].file } end
     return items
+  end
+  if blizzText then
+    Rows.Dropdown(col, {
+      title = L["OPT_FONT_TITLE"], text = L["OPT_FONT_DESC"], items = Faced(blizzText.GetFontChoices()),
+      get = function() return blizzText.GetFont() end,
+      set = function(id)
+        blizzText.SetFont(id)
+        -- Text weight follows the font: live where it has a Bold.
+        State.PostboxWeight()
+      end,
+    })
   end
   if not (Skin and (own or Skin.IsCreativeStyle)) and T.GetTextScaleChoices then
     local textItems = {}
@@ -9089,6 +9102,7 @@ function Pages.window(col)
       get = function() return blizzText.GetOutline() end,
       set = function(id) blizzText.SetOutline(id) end,
     })
+    State.WeightRow(col, blizzText, Faced(blizzText.GetWeightChoices()))
   end
 
   Rows.Check(col, {
@@ -9517,7 +9531,8 @@ end
 -- a pick of the font.
 function State.PostboxWeight()
   local cell = S.pbWeightCell
-  local skin = GetSkin()
+  -- The Blizzard style's own row asks that skin, which publishes no border.
+  local skin = GetSkin() or ns.Skin
   if not (cell and skin and skin.GetWeightWhy) then return end
   local why = skin.GetWeightWhy()
   Rows.SetEnabled(cell, not why, why)

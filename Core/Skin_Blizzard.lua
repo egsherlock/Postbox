@@ -3487,14 +3487,19 @@ end
 -- Text: Font, Text style and Text weight
 -------------------------------------------------------------
 
--- Options > Window > Text style: the Postbox style's, the same choices
--- (ns.SkinFonts), saved for this style apart (profile blizzOutline; nil
--- is the default), so each style keeps its own. They reach every text through the copies Theme dresses
+-- Options > Window > Font, Text style and Text weight: the Postbox style's
+-- three, the same fonts offered by the same rules (ns.SkinFonts: a font
+-- without this client's letters is not offered, Bold only where the font
+-- has a Bold that loads), saved for this style apart (profile blizzFont,
+-- blizzOutline, blizzWeight; nil is the default), so each style keeps its
+-- own. They reach every text through the copies Theme dresses
 -- (Skin.GetFontFace, read by Theme.HostFont), as a host's face does:
+--   Font         the game's (the default: each game font's own face) or one
+--                of the others, at Text weight's Regular or Bold;
 --   Text style   Shadow (the default): the game fonts' own soft shadow and
 --                flags, in whichever font; Outline: the client's thin
 --                outline, no shadow; None: neither.
--- At its default the face is the game objects' own, as
+-- With all three at their defaults the face is the game objects' own, as
 -- when this skin published none: the look as it was, byte for byte. On the
 -- letter paper (Row texture Light: the mail rows and the Message box) the
 -- dark words stay clean whatever Text style says (Row texture, below).
@@ -3511,6 +3516,33 @@ do
     local profile = Store and type(Store.EnsurePath) == "function" and Store.EnsurePath("profile")
     if profile then profile[key] = value end
   end
+
+  function Skin.GetFontChoices() return ns.SkinFonts.FontChoices() end
+
+  -- The font drawn: the saved one where its file loads here, else the game's.
+  function Skin.GetFont() return ns.SkinFonts.Resolve(Saved("profile.blizzFont")) end
+
+  function Skin.SetFont(key)
+    if not ns.SkinFonts.Valid(key) then return end
+    Save("blizzFont", (key ~= "game") and key or nil)
+    Skin.ApplyFonts()
+  end
+
+  function Skin.GetWeightChoices() return ns.SkinFonts.WeightChoices() end
+
+  -- The saved choice, whatever the chosen font can draw (nil is Regular).
+  function Skin.GetWeight()
+    return (Saved("profile.blizzWeight") == "bold") and "bold" or "regular"
+  end
+
+  function Skin.SetWeight(key)
+    if not ns.SkinFonts.IsWeight(key) then return end
+    Save("blizzWeight", (key == "bold") and "bold" or nil)
+    Skin.ApplyFonts()
+  end
+
+  -- nil where the chosen font can be drawn Bold here; else why not.
+  function Skin.GetWeightWhy() return ns.SkinFonts.WeightWhy(Skin.GetFont()) end
 
   function Skin.GetOutlineChoices() return ns.SkinFonts.OutlineChoices() end
 
@@ -3530,14 +3562,14 @@ do
   -- font's own), the flags (false: its own) and the shadow (nil: its own).
   -- At the defaults false, false, nil: what no answer meant.
   function Skin.GetFontFace()
-    local path = false
+    local path = ns.SkinFonts.Path(Skin.GetFont(), Skin.GetWeight())
     local outline = Skin.GetOutline()
     if outline == "outline" then return path, "OUTLINE", false end
     if outline == "none" then return path, "", false end
     return path, false, nil
   end
 
-  -- A change of Text style or Text size (Theme.FontsMoved, a
+  -- A change of font, weight, Text style or Text size (Theme.FontsMoved, a
   -- reset): the copies dressed again where the face moved, the paper's
   -- words given their clean face or their usual one, and the screens that
   -- fit text measured again (which binds the mail rows again).
