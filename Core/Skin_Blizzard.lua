@@ -816,6 +816,9 @@ do
     if d.state ~= state or d.h ~= h or d.role ~= role then
       d.state, d.h, d.role = state, h, role
       Parts.LaySmall(d, box, state, role, 0, h)
+      -- Its middle from the cell's right edge (the cell stands on the
+      -- button's left end).
+      if role == "last" then d[2]:SetPoint("TOPLEFT", art.cell, "TOPRIGHT", 0, Parts.SmallGeo(state, h).outT) end
     end
     local show = not art.hidden
     if role == "alone" then d[1]:SetShown(show) end
@@ -891,9 +894,10 @@ do
     L:SetSize(newL, artH)
     R:SetTexCoord(1 - newR / rightW, 1, 0, 1)
     R:SetSize(newR, artH)
-    -- A cell standing at the button's left end (the Send tab's Sent clock,
-    -- Parts.SentCell) while it is shown: the left end is the cell's, and
-    -- the middle runs from the button's own edge.
+    -- A cell standing on the button's left end (the Send tab's Sent clock,
+    -- Parts.SentCell, which the window joins to the button) while it is
+    -- shown: the left end is the cell's, and the middle runs from the
+    -- cell's right edge.
     local joined = (art.cell ~= nil and art.cell:IsShown()) and true or false
     if art.m ~= m or art.joined ~= joined then
       art.m, art.joined = m, joined
@@ -904,7 +908,7 @@ do
       local M = art[2]
       M:ClearAllPoints()
       if joined then
-        M:SetPoint("TOPLEFT", box, "TOPLEFT", 0, m)
+        M:SetPoint("TOPLEFT", art.cell, "TOPRIGHT", 0, m)
       else
         M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
       end
@@ -919,10 +923,20 @@ do
     end
   end
 
+  -- A button with a cell on its left end lights its own face from its own
+  -- glow (`art.ownGlow`, Parts.SentCell), shown here while the pointer is
+  -- on the button itself and it is enabled: the cell, a frame over it,
+  -- takes the pointer for its own part.
+  local function OwnGlow(button, art)
+    local glow = art.ownGlow and art.glow
+    if glow then glow:SetShown(art.over and button:IsEnabled() and true or false) end
+  end
+
   -- The art for the button's state: disabled, pressed, or at rest.
   local function Paint(button)
     local art = button.__pbBlizzButton
     if not art then return end
+    if art.ownGlow then OwnGlow(button, art) end
     local kind = KindOf(art)
     if art.kind ~= kind then
       art.kind, art.state, art.m = kind, nil, false
@@ -977,6 +991,7 @@ do
     local art = button.__pbBlizzButton
     if art then
       art.over = true
+      OwnGlow(button, art)
       if art.kind == "dark" then Paint(button) end
     end
   end
@@ -985,6 +1000,7 @@ do
     local art = button.__pbBlizzButton
     if art then
       art.over, art.down = false, false
+      OwnGlow(button, art)
       if art.kind == "dark" then Paint(button) end
     end
   end
@@ -1222,20 +1238,30 @@ do
   -- The Sent key as a cell of Send mail
   ---------------------------------------------------------------
 
-  -- The Send tab's Sent clock (ST.BuildSentClock: a square plate of its
-  -- own, left of the Send button, M.gap apart) drawn as a cell at the left
-  -- end of Send mail's own red button: the button's left end on the clock,
-  -- its middle on through the gap to the button, a dark line a unit wide
-  -- between the cell and the caption, the clock in the game's gold (white
-  -- under the pointer). Art only: the clock keeps its own frame, size,
-  -- click, tooltip and its hiding while History is off; hidden, Send mail
-  -- is whole again (Fit reads it). Pressed, the cell's part of the art is
-  -- the pressed art; the button's part follows the button.
+  -- The Send tab's Sent clock, which the window joins to Send mail's left
+  -- end (ST.PlaceSentClock: the clock on the button's left end, the button
+  -- under the whole row), drawn as a cell of Send mail's own red button:
+  -- the button's left end on the clock, the button's middle from the
+  -- clock's right edge (Fit), a dark line a unit wide between the cell and
+  -- the caption, the clock in the game's gold (white under the pointer).
+  -- The window's own one-unit divider on the clock (Theme.JoinCell) is
+  -- not drawn: the dark line is the one line. The clock keeps its own
+  -- frame, click, tooltip and its hiding while History is off; hidden,
+  -- Send mail is whole again (Fit reads it). Pressed, the cell's part of
+  -- the art is the pressed art; the button's part follows the button. The
+  -- cell is the button's height (the window anchors it top and foot), so
+  -- its art is laid from the button's.
   local CELL_LINE = 2
 
+  local function CellH(cell)
+    local h = cell.button:GetHeight()
+    if type(h) ~= "number" or h <= 0 then return nil end
+    return h
+  end
+
   -- Under the dark Send mail, the cell is the dark art's first cell: its
-  -- left end on the clock, its middle on through the gap into the button's
-  -- art (PaintDark gives the button no left end while the cell shows).
+  -- left end on the clock, its middle to the clock's right edge, where the
+  -- button's art goes on (PaintDark: no left end while the cell shows).
   local function DarkCell(clock, cell, dark)
     local d = cell.dark
     if dark and d == nil then
@@ -1251,14 +1277,12 @@ do
       d.state = nil
       return false
     end
-    local h = clock:GetHeight()
-    if type(h) ~= "number" or h <= 0 then return true end
+    local h = CellH(cell)
+    if not h then return true end
     local state = cell.down and "down" or (clock.__pbHover and "over" or "up")
-    local l, r = cell.button:GetLeft(), clock:GetRight()
-    local gap = (type(l) == "number" and type(r) == "number") and (l - r) or 0
-    if d.state ~= state or d.h ~= h or d.gap ~= gap then
-      d.state, d.h, d.gap = state, h, gap
-      Parts.LaySmall(d, clock, state, "first", gap, h)
+    if d.state ~= state or d.h ~= h then
+      d.state, d.h = state, h
+      Parts.LaySmall(d, clock, state, "first", 0, h)
     end
     d[1]:Show()
     d[2]:Show()
@@ -1276,8 +1300,8 @@ do
   local FACE = { red = { 10 / 108, 10 / 108, 18 / 108 }, dark = { 2 / 28, 2 / 28, 2 / 28 } }
   local function CentreGlyph(clock, cell, kind)
     local glyph = clock.__pbGlyph
-    local h = clock:GetHeight()
-    if not glyph or type(h) ~= "number" or h <= 0 then return end
+    local h = CellH(cell)
+    if not glyph or not h then return end
     local f = FACE[kind]
     local dx = f[1] * h / 2
     local dy = (f[3] - f[2]) * h / 2
@@ -1306,14 +1330,14 @@ do
       cell.fit = nil
     end
     if not cell.fit then
-      local h = clock:GetHeight()
+      local h = CellH(cell)
       local lw, lh = Parts.Size(cell.names.up[1])
-      if type(h) == "number" and h > 0 and lw and lh then
+      if h and lw and lh then
         cell.fit = true
         local artH = h / (1 - 2 * RIM)
         local m = artH * RIM
         local leftW = lw * artH / lh
-        -- The end no wider than the cell and its share of the gap.
+        -- The end no wider than the cell and its rim.
         local room = (clock:GetWidth() or h) + m
         local newL = math.min(leftW, room)
         cell[1]:SetTexCoord(0, newL / leftW, 0, 1)
@@ -1322,7 +1346,7 @@ do
         cell[1]:SetPoint("TOPLEFT", clock, "TOPLEFT", -m, m)
         cell[2]:ClearAllPoints()
         cell[2]:SetPoint("TOPLEFT", cell[1], "TOPRIGHT", 0, 0)
-        cell[2]:SetPoint("BOTTOMRIGHT", cell.button, "BOTTOMLEFT", 0, -m)
+        cell[2]:SetPoint("BOTTOMRIGHT", clock, "BOTTOMRIGHT", 0, -m)
       end
     end
     end
@@ -1395,6 +1419,27 @@ do
     clock.__pbBlizzCell = cell
     cells[clock] = true
     art.cell = clock
+    -- The window's own divider on the clock: the dark line is the one line.
+    Fade(clock.__pbDivider)
+    -- The button's glow out of its HIGHLIGHT layer, where the window lays
+    -- whatever it finds from the face's edge to the button's box
+    -- (Theme.FitJoinFace) and the client lights it under the pointer: the
+    -- game's glow drawn on the button's art instead, the same atlas added
+    -- over it, shown only while the pointer is on Send mail itself (Over,
+    -- Out), so it lights the face beside the cell and never the cell. The
+    -- button's own highlight is left empty.
+    local hl = art.glow
+    if hl and HasAtlas(RED.highlight) then
+      local own = button:CreateTexture(nil, "OVERLAY", nil, 7)
+      if Atlas(own, RED.highlight, false) then
+        own:SetBlendMode("ADD")
+        own:SetAlpha(hl:GetAlpha())
+        own:Hide()
+        hl:SetTexture(nil)
+        hl:SetAlpha(0)
+        art.glow, art.ownGlow = own, true
+      end
+    end
     clock.__setSelectedOverride = PaintCell
     clock.__pbHoverOverride = PaintCell
     clock:HookScript("OnMouseDown", CellDown)
