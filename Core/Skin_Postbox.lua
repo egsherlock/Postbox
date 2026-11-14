@@ -1906,8 +1906,16 @@ local function SeatTitleBar(frame)
     if not Creative() and ns.Theme and ns.Theme.OnWindow then ns.Theme.OnWindow(frame.TitleText, "strip", "CENTER") end
   end
   if frame.CloseButton then
-    frame.CloseButton:ClearAllPoints()
-    frame.CloseButton:SetPoint("RIGHT", strip, "RIGHT", -3, 0)
+    -- Mirroring the cog (Theme.SeatClose): its middle where the cog's is
+    -- on this strip (UI.SeatCog: the 18-unit cog on whole units).
+    local T = ns.Theme
+    local y = -(math.floor(((strip:GetHeight() or 0) - 18) / 2) + 9)
+    if T and T.SeatClose then
+      T.SeatClose(frame.CloseButton, strip, y)
+    else
+      frame.CloseButton:ClearAllPoints()
+      frame.CloseButton:SetPoint("RIGHT", strip, "RIGHT", -3, 0)
+    end
   end
   if frame.OptionsButton then
     -- On whole units (MailboxUI's UI.SeatCog).

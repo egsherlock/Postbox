@@ -1407,6 +1407,7 @@ function Skin.Apply(frame)
   pcall(function() if frame.Inset then S.Inset(frame.Inset) end end)
   pcall(function() if frame.NineSlice then S.FadeNineSlice(frame.NineSlice) end end)
   pcall(function() if frame.CloseButton then S.CloseButton(frame.CloseButton) end end)
+  pcall(Skin._SeatClose, frame)
   pcall(function()
     if frame.TitleText then
       Skin._HouseFont(frame.TitleText, 1, 1, 1)
@@ -1436,6 +1437,16 @@ function Skin.Apply(frame)
   Skin.Refresh(frame)
 end
 
+-- The close X mirroring the cog (Theme.SeatClose): EllesmereUI draws its X
+-- (uitools-icon-close at 14, 8 units of ink) 2 units left of the button's
+-- centre and leaves the button where the template put it; the cog's middle
+-- is 13 under the window's top on a host's bar (MailboxUI's cog, 18 tall,
+-- 4 down), where this skin centres the title too.
+function Skin._SeatClose(frame)
+  local T = ns.Theme
+  if frame.CloseButton and T and T.SeatClose then T.SeatClose(frame.CloseButton, frame, -13, T.CLOSE.INK, -2) end
+end
+
 -- Lighter variant of Apply for Postbox's secondary windows (the options
 -- panel): shell + chrome, but no tabs and no border picker.
 function Skin.ApplyWindow(frame)
@@ -1450,6 +1461,7 @@ function Skin.ApplyWindow(frame)
   pcall(function() if frame.Inset then S.Inset(frame.Inset) end end)
   pcall(function() if frame.NineSlice then S.FadeNineSlice(frame.NineSlice) end end)
   pcall(function() if frame.CloseButton then S.CloseButton(frame.CloseButton) end end)
+  pcall(Skin._SeatClose, frame)
   pcall(function() if frame.TitleText then Skin._HouseFont(frame.TitleText, 1, 1, 1) end end)
   pcall(function() Skin.ApplyBorder(frame) end)
   pcall(function()

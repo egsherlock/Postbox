@@ -218,6 +218,12 @@ function Skin.Apply(frame)
 
   if frame.CloseButton and S.HandleCloseButton then
     pcall(function() S:HandleCloseButton(frame.CloseButton) end)
+    -- Mirroring the cog (Theme.SeatClose): ElvUI draws its own X, a
+    -- 12-unit mark on the button's centre, and leaves the button where the
+    -- template put it; the cog's middle is 13 under the window's top on a
+    -- host's bar (MailboxUI's cog, 18 tall, 4 down).
+    local T = ns.Theme
+    if T and T.SeatClose then pcall(T.SeatClose, frame.CloseButton, frame, -13, 12, 0) end
   end
 
   -- Tab buttons: prefer the tab handler, fall back to the button handler.

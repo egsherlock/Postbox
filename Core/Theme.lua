@@ -6411,6 +6411,26 @@ function Theme.FitJoinFace(wrap)
   end
 end
 
+-- THE CLOSE X, mirroring the cog. A window's close X stands as the
+-- mailbox window's cog does at the other end of its title bar: the X's ink
+-- as far in from the window's right edge as the cog's ink is from its left
+-- (the cog's 18-unit box 5 in, its 12-unit glyph centred on it: 8), and the
+-- X's middle level with the cog's. One rule for every window, the ones
+-- without a cog too, in every style that dresses the windows; each look
+-- says where its own bar puts the cog's middle (`y`, under `ref`'s top),
+-- how wide its X's ink is (`ink`) and how far its X stands off the close
+-- button's centre (`dx`: EllesmereUI draws its X 2 units left of it). The
+-- button keeps its size, so its click area is what it was.
+--   INK: the game's uitools-icon-close drawn at 14 is 8 units of ink.
+Theme.CLOSE = { GAP = 5 + (18 - 12) / 2, INK = 8 }
+
+function Theme.SeatClose(button, ref, y, ink, dx)
+  if not (button and ref) then return end
+  ink = tonumber(ink) or Theme.CLOSE.INK
+  button:ClearAllPoints()
+  button:SetPoint("CENTER", ref, "TOPRIGHT", -(Theme.CLOSE.GAP + ink / 2) - (tonumber(dx) or 0), y or 0)
+end
+
 -- A joined cell's divider in its wrap's ring, read where a look gives it
 -- one (the backdrop's edge), else the cell's plate ring at rest, as a
 -- joined ring's dividers are drawn. Nothing is made.
