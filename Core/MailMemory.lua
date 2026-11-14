@@ -5328,8 +5328,9 @@ local function BuildSearch(frame)
       end
       return frame._sortMenu
     end,
+    -- The order as a fact, in the Mail tab's form (RV.SFTip).
     tip = function()
-      T.TipLine(L[MM.SORT_WORDS[MM.SortOf("memory")] or "SORT_NEWEST_TITLE"])
+      T.TipFact(L["SF_TIP_SORT"], L[MM.SORT_WORDS[MM.SortOf("memory")] or "SORT_NEWEST_TITLE"])
     end,
   })
   frame.Sort = sort

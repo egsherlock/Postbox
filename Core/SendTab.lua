@@ -1620,12 +1620,12 @@ do
     else
       clock:SetText(L["SENT_VIEW_SENT"])
     end
-    -- Hooked: the plate's own hover paint stays (Theme.CreatePlate).
+    -- Hooked: the plate's own hover paint stays (Theme.CreatePlate). No
+    -- click hint: the clock's click is what its title promises.
     clock:HookScript("OnEnter", function(self)
       Theme.TipBegin(self, "ANCHOR_RIGHT")
       Theme.TipTitle(L["SENT_VIEW_SENT"])
       Theme.TipLine(L["SENT_CLOCK_TIP"])
-      Theme.TipHint(L["SENT_TIP_OPEN"])
       GameTooltip:Show()
     end)
     clock:HookScript("OnLeave", function() GameTooltip:Hide() end)

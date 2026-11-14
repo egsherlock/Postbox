@@ -2607,11 +2607,12 @@ function BUILD.Band(frame)
       ascending = function() return not RM._sortDesc end,
       reset = RM.ResetSort,
       menu = SortMenu,
-      -- The field, then its direction in its own words.
+      -- One fact, in the Mail tab's form (RV.SFTip): the field, then its
+      -- direction in its own words ("Name, A to Z").
       tip = function()
         local field = SORT_BY_ID[RM._sort or "name"] or SORTS[1]
-        Theme.TipLine(L[field.nameKey])
-        Theme.TipLine(L[SORT_DIRECTION_KEY[field.id][RM._sortDesc and 2 or 1]])
+        Theme.TipFact(L["SF_TIP_SORT"], L("SF_TIP_SORT_PAIR", L[field.nameKey],
+          L[SORT_DIRECTION_KEY[field.id][RM._sortDesc and 2 or 1]]))
       end,
     })
   else

@@ -1032,8 +1032,8 @@ local function ToggleTip(button)
     T.TipHint(L()[layered and "ARRANGE_GESTURE_DONE_CLICK" or "ARRANGE_GESTURE_DONE"])
   else
     T.TipTitle(L()["ARRANGE_TITLE"])
+    -- No click hint: the key's click is what its name promises.
     T.TipLine(ns.Summary(L()["ARRANGE_TIP"]))
-    T.TipHint(L()["ARRANGE_GESTURE_OPEN"])
   end
   GameTooltip:Show()
 end

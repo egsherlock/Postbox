@@ -1905,8 +1905,7 @@ end
 -- being lost, one line for each of those characters. Nothing here builds a
 -- table: the helpers are made once, and the lists read are Mail Memory's.
 local TIP = {
-  MUTED = 0.75,        -- a fact's label: (0.75, 0.75, 0.78), as the rows' quieter lines
-  MORE = 0.6,          -- "and N more"
+  MUTED = 0.7,         -- a fact's label, a heading, "and N more": the house gray (Theme.TIP_MUTED)
   SENDERS = 3,         -- senders listed under a fact before "and N more"
   ARRIVALS = 5,        -- arrivals listed by item
   CHARACTERS = 6,      -- characters listed before "and N more"
@@ -1923,7 +1922,7 @@ function TIP.Fact(label, value, tone)
     local r, g, b = ns.Theme.Ink(tone, "tooltip")
     GameTooltip:AddDoubleLine(label, value, r, g, b, r, g, b)
   else
-    GameTooltip:AddDoubleLine(label, value, TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03, 1, 1, 1)
+    GameTooltip:AddDoubleLine(label, value, TIP.MUTED, TIP.MUTED, TIP.MUTED, 1, 1, 1)
   end
 end
 
@@ -1938,7 +1937,7 @@ end
 function TIP.More(n, indent)
   local text = string.format(L["MEMORY_WAITING_MORE"], n)
   if indent then text = TIP.INDENT .. text end
-  GameTooltip:AddLine(text, TIP.MORE, TIP.MORE, TIP.MORE + 0.03)
+  GameTooltip:AddLine(text, TIP.MUTED, TIP.MUTED, TIP.MUTED)
 end
 
 -- Under a fact, who it is from: the biggest few, indented and muted.
@@ -1947,7 +1946,7 @@ function TIP.Senders(groups)
   local shown = math.min(#groups, TIP.SENDERS)
   local m = TIP.MUTED
   for i = 1, shown do
-    GameTooltip:AddDoubleLine(TIP.INDENT .. groups[i].name, "x" .. groups[i].count, m, m, m + 0.03, m, m, m + 0.03)
+    GameTooltip:AddDoubleLine(TIP.INDENT .. groups[i].name, "x" .. groups[i].count, m, m, m, m, m, m)
   end
   if #groups > shown then TIP.More(#groups - shown, true) end
 end
@@ -2002,7 +2001,7 @@ function TIP.Heading(Memory, me)
   if not name then return end
   local who = (Memory and type(Memory.ClassName) == "function") and Memory.ClassName(realm, name, true, "tooltip")
     or tostring(name)
-  GameTooltip:AddLine(string.format(L["MINIMAP_TIP_MAILBOX"], who), TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+  GameTooltip:AddLine(string.format(L["MINIMAP_TIP_MAILBOX"], who), TIP.MUTED, TIP.MUTED, TIP.MUTED)
 end
 
 -- The other characters with something to say, warnings first --
@@ -2028,7 +2027,7 @@ function TIP.Characters(Memory)
   end
   if not others then return end
   GameTooltip:AddLine(" ")
-  GameTooltip:AddLine(L["PICKER_TITLE"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+  GameTooltip:AddLine(L["PICKER_TITLE"], TIP.MUTED, TIP.MUTED, TIP.MUTED)
   local shown, extra = 0, 0
   for i = 1, #list do
     local st = list[i]
@@ -2119,7 +2118,7 @@ ShowTooltip = function(button, hostMode)
     elseif not state.arrived then
       -- "Nothing waiting" only while nothing has arrived since: over new
       -- mail it would be the snapshot's stale answer.
-      GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03)
+      GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED)
     end
     TIP.Warning(myWarning)
     TIP.seen.seenAt = state.seenAt
@@ -2127,7 +2126,7 @@ ShowTooltip = function(button, hostMode)
   else
     -- No snapshot (memory off, or this character has never opened a
     -- mailbox with Postbox installed): say only what the client knows.
-    if view.lit then GameTooltip:AddLine(HAVE_MAIL or "", TIP.MUTED, TIP.MUTED, TIP.MUTED + 0.03) end
+    if view.lit then GameTooltip:AddLine(HAVE_MAIL or "", TIP.MUTED, TIP.MUTED, TIP.MUTED) end
     TIP.Warning(myWarning)
   end
 
