@@ -711,8 +711,10 @@ function Dropdown.Create(parent, opts)
     return n
   end
   local inset = Inset()
-  -- For a skin's dress: the gutter the value keeps at each end.
+  -- For a skin's dress: the gutter the value keeps at each end, and, with
+  -- opts.artLeft, that the art stands at the left (nil otherwise).
   toggle.__pbInset = inset
+  if artLeft then toggle.__pbArtLeft = true end
 
   -- Items in faces of their own (FACE): the toggle's caption in the chosen
   -- one's, through the button's own fonts, since a button puts its state's

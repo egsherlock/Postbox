@@ -2983,12 +2983,16 @@ do
       toggle.__pbCaptionFont = toggle:GetNormalFontObject()
       toggle:SetNormalFontObject(lit)
     end
-    -- Its place: at the box's left (after a swatch where it has one),
-    -- clear of the arrow; a select whose items carry art keeps it centred.
+    -- Its place: at the box's left (after a swatch where it has one, or the
+    -- chosen item's art where it stands where a swatch would: Dropdown's
+    -- artLeft, the art's room and the swatch's gap), clear of the arrow; a
+    -- select whose art stands before a centred value keeps it centred.
     local inset = tonumber(toggle.__pbInset) or 12
     local label = toggle.GetFontString and toggle:GetFontString()
-    if label and inset <= SWATCH_LEAD then
+    local artLeft = toggle.__pbArtLeft and true or false
+    if label and (inset <= SWATCH_LEAD or artLeft) then
       local lead = (inset >= SWATCH_LEAD) and SWATCH_LEAD or math.floor(LEAD * s + 0.5)
+      if artLeft then lead = inset end
       toggle.__pbValueRoom = lead + (aw - A_FACE - A_X) * s + GAP
       label:ClearAllPoints()
       label:SetPoint("LEFT", toggle, "LEFT", lead, 0)
