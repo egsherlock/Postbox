@@ -58,11 +58,16 @@ local function Th()      return ns.Theme end
 -- What a row says in place of "Auction House" for each auction outcome, and
 -- the palette role it says it in: a sale is good news, a win is neutral,
 -- an expiry wants a look, a cancellation is the player's own doing.
+-- "auction" is the auction house's mail whose subject never arrived
+-- (MailService's Mail.SubjectPending): no outcome to tell, so it says only
+-- that it is the auction house's, in the quiet tone, and its tooltip says
+-- why (TIP_AH_MAIL_WHY). It has no category button: All mail takes it.
 local AUCTION_OUTCOME = {
   sold     = { key = "ROW_AH_SOLD",     role = "positive" },
   bought   = { key = "ROW_AH_BOUGHT",   role = "info" },
   expired  = { key = "ROW_AH_EXPIRED",  role = "warning" },
   canceled = { key = "ROW_AH_CANCELED", role = "textSecondary" },
+  auction  = { key = "ROW_AH_MAIL",     role = "textSecondary" },
 }
 
 -- The template's scroll bar, put where a modern one goes: pinned inside the
@@ -4351,6 +4356,14 @@ do
     end
   end
 
+  -- kind -> for "auction" ("AH Mail": the auction house's mail whose
+  -- subject never arrived), the footnote saying why its row names no
+  -- outcome, after the facts; nothing for any other kind. Mail Memory's
+  -- rows and History's say it too (CT.RowRules.TipWhy).
+  function RV.TipWhy(kind)
+    if kind == "auction" then Th().TipNote(L()["TIP_AH_MAIL_WHY"]) end
+  end
+
   -- subject, quantity -> the title: the mail's own subject, its trailing
   -- count rewritten to what is left, as the row writes it.
   function RV.TipSubject(subject, quantity)
@@ -4385,9 +4398,10 @@ do
 
     -- From: whole, where the row shows less of it -- shortened, cut, or its
     -- column hidden. An auction mail's row says its outcome, and its title
-    -- says it too.
+    -- says it too; on Forever, which has three auction houses (Alliance,
+    -- Horde, Blackwater), its tooltip says which.
     if sender and sender ~= "" and (not layout.shown.sender or row.tipShort
-        or row.Sender.__pbOverflowText) then
+        or row.Sender.__pbOverflowText or (ns.IsForever and AUCTION_OUTCOME[row.tipKind])) then
       T.TipFact(L0["TIP_FROM"], RV.TipSender(sender))
     end
 
@@ -4476,6 +4490,8 @@ do
     local unread
     if not layout.shown.read then unread = not wasRead end
     RV.TipState(Mail().StuckReason(index), unread)
+    -- "AH Mail": why the row names no outcome (RV.TipWhy).
+    RV.TipWhy(row.tipKind)
 
     -- The gestures beyond the plain click, as the active mapping has them;
     -- a finished mail has none (every button opens it).
@@ -4489,6 +4505,7 @@ do
   local R = CT.RowRules
   R.TipSender, R.TipItem, R.TipMore, R.TipMoney = RV.TipSender, RV.TipItem, RV.TipMore, RV.TipMoney
   R.TipState, R.TipSubject, R.TIP_ITEMS = RV.TipState, RV.TipSubject, RV.TIP_ITEMS
+  R.TipWhy = RV.TipWhy
   R.MoneyFacts, R.Dressable = RV.MoneyFacts, RV.Dressable
   -- The coins' set for a font (RV.Coins): the options' drawings and the
   -- Send tab draw their coins by it.
@@ -4501,7 +4518,8 @@ do
   R.FateText, R.TipFate, R.ShortDays, R.FateMarkW = RV.FateText, RV.TipFate, RV.ShortDays, RV.FateMarkW
   -- A returned mail's mark (RV.ReturnedText) and its tooltip line.
   R.ReturnedText, R.ReturnedTip = RV.ReturnedText, RV.ReturnedTip
-  -- kind -> whether it is an auction's mail (its row says the outcome).
+  -- kind -> whether it is an auction's mail (its row says the outcome, or
+  -- "AH Mail" where none is known).
   function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
   -- index -> what the Mail tab shows of a placeholder subject, for Mail
   -- Memory's capture and History (RV.PendingShown).
@@ -5631,7 +5649,9 @@ function RV.HistoryShows(on, entry, sent)
   if on.sold and k ~= "sold" then return false end
   if on.bought and k ~= "bought" then return false end
   if on.expired and k ~= "expired" and k ~= "canceled" then return false end
-  if on.players and k ~= nil then return false end
+  -- "AH Mail" (k "auction", no outcome known) is filtered as a mail of no
+  -- outcome is, as builds before it kept one.
+  if on.players and k ~= nil and k ~= "auction" then return false end
   return true
 end
 
@@ -9135,7 +9155,10 @@ function HV.RowTip(row)
   local named = (entry.s ~= "" and entry.s) or nil
   T.TipBegin(row)
   T.TipTitle((entry.sub and entry.sub ~= "") and entry.sub or named or L0["SENDER_UNKNOWN"])
-  if named and (not layout.shown.sender or row.tipShort or row.Sender.__pbOverflowText) then
+  -- An auction's row says its outcome; on Forever the tooltip says which
+  -- of its three houses (RV.RowTip).
+  if named and (not layout.shown.sender or row.tipShort or row.Sender.__pbOverflowText
+      or (ns.IsForever and AUCTION_OUTCOME[entry.k])) then
     T.TipFact(L0["TIP_FROM"], RV.TipSender(named, row.tipRealm))
   end
 
@@ -9175,6 +9198,7 @@ function HV.RowTip(row)
     if not HV.DATE_KEYS[style] then style = (GetLocale() == "enUS") and "date_md" or "date_dm" end
     T.TipFact(L0["TIP_COLLECTED"], HV.DateText(t, style, time()) .. " " .. date("%H:%M", t))
   end
+  RV.TipWhy(entry.k)
 
   if type(entry.b) == "string" and entry.b ~= "" then
     T.TipBlank()

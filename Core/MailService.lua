@@ -59,8 +59,8 @@ local stranger = {
 }
 
 -- The category vocabulary, and the only place it is written down. Six of the
--- eight are outcomes ClassifyMail can return ("auction" has no button and
--- borrows Other's word); "all" is a filter the collect
+-- eight are outcomes ClassifyMail can return ("auction" has no button; its
+-- word is the one its row says, "AH Mail"); "all" is a filter the collect
 -- tab offers and is never a classification result, and "alts" is a sweep by
 -- SENDER -- mail from the player's own characters -- whatever its kind. Core/CollectTab.lua filters on
 -- these tokens and Core/Locales.lua has to carry a label for each, so a new
@@ -74,9 +74,9 @@ local CATEGORY_LOCALE_KEY = {
   all      = "CAT_ALL",
   alts     = "CAT_ALTS",
   -- An auction mail whose subject never arrived (Mail.SubjectPending): a kind
-  -- of its own, so no category button claims it, but no category the player
-  -- is shown -- it reads as Other wherever a kind is named.
-  auction  = "CAT_OTHER",
+  -- of its own, so no category button claims it; wherever a kind is named
+  -- (the reading view's line) it says what its row says: "AH Mail".
+  auction  = "ROW_AH_MAIL",
 }
 -- One more family of tokens has no entry here because it has no fixed label:
 -- "group:<id>", a sweep by the senders in one of the player's character

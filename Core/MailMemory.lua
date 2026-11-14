@@ -233,13 +233,13 @@ local function CaptureNow()
       end
       -- What kind of mail it is, so the row can say "AH Sold" in its tone as
       -- the mail list does; and what a won auction cost, which only its
-      -- invoice knows. "other" is not stored: it is what a missing kind means;
-      -- nor is "auction", the auction house's mail whose subject never
-      -- arrived (MailService's Mail.SubjectPending), which reads as other.
+      -- invoice knows. "other" is not stored: it is what a missing kind means.
+      -- "auction", the auction house's mail whose subject never arrived
+      -- (MailService's Mail.SubjectPending), is, so its row says "AH Mail".
       local kind, paid
       if service and type(service.ClassifyMail) == "function" then
         local ok, k = pcall(service.ClassifyMail, index)
-        if ok and k ~= "other" and k ~= "auction" then kind = k end
+        if ok and k ~= "other" then kind = k end
       end
       -- Such a mail is kept under what the Mail tab shows in the
       -- placeholder's place: the item it holds (CollectTab's
@@ -2375,10 +2375,11 @@ function MM.HistoryShown(ctx, index)
 end
 
 -- kind -> what an entry keeps of it (`k`): nothing for "other", what a
--- missing kind means, nor for "auction", an auction mail whose outcome
--- nothing has told, which is kept as "other" is.
+-- missing kind means. "auction", an auction mail whose outcome nothing has
+-- told, is kept, so its row says "AH Mail"; History's filters and the
+-- week's sums read it as they read a mail of no kind.
 function MM.HistoryKind(kind)
-  if kind == "other" or kind == "auction" then return nil end
+  if kind == "other" then return nil end
   return kind
 end
 
@@ -3547,7 +3548,10 @@ function MM.RowTip(row, owner)
     T.TipLine(T.TipTone("muted", (R.ReturnedTip and R.ReturnedTip()) or L["STATUS_RETURNED"]))
   end
 
-  if named and (not R.Shows("sender") or row.tipShort or row.Sender.__pbOverflowText) then
+  -- An auction's row says its outcome; on Forever the tooltip says which of
+  -- its three houses (the Mail tab's RV.RowTip).
+  if named and (not R.Shows("sender") or row.tipShort or row.Sender.__pbOverflowText
+      or (ns.IsForever and R.IsAuction and R.IsAuction(mail.kind))) then
     T.TipFact(L["TIP_FROM"], R.TipSender(named, row.boxRealm))
   end
 
@@ -3617,6 +3621,8 @@ function MM.RowTip(row, owner)
   end
 
   TipState(R, row, true)
+  -- "AH Mail": why the row names no outcome (CollectTab's RV.TipWhy).
+  if R.TipWhy then R.TipWhy(mail.kind) end
   T.TipHint(MM.TakeHint(row))
   GameTooltip:Show()
   return true
@@ -5167,7 +5173,11 @@ local sentScratch = {}
 -- the box's own mail goes; and how many. In the box's order, newest first
 -- ("oldest": the other way round); they have no expiry to sort by. `rows`
 -- is the list RowsFor made for this call, moved down in place.
-local function SentBlock(rows, realm, name, snapshot, now, query, order)
+-- `footSeen`: the list's own foot says when the box was seen (the Mail
+-- Memory window's, MM.SeenText), so where the box held nothing and nothing
+-- stands under the line, the line is left out: it would say the foot's
+-- words twice. The Mail tab's view of the box has no such foot.
+local function SentBlock(rows, realm, name, snapshot, now, query, order, footSeen)
   local sc = sentScratch
   local n = MM.SentRowsInto(sc, realm, name, snapshot and snapshot.seenAt or nil, now, order == "oldest")
   local k = 0
@@ -5182,14 +5192,16 @@ local function SentBlock(rows, realm, name, snapshot, now, query, order)
   if k == 0 then return rows, 0 end
   local head, line = MM.SentNotes(realm, name)
   line.label = MM.SeenText(snapshot, true)
-  local m, shift = #rows, k + 2
+  local m = #rows
+  if footSeen and query == "" and m == 0 and not (snapshot and snapshot.mails and #snapshot.mails > 0) then line = nil end
+  local shift = line and k + 2 or k + 1
   for i = m, 1, -1 do rows[i + shift] = rows[i] end
   rows[1] = head
   for i = 1, k do
     rows[i + 1] = sc[i]
     sc[i] = nil
   end
-  rows[k + 2] = line
+  if line then rows[k + 2] = line end
   return rows, k
 end
 
@@ -5307,7 +5319,8 @@ end
 -- being played. opts.query: the search, folded ("" for none); opts.all:
 -- search every character's box; opts.sort: "expiry" for the soonest first,
 -- "expirylast" for the latest first, "oldest" for the box's order turned;
--- opts.characters: an MM.Characters() list already built for this refresh.
+-- opts.characters: an MM.Characters() list already built for this refresh;
+-- opts.footSeen: the list's foot says when the box was seen (SentBlock).
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
 -- (in the box but past the record's cap), box (the whole box, BoxTotal,
 -- whatever the search), matched, onCharacters, sent (the mail sent another
@@ -5371,7 +5384,7 @@ function MM.RowsFor(realm, name, opts)
   -- which lists it under each box's heading (SearchAll). `info.sent`: how
   -- many it lists.
   if sentN > 0 and not (query ~= "" and opts.all) then
-    rows, info.sent = SentBlock(rows, realm, name, snapshot, now, query, opts.sort)
+    rows, info.sent = SentBlock(rows, realm, name, snapshot, now, query, opts.sort, opts.footSeen)
     if info.matched then info.matched = info.matched + info.sent end
   end
   -- This character's box at a mailbox is this visit's look (SearchAll makes
@@ -6319,6 +6332,8 @@ function Refresh(frame)
     frame._rowsOpts = opts
   end
   opts.query, opts.all, opts.sort, opts.characters = query, frame.searchAll, order, characters
+  -- The foot below says when the box was seen (SentBlock).
+  opts.footSeen = true
   local rows, info = MM.RowsFor(v and v.realm, v and v.name, opts)
   opts.characters = nil
   -- The arrange mode's Preview mail: the samples in the box's place.
