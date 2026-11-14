@@ -1368,10 +1368,14 @@ local SUGGESTION_SOURCES = {
   { list = "other" },
 }
 
+-- Hidden recipients included: hiding a name is the Send tab's, and stops it
+-- being offered there, never here. Kept, so a search builds no options table.
+local SUGGESTION_OPTS = { includeHidden = true }
+
 local function Suggestions(text)
   local CS = ns.ContactService
   if not (CS and type(CS.BuildSuggestions) == "function") then return nil end
-  local ok, results = pcall(CS.BuildSuggestions, text)
+  local ok, results = pcall(CS.BuildSuggestions, text, SUGGESTION_OPTS)
   if not ok or type(results) ~= "table" then return nil end
   return results
 end
