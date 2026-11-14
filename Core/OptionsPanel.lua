@@ -12484,6 +12484,19 @@ function Panel.RefreshControls()
   Insp.Repaint()
 end
 
+-- The accent or the palette moved (Theme.RepaintAccentIcons, as Mail
+-- Memory's and Manage Recipients' RepaintLook): a grey row's reason, in
+-- the accent's text tone, made again in the new one and the text on show
+-- said again. Nothing while the panel is unbuilt or hidden (it is hidden
+-- through its whole build), one comparison while the tone has not moved;
+-- Rows.WhyFresh takes the new tone before it remakes anything, so a call
+-- inside a repaint already under way finds nothing moved.
+function Panel.RepaintLook()
+  local frame = S.frame
+  if not (frame and frame:IsShown()) then return end
+  if Rows.WhyFresh() and S.shown then Insp.Repaint() end
+end
+
 -- Arrange columns and buttons: the arrange mode on the Postbox window, the
 -- way its own mark beside the cog opens it -- which brings the Mail tab
 -- forward first when the Send tab is showing. Called through the mark

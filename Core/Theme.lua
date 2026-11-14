@@ -3182,6 +3182,7 @@ function Theme.RepaintAccentIcons()
   local MM, RM = ns.MailMemory, ns.RecipientManager
   if MM and type(MM.RepaintLook) == "function" then pcall(MM.RepaintLook) end
   if RM and type(RM.RepaintLook) == "function" then pcall(RM.RepaintLook) end
+  if ns.OptionsPanel and type(ns.OptionsPanel.RepaintLook) == "function" then pcall(ns.OptionsPanel.RepaintLook) end
   local frame = ns.MailboxUI and ns.MailboxUI._frame
   if not frame then return end
   local collect = frame.Tabs and frame.Tabs.collect
