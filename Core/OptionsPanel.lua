@@ -4694,7 +4694,9 @@ do
   -- A dropdown with nothing written about it says what it offers.
   local function Choices(items)
     local names = {}
-    for i = 1, #items do names[i] = items[i].name end
+    for i = 1, #items do
+      if items[i].name then names[#names + 1] = items[i].name end
+    end
     return table.concat(names, "  \194\183  ")
   end
 
@@ -9123,8 +9125,15 @@ function State.ClassIconsRow(col)
   local _, token = UnitClass("player")
   local items, offered = {}, {}
   local styles = Icons.Styles()
+  local apart = false
   for i = 1, #styles do
     local id = styles[i]
+    -- Postbox's own styles end with None; EllesmereUI's sets, where it
+    -- lists any, stand under a divider of their own (Dropdown's divider).
+    if not apart and id:sub(1, 4) == "eui:" then
+      apart = true
+      items[#items + 1] = { divider = true }
+    end
     items[#items + 1] = { id = id, name = Icons.Name(id), icon = Icons.Spec(id, token) }
     offered[id] = true
   end

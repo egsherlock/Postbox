@@ -51,6 +51,10 @@ local LIST_GAP = 2
 -- scrolls instead of growing (opts.maxListHeight overrides).
 local DEFAULT_MAX_LIST_HEIGHT = 248
 local SCROLLBAR_INSET = 3
+-- A divider ({ divider = true }) in a select's list: a hairline with this
+-- much room above it and below it, in the list's own rule tone.
+local DIVIDER_PAD = 4
+local DIVIDER_H = DIVIDER_PAD + 1 + DIVIDER_PAD
 -- Clear of every sibling widget's border overlay in the owning window.
 local LIST_LEVEL_OFFSET = 40
 
@@ -543,7 +547,10 @@ end
 -- Name"); measured in the names' place (container:FitWidth).
 -- An item { heading = true, name = } is no choice: it names the group of
 -- items under it in the list (Sound on new mail's Postbox, Game, Other
--- addons).
+-- addons). An item { divider = true } is no choice either: a hairline
+-- between two runs of items (the options' Class icons, before
+-- EllesmereUI's sets), DIVIDER_H tall, which takes no pointer, never
+-- lights and is never chosen.
 -- opts.sample = { w, h }: the toggle is a small colour button, no words and
 -- no caret on it, only a sample `w` x `h` in its middle, of the colour
 -- opts.sampleFor() answers (else swatchFor's for the choice); its list as
@@ -958,7 +965,11 @@ function Dropdown.Create(parent, opts)
     local colors = (Theme and Theme.MenuColors) or nil
     local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
 
-    local contentHeight = #items * rowHeight
+    -- Every item a row's height, a divider its own.
+    local contentHeight = 0
+    for i = 1, #items do
+      contentHeight = contentHeight + (items[i].divider and DIVIDER_H or rowHeight)
+    end
     local maxHeight = tonumber(opts.maxListHeight) or DEFAULT_MAX_LIST_HEIGHT
     local scrolling = (LIST_PADDING * 2) + contentHeight > maxHeight
     local viewport = maxHeight - (LIST_PADDING * 2)
@@ -1010,20 +1021,52 @@ function Dropdown.Create(parent, opts)
     if scrolling then rowParent = Scroller(list, contentHeight, viewport, rowHeight, 0) end
 
     list._rows = {}
+    -- Each item's top under the rows' own: the items above it, each its
+    -- height.
+    local at = 0
     for i = 1, #items do
       local item = items[i]
+      local top = at
+      at = at + (item.divider and DIVIDER_H or rowHeight)
+
+      -- A divider ({ divider = true }): a hairline across the rows in the
+      -- tone a menu's rules wear, DIVIDER_PAD clear above and below. A
+      -- plain frame that takes no pointer (the list under it does), so it
+      -- never lights, is never clicked and is never the chosen row; kept
+      -- out of the rows, which hold only what has words.
+      if item.divider then
+        local div = CreateFrame("Frame", nil, rowParent)
+        div:SetHeight(DIVIDER_H)
+        if scrolling then
+          div:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -top)
+          div:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
+        else
+          div:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - top)
+          div:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
+        end
+        local rule = div:CreateTexture(nil, "ARTWORK")
+        rule:SetHeight(1)
+        rule:SetPoint("LEFT", div, "LEFT", LIST_PADDING, 0)
+        rule:SetPoint("RIGHT", div, "RIGHT", -LIST_PADDING, 0)
+        local themed = ns.Theme
+        if themed and type(themed.FillChrome) == "function" then
+          themed.FillChrome(rule, 0.12)
+        else
+          rule:SetColorTexture(1, 1, 1, 0.12)
+        end
+        div.Rule, div._divider = rule, true
 
       -- A heading ({ heading = true, name = }): the name of the group of
       -- items under it, quiet and at the list's own edge, where the
       -- choices stand a gutter in. Not a choice: no wash, no click, no mark.
-      if item.heading then
+      elseif item.heading then
         local head = CreateFrame("Frame", nil, rowParent)
         head:SetHeight(rowHeight)
         if scrolling then
-          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
+          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -top)
           head:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
         else
-          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+          head:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - top)
           head:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
         end
         local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -1047,10 +1090,10 @@ function Dropdown.Create(parent, opts)
         row._itemId = item.id
         list._rows[#list._rows + 1] = row
         if scrolling then
-          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -((i - 1) * rowHeight))
+          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", 0, -top)
           row:SetPoint("RIGHT", rowParent, "RIGHT", 0, 0)
         else
-          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - ((i - 1) * rowHeight))
+          row:SetPoint("TOPLEFT", rowParent, "TOPLEFT", LIST_PADDING, -LIST_PADDING - top)
           row:SetPoint("RIGHT", rowParent, "RIGHT", -LIST_PADDING, 0)
         end
 
@@ -1291,13 +1334,16 @@ function Dropdown.Create(parent, opts)
       if list._content and list._scroll then
         list._content:SetWidth(list._scroll:GetWidth())
       end
-      local index
+      -- The chosen row's top: the items above it, each its height.
+      local top
+      local at = 0
       for i = 1, #items do
-        if items[i].id == container._selectedId then index = i break end
+        local item = items[i]
+        if not item.divider and item.id == container._selectedId then top = at break end
+        at = at + (item.divider and DIVIDER_H or rowHeight)
       end
-      if index then
-        local rowHeightUsed = rowHeight
-        list._setOffset(((index - 1) * rowHeightUsed) - (list._viewport - rowHeightUsed) / 2)
+      if top then
+        list._setOffset(top - (list._viewport - rowHeight) / 2)
       end
     end
   end
