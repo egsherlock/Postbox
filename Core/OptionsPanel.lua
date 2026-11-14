@@ -6491,6 +6491,9 @@ do
     f:SetScript("OnClick", Click)
     Figures(f)
     d.rows[i] = f
+    -- A skin that dresses the lines itself (Card.__pbDash) is told of each new one.
+    local dress = d.card.__pbDashLine
+    if dress then dress(f, i) end
     return f
   end
 
@@ -6681,6 +6684,8 @@ do
       tile.Holder:SetFrameLevel(level + 3)
     end
 
+    -- The table's parts, for a skin that dresses it (the Blizzard style's).
+    card.__pbDash = { head = head, rule = rule, cols = cols, total = total, foot = foot, footRule = footRule, child = child }
     S.dash = { card = card, h = Dash.H, top = false, rows = {}, head = head, cols = cols, more = false,
       total = total, msg = msg, area = area, scroll = scroll, child = child, lines = 0, scrolling = false,
       none = none, quiet = quiet, gutter = gutter }

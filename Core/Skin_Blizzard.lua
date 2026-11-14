@@ -1324,6 +1324,124 @@ do
 end
 
 -------------------------------------------------------------
+-- The options' summary table
+-------------------------------------------------------------
+
+-- Options > General's "Mail waiting in your mailboxes" (OptionsPanel's Dash:
+-- the card's parts in `card.__pbDash`) as the game's own lists are drawn:
+-- the Auction House list's stripes under the lines (auctionhouse-rowstripe-1
+-- and -2, 16 x 18 on both clients, one line each, tiled across) in place of
+-- the plain alternating shade, the column names in the game's gold over the
+-- game's divider (Options_HorizontalDivider, as the headings' rule), and a
+-- divider over the totals line where its hairline and shade were. The
+-- title's strip stays as it is, without its hairline. Rows, heights and
+-- columns do not move. A line's hover is the house's wash as before, shown
+-- only while the pointer is on it. A line made later (the list grows) is
+-- dressed as it is made (`card.__pbDashLine`).
+do
+  local STRIPES = { "auctionhouse-rowstripe-1", "auctionhouse-rowstripe-2" }
+  local DIVIDER = "Options_HorizontalDivider"
+  -- The dividers' ends: this far in from the list side's edges.
+  local RULE_IN = 5
+  local busy = false
+
+  local function Gold(fs)
+    if busy or not fs then return end
+    busy = true
+    fs:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+    busy = false
+  end
+
+  -- A divider across `frame`, on its top (or its foot), `RULE_IN` in.
+  local function Rule(frame, foot)
+    local t = frame:CreateTexture(nil, "BORDER", nil, 1)
+    if not Atlas(t, DIVIDER, false) then
+      t:Hide()
+      return nil
+    end
+    local _, h = Parts.Size(DIVIDER)
+    h = h or 1
+    local T = ns.Theme
+    local px = T and type(T.OnePixel) == "function" and T.OnePixel(frame) or 1
+    if px > h then h = px end
+    t:SetHeight(h)
+    local edge = foot and "BOTTOM" or "TOP"
+    t:SetPoint(edge .. "LEFT", frame, edge .. "LEFT", RULE_IN, 0)
+    t:SetPoint(edge .. "RIGHT", frame, edge .. "RIGHT", -RULE_IN, 0)
+    return t
+  end
+
+  local function WashShow(wash)
+    local line = wash.line
+    wash.house.Show(wash.house)
+    line.Stripe:SetAlpha(1)
+  end
+
+  local function WashHide(wash)
+    local line = wash.line
+    wash.house.Hide(wash.house)
+    line.Stripe:SetAlpha(0)
+  end
+
+  -- A line of the list (NewLine): its stripe of the Auction House list's,
+  -- under the house's own, which shows only as the hover's wash.
+  local function Line(f, i)
+    if f.__pbBlizzStripe ~= nil then return end
+    f.__pbBlizzStripe = false
+    local name = STRIPES[(i % 2 == 1) and 1 or 2]
+    if not HasAtlas(name) then return end
+    local t = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+    if not Atlas(t, name, false) then
+      t:Hide()
+      return
+    end
+    t:SetHorizTile(true)
+    t:SetAllPoints(f)
+    f.__pbBlizzStripe = t
+    if f.Stripe and type(f.Wash) == "table" and type(f.Wash.Show) == "function" then
+      f.Stripe:SetAlpha(0)
+      f.Wash = { line = f, house = f.Wash, Show = WashShow, Hide = WashHide }
+    end
+  end
+
+  function Parts.Dash(card)
+    if card.__pbBlizzDash ~= nil then return end
+    card.__pbBlizzDash = false
+    local d = card.__pbDash
+    if type(d) ~= "table" or not (d.cols and d.total and d.child) then return end
+    if not (HasAtlas(DIVIDER) and HasAtlas(STRIPES[1]) and HasAtlas(STRIPES[2])) then return end
+    card.__pbBlizzDash = true
+    -- The column names in the gold, kept there whatever repaints them.
+    local cols = d.cols
+    local names = { cols.Name, cols.Seen, cols.Soon, cols.Gold, cols.Mail }
+    for i = 1, #names do
+      local fs = names[i]
+      if fs then
+        Gold(fs)
+        hooksecurefunc(fs, "SetTextColor", Gold)
+      end
+    end
+    Rule(cols, true)
+    -- The title's strip without its hairline; the totals under a divider.
+    Fade(d.rule)
+    Fade(d.footRule)
+    Fade(d.foot)
+    Rule(d.total, false)
+    -- The lines made so far, and each one made from here on.
+    for i = 1, select("#", d.child:GetChildren()) do
+      local f = select(i, d.child:GetChildren())
+      if f and f.Stripe then
+        local _, _, _, _, y = f:GetPoint(1)
+        local row = f:GetHeight()
+        local n = (type(y) == "number" and type(row) == "number" and row > 0) and (math.floor(-y / row + 0.5) + 1) or i
+        Line(f, n)
+      end
+    end
+    card.__pbDashLine = Line
+  end
+end
+
+-------------------------------------------------------------
 -- The Earned / Spent strip
 -------------------------------------------------------------
 
@@ -3581,6 +3699,7 @@ function Parts.DressOne(c)
   if c.__pbGroupHead and c.__pbBlizzHeading == nil then Parts.Heading(c) end
   if c.__pbFindBox and c.__pbBlizzFind == nil then Parts.Find(c) end
   if c.__pbBlizzTile == nil and c.Chevron and Parts.IsTile(c) then Parts.Tile(c) end
+  if c.__pbDash and c.__pbBlizzDash == nil then Parts.Dash(c) end
   if c.__pbFooter and c.__pbBlizzFooter == nil then Parts.Footer(c) end
   if c.__pbPopupAlways and c._toggle and c._toggle.__pbFooterOf then Parts.FooterMenu(c) end
   if c.__postboxSelect and c.__pbBlizzSelect == nil and c:IsObjectType("Button") then Parts.Select(c) end
