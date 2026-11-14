@@ -26,7 +26,7 @@
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
 | **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Postbox style (the default, in Dark or Light) or the Blizzard look. |
-| **Options** | Six tabs, General first with every character's mail and your last 7 days at a glance, a search that finds any setting, and a panel that explains and previews whatever you point at. |
+| **Options** | Five tabs, General first with every character's mail and your last 7 days at a glance, a search that finds any setting, and a panel that explains and previews whatever you point at. |
 | **WoW Forever** | The same download: full names, Forever's mail rules, slow sends waited for, and Blizzard's mailbox for controller players. |
 
 Found a bug, on retail or in WoW Forever? Please report it: open an
@@ -220,7 +220,7 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
   character you're on included. One choice, **Warn about** (Options >
-  Alerts), sets what both warnings cover: **Deleted**,
+  General), sets what both warnings cover: **Deleted**,
   **Deleted or sent back**, or **Off** (mail last seen
   before 1.60 counts as possibly deleted, to be safe). They come as a
   line in chat at login (**Chat line at login**) and as the minimap icon's
@@ -231,7 +231,7 @@ Warnings first, Expiring soonest, Most mail, Name or Last played.
   the soonest to expire with its arrow or bin, and how long ago), with a
   total for all of them. Mail about to go back or be deleted comes first,
   even on an alt you haven't played in months, then the characters you
-  played most recently. Past five lines the list scrolls inside the card;
+  played most recently. Past three lines the list scrolls inside the card;
   past twenty characters it ends in "+N more in Mail Memory". Click a
   character to open its box in Mail Memory. Beside the list, Mail Memory,
   Character Groups and Manage Recipients are a click away. Under it, **The
@@ -294,7 +294,7 @@ icon steps aside.
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back. **Minimap
   marker** (Options > Minimap > Expiring mail marker) switches it on, and
-  **Warn about** (Options > Alerts) says which mail counts.
+  **Warn about** (Options > General) says which mail counts.
   Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
@@ -303,7 +303,7 @@ icon steps aside.
   makes it bigger there.
 - **Count on icon** (this character or all), shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
-  you pick. **Flash on new mail** (Options > Alerts) swells a
+  you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.
 - **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
   Expiring mail marker, Place). Its preview draws the icon large beside a copy at
@@ -324,15 +324,15 @@ icon steps aside.
   <img src="docs/screenshots/options.png" width="520" alt="The options" />
 </p>
 
-Six tabs (General, Window, Mail tab, Send tab, Alerts, Minimap), one column
+Five tabs (General, Window, Mail tab, Send tab, Minimap), one column
 of settings, a search in the title bar that finds any setting and takes you
 to it, and a panel beside it that explains whatever you point at and shows
 it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
-(Remember mailboxes, Keep History for, History holds) and **Characters**
-(Class icons, Character order, Hidden characters). **Alerts** holds
-**Expiring mail** (Warn about, Chat line at login) and **New mail**: **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
+(Remember mailboxes, Keep History for, History holds), **Characters**
+(Class icons, Character order, Hidden characters) and **Alerts**: Warn
+about, Chat line at login, Flash on new mail and **Sound on new mail** (one of four soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
 through LibSharedMedia, such as ElvUI's or WeakAuras', with a button to hear
 it first; it stays quiet for your own auction house purchases, which the

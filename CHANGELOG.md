@@ -99,9 +99,9 @@
 
 ### Options and Arrange
 
-- **Six tabs** in a new order (General, Window, Mail tab, Send tab, Alerts,
-  Minimap), with a new **Alerts** tab for expiring-mail warnings and
-  new-mail sound and flash, and a **search** in the options' title bar that
+- **Five tabs** in a new order (General, Window, Mail tab, Send tab,
+  Minimap), with expiring-mail warnings and new-mail sound and flash under
+  **Alerts** on General, and a **search** in the options' title bar that
   finds any setting and takes you to it, on whichever tab it is, and
   keeps it highlighted for a moment wherever your pointer goes. A setting
   on an Arrange card opens arranging on that card, highlighted the same
@@ -112,8 +112,8 @@
   quality marks, expiry marks), and the options step aside while you
   arrange.
 - **A weekly summary of gold earned and spent by mail** (Options >
-  General): The last 7 days shows gold earned and spent, and mails
-  collected and sent, for all your characters or this one. Point
+  General): The last 7 days shows, on one line, gold earned and spent, and
+  mails collected and sent, for all your characters or this one. Point
   at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
   cut are counted from this version on.
@@ -154,13 +154,13 @@
 - **Reset to defaults** (Options footer): Reset everything and Reset
   settings ask in fewer words. One line says what happens, then what is
   cleared and what is kept, recipient pins included.
-- **Warn about** (Options > Alerts > Expiring mail): the choices are now
-  Off, Deleted, and Deleted or sent back.
+- **Warn about** (Options > General > Alerts): the choices are now Off,
+  Deleted, and Deleted or sent back.
 - **The expiring-mail marker is set on the Minimap tab** (Options >
   Minimap > Expiring mail marker): Minimap marker and its shape, color,
-  anchor, offsets and Larger when alone. Alerts keeps Warn about, the chat
-  line, and new mail's sound and flash, and a line there (Options >
-  Alerts > Expiring mail) opens the Minimap tab at the marker's settings.
+  anchor, offsets and Larger when alone. Alerts (Options > General) keeps
+  Warn about, the chat line, and new mail's sound and flash, and a line
+  there opens the Minimap tab at the marker's settings.
 - **Remember sort order** (Options > Mail tab): on, each list keeps the
   order you chose; off, every list is back to newest first at your next
   visit. Filters are always let go when the mailbox closes.
@@ -260,8 +260,8 @@
   ones.
 - The window's resize grip resets on a right-click's release, and only the
   left button resizes.
-- Options: grayed rows on the Alerts and Minimap tabs name the right setting
-  to turn on.
+- Options: grayed rows on the General and Minimap tabs name the right
+  setting to turn on.
 
 ## 1.60.0
 

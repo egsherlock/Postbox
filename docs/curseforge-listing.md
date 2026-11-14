@@ -77,7 +77,7 @@
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, and play a sound you choose: one of Postbox's own, the game's, or one your other addons share (Options &gt; Alerts).</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, and play a sound you choose: one of Postbox's own, the game's, or one your other addons share (Options &gt; General).</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">A count of what's waiting,</span></strong> and a marker when mail is about to expire, in the shape, color and spot you pick.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Two dozen hand-painted styles</span></strong> with glow, pulse and shadow. Point at any option and the panel beside it shows you.</li>
 </ul>
