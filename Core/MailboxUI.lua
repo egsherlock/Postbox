@@ -365,6 +365,9 @@ local RESET_KEEP = {
   -- default 7, a longer choice would delete every entry older than a week
   -- at the next read of it.
   historyDays      = true,
+  -- How many mails History holds, for the same reason: back on the default
+  -- 1000, a larger choice would cut every record down at its next read.
+  historyCap       = true,
 }
 
 -- One step of the re-apply below. Every step runs whatever the one before it
