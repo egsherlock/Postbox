@@ -3191,6 +3191,8 @@ function Theme.RepaintAccentIcons()
   -- The Send tab's Manage Recipients key: its divider on the To field.
   local send = frame.Tabs and frame.Tabs.send
   if send and send.ManageRecipients then Theme.PaintJoin(send.ManageRecipients) end
+  -- And the Sent clock's, on Send mail.
+  if send and send.SentClock then Theme.PaintJoin(send.SentClock) end
 end
 
 -- Window tabs, view segments and category tiles sample the accent at paint
@@ -6332,19 +6334,81 @@ end
 -- divider a unit wide as its first column, painted by Theme.PaintJoin --
 -- now, and each time the cell comes on screen, since a look may paint the
 -- wrap's ring after the cell was built. The caller sets the cell's width.
-function Theme.JoinCell(wrap, cell)
+-- `first`: the cell is the wrap's FIRST cell instead (the Send tab's Sent
+-- clock on Send mail, a push button): at the wrap's left end, its divider
+-- its last column, raised over the wrap and left on the parent its owner
+-- gave it (a button's skins walk the button's children; the clock is its
+-- panel's SentClock). The wrap is then a push button as wide as the pair,
+-- so whatever a look draws round a button is one rim round both, and its
+-- face is the rest of it: Theme.FitJoinFace keeps the caption centred there
+-- and the button's own hover off the cell.
+function Theme.JoinCell(wrap, cell, first)
   if not (wrap and cell) or cell.__pbDivider then return end
-  cell:SetParent(wrap)
+  local side = first and "LEFT" or "RIGHT"
+  if first then
+    cell:SetFrameLevel((wrap:GetFrameLevel() or 0) + 5)
+  else
+    cell:SetParent(wrap)
+  end
   cell:ClearAllPoints()
-  cell:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", 0, 0)
-  cell:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+  cell:SetPoint("TOP" .. side, wrap, "TOP" .. side, 0, 0)
+  cell:SetPoint("BOTTOM" .. side, wrap, "BOTTOM" .. side, 0, 0)
   if cell._edge then cell._edge:Hide() end
   local line = cell:CreateTexture(nil, "BACKGROUND", nil, -1)
   line:SetWidth(1)
-  line:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
-  line:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
+  side = first and "RIGHT" or "LEFT"
+  line:SetPoint("TOP" .. side, cell, "TOP" .. side, 0, 0)
+  line:SetPoint("BOTTOM" .. side, cell, "BOTTOM" .. side, 0, 0)
   cell.__pbDivider, cell.__pbJoinWrap = line, wrap
   cell:HookScript("OnShow", Theme.PaintJoin)
+  if first then
+    wrap.__pbLeadCell = cell
+    cell:HookScript("OnHide", Theme.PaintJoin)
+    -- A look dresses the button after this: its face is fitted again the
+    -- first time the pointer finds it after a look added regions.
+    wrap:HookScript("OnEnter", Theme.FitJoinFace)
+  end
+end
+
+-- A button with a first cell (Theme.JoinCell's `first`): its face is the
+-- button less the cell (less the column they share), or the whole button
+-- while the cell is hidden. The caption is centred on the face, and every
+-- texture a look lays on the button's HIGHLIGHT layer (its hover wash:
+-- the Postbox style's, EllesmereUI's) starts at the face, so the pointer
+-- on the button lights only the button's own part; the cell has its own.
+-- Each texture's own left offset is kept. Refitted only when the cell is
+-- shown or hidden or the button's regions changed; nothing is made.
+function Theme.FitJoinFace(wrap)
+  local cell = wrap and wrap.__pbLeadCell
+  if not cell then return end
+  -- `__pbLeadOff`: its owner stood the cell apart for now (the Send tab's
+  -- clock under no style), and the face is the whole button.
+  local lead = (cell:IsShown() and not wrap.__pbLeadOff) and math.max(0, (cell:GetWidth() or 0) - 1) or 0
+  -- Never fitted and the face the whole button: left as it was built.
+  if lead == 0 and wrap.__pbFaceLead == nil then return end
+  local n = select("#", wrap:GetRegions())
+  if wrap.__pbFaceLead == lead and wrap.__pbFaceN == n then return end
+  wrap.__pbFaceLead, wrap.__pbFaceN = lead, n
+  local label = type(wrap.GetFontString) == "function" and wrap:GetFontString() or nil
+  if label then
+    label:ClearAllPoints()
+    label:SetPoint("CENTER", wrap, "CENTER", lead / 2, 0)
+  end
+  for i = 1, n do
+    local region = select(i, wrap:GetRegions())
+    if region ~= label and region.GetDrawLayer and region:GetDrawLayer() == "HIGHLIGHT"
+        and region.IsObjectType and region:IsObjectType("Texture") then
+      local x0 = region.__pbFaceX0
+      if x0 == nil then
+        local point, rel, _, x = region:GetPoint(1)
+        x0 = (point == "TOPLEFT" and (rel == nil or rel == wrap) and tonumber(x)) or 0
+        region.__pbFaceX0 = x0
+      end
+      region:ClearAllPoints()
+      region:SetPoint("TOPLEFT", wrap, "TOPLEFT", lead + x0, 0)
+      region:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, 0)
+    end
+  end
 end
 
 -- A joined cell's divider in its wrap's ring, read where a look gives it
@@ -6354,6 +6418,8 @@ function Theme.PaintJoin(cell)
   local line = cell and cell.__pbDivider
   local wrap = cell and cell.__pbJoinWrap
   if not (line and wrap) then return end
+  -- A first cell: the button's face with it (shown or hidden).
+  if wrap.__pbLeadCell == cell then Theme.FitJoinFace(wrap) end
   local r, g, b, a
   if type(wrap.GetBackdropBorderColor) == "function" then r, g, b, a = wrap:GetBackdropBorderColor() end
   if type(r) ~= "number" then

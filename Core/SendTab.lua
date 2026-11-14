@@ -1600,19 +1600,22 @@ do
     if CT and type(CT.OpenSent) == "function" then CT.OpenSent() end
   end
 
-  -- The clock left of the Send button, in its row: a square plate as tall
-  -- as the button (so the row is level), the house's small-button plate
-  -- (Theme.CreatePlate, as the Mail tab's History and sort are), History's
-  -- own glyph in grey as the Mail tab's clock is (chrome stays neutral).
-  -- Its room comes out of the button's width (SyncSentClock), so the window
-  -- is no wider. Built after the button, beside it (BuildSendControls).
-  ST.SENT_CLOCK = { GAP = M.gap }
+  -- The clock as the first cell of Send mail: a square plate the button's
+  -- height, the house's small-button plate (Theme.CreatePlate, as the Mail
+  -- tab's History and sort are), History's own glyph in grey as the Mail
+  -- tab's clock is (chrome stays neutral), joined to the button's left end
+  -- (Theme.JoinCell, `first`) as the Manage Recipients key is to the To
+  -- field's right: one rim round both, a divider a unit wide between them,
+  -- each its own hover, press, tooltip and click. The button spans the
+  -- row, so the pair is as wide as the clock, the gap and the button were;
+  -- its words stand centred on the face beside the cell (Theme.FitJoinFace).
+  -- Built after the button, on it (BuildSendControls).
+  ST.SENT_CLOCK = { W = K.SEND_BUTTON_H }
 
   function ST.BuildSentClock(panel)
-    local size = K.SEND_BUTTON_H
     local clock = Theme.CreatePlate(panel, "segment")
-    clock:SetSize(size, size)
-    clock:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
+    clock:SetWidth(ST.SENT_CLOCK.W)
+    Theme.JoinCell(panel.FillButton, clock, true)
     clock:SetText("")
     local glyph = Theme.Glyph and Theme.Glyph(clock, "history-16", 16, "OVERLAY") or nil
     if glyph then
@@ -1640,18 +1643,49 @@ do
   end
 
   -- Shown while History is on: with History off (Never) there is no Sent
-  -- to open, so the clock is not offered and Send takes the whole row.
+  -- to open, so the clock is not offered and Send's face is the whole
+  -- button. `_sentLead`: the cell's part of the button (less the column
+  -- they share), for the Ctrl+Enter hint's room (FitSendHint).
+  -- Joined where a style dresses the window (ns.Skin: the Postbox style,
+  -- EllesmereUI's, ElvUI's). With none, the game's own button art is no
+  -- ring to share: the clock stands apart at the button's left as it always
+  -- has, a square key with its own ring, M.gap clear of the button.
   function ST.SyncSentClock(panel)
     panel = panel or ActivePanel()
     local clock = panel and panel.SentClock
     local button = panel and panel.FillButton
     if not (clock and button) then return end
     local on = ST.SentOn()
-    if clock:IsShown() ~= on or panel._sentLead == nil then
+    local joined = ns.Skin ~= nil
+    if clock:IsShown() ~= on or panel._sentLead == nil or panel._sentJoined ~= joined then
       clock:SetShown(on)
-      panel._sentLead = on and (K.SEND_BUTTON_H + ST.SENT_CLOCK.GAP) or 0
-      button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset + panel._sentLead, M.inset)
+      if panel._sentJoined ~= joined then
+        panel._sentJoined = joined
+        ST.PlaceSentClock(panel, clock, button, joined)
+      end
+      local lead = K.SEND_BUTTON_H + M.gap
+      button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset + ((on and not joined) and lead or 0), M.inset)
+      panel._sentLead = on and (joined and (ST.SENT_CLOCK.W - 1) or 0) or 0
+      Theme.FitJoinFace(button)
       ST.FitSendHint(panel)
+    end
+  end
+
+  -- The clock joined to the button's left end (Theme.JoinCell's places)
+  -- or standing apart, its own ring shown and the divider put away.
+  function ST.PlaceSentClock(panel, clock, button, joined)
+    button.__pbLeadOff = not joined
+    local line = clock.__pbDivider
+    if line then line:SetShown(joined) end
+    if clock._edge then clock._edge:SetShown(not joined) end
+    clock:ClearAllPoints()
+    if joined then
+      clock:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+      clock:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+      clock:SetWidth(ST.SENT_CLOCK.W)
+    else
+      clock:SetSize(K.SEND_BUTTON_H, K.SEND_BUTTON_H)
+      clock:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", M.inset, M.inset)
     end
   end
 end
@@ -1891,10 +1925,10 @@ function ST.FitSendHint(panel)
   if show then
     local caption = button:GetFontString()
     local captionW = caption and caption:GetStringWidth() or 0
-    -- Before the first layout pass the fallback is the panel's width, less
-    -- the Sent clock's room where it stands (ST.SyncSentClock).
-    local width = ResolvedWidth(button, panel, M.inset)
-    if button:GetWidth() <= 1 then width = width - (panel._sentLead or 0) end
+    -- The caption is centred on the button's face: the button less the
+    -- Sent clock's cell where it stands (ST.SyncSentClock). Before the
+    -- first layout pass the button's width falls back to the panel's.
+    local width = ResolvedWidth(button, panel, M.inset) - (panel._sentLead or 0)
     local room = (width - captionW) / 2
     show = (hint:GetStringWidth() or 0) + ST.HINT.PAD + ST.HINT.GAP <= room
   end
