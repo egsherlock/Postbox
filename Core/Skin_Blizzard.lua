@@ -1063,11 +1063,35 @@ do
     return true
   end
 
+  -- The clock on the middle of the cell's face as it shows: from the inner
+  -- edge of the art's rim to the dark line at the clock's right, between
+  -- the rim's inner edges at the top and the foot (the red art's darker
+  -- bottom band is its bevel, not its face). Measured from both clients'
+  -- art, the same on each, in units of the art's height: the red face 10
+  -- of 108 in from the box at the left and the top and 18 at the foot; the
+  -- dark face 2 of 28 in on each side. The clock's glyph is re-anchored
+  -- only when its offset moves.
+  local FACE = { red = { 10 / 108, 10 / 108, 18 / 108 }, dark = { 2 / 28, 2 / 28, 2 / 28 } }
+  local function CentreGlyph(clock, cell, kind)
+    local glyph = clock.__pbGlyph
+    local h = clock:GetHeight()
+    if not glyph or type(h) ~= "number" or h <= 0 then return end
+    local f = FACE[kind]
+    local dx = f[1] * h / 2
+    local dy = (f[3] - f[2]) * h / 2
+    if cell.gx == dx and cell.gy == dy then return end
+    cell.gx, cell.gy = dx, dy
+    glyph:ClearAllPoints()
+    glyph:SetPoint("CENTER", clock, "CENTER", dx, dy)
+  end
+
   local function PaintCell(clock)
     local cell = clock.__pbBlizzCell
     if not cell then return end
     local owner = cell.button.__pbBlizzButton
-    if DarkCell(clock, cell, owner and owner.kind == "dark") then
+    local dark = DarkCell(clock, cell, owner and owner.kind == "dark")
+    CentreGlyph(clock, cell, dark and "dark" or "red")
+    if dark then
       cell.state = nil
     else
     local state = cell.down and "down" or "up"
