@@ -1946,13 +1946,22 @@ function CS.BuildSuggestions(text, opts)
   -- Prefix matches lead, then substring matches. That is what a player typing a
   -- name expects and what Blizzard's own autocomplete does; a pure substring
   -- match buries the obvious answer behind whoever happens to sort first.
+  --
+  -- A match is not offered to the ranking when it cannot enter the kept
+  -- slots: a name outside Recent with no mails counted ranks with everyone
+  -- else, after the last kept entry once that one is a favorite or someone
+  -- you mail (Rank.Consider would turn it away at its first test).
   local function Emit(dest, source, bucket)
+    local other = bucket ~= Rank.BUCKET.recent
     if query == "" then
       for i = 1, #source do
         local e = source[i]
         if not IsHidden(e.key) then
           dest[#dest + 1] = e.address
-          if rankCap then Offer(e.address, e.lower, bucket, i, true) end
+          if rankCap and not (other and Rank.size >= rankCap and Rank.group[rankCap] < 3
+              and not (rCount and rCount[e.lower])) then
+            Offer(e.address, e.lower, bucket, i, true)
+          end
         elseif hiddenOut then
           NoteHidden(e.key, e.address)
         end
@@ -1971,11 +1980,17 @@ function CS.BuildSuggestions(text, opts)
           if addressAt or keyAt then NoteHidden(e.key, e.address) end
         elseif addressAt == 1 or keyAt == 1 then
           dest[#dest + 1] = e.address
-          if rankCap then Offer(e.address, e.lower, bucket, i, true) end
+          if rankCap and not (other and Rank.size >= rankCap and Rank.group[rankCap] < 3
+              and not (rCount and rCount[e.lower])) then
+            Offer(e.address, e.lower, bucket, i, true)
+          end
         elseif addressAt or keyAt then
           rest = rest or {}
           rest[#rest + 1] = e.address
-          if rankCap then Offer(e.address, e.lower, bucket, i, false) end
+          if rankCap and not (other and Rank.size >= rankCap and Rank.group[rankCap] < 3
+              and not (rCount and rCount[e.lower])) then
+            Offer(e.address, e.lower, bucket, i, false)
+          end
         end
       end
     end

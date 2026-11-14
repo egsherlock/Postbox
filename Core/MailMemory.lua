@@ -1564,8 +1564,9 @@ MM.sentGen = 0
 -- 1000, 250 at 5000), so the pass that moves the list comes once in that
 -- many mails and each mail's share of it stays the same at any cap.
 -- `list`, `now` -> the entries older than the days kept dropped and, once
--- the record runs past cap + slack, its oldest down to the cap.
-local function PruneHistory(list, now)
+-- the record runs past cap + slack, its oldest down to the cap. `sent`:
+-- the list is a Sent or Returned record (2d), which MM.sentGen follows.
+local function PruneHistory(list, now, sent)
   local keep = HistoryKeep()
   local cutoff = now - keep
   local n = #list
@@ -1580,8 +1581,9 @@ local function PruneHistory(list, now)
   if drop > 0 then
     MM.recordWrites = MM.recordWrites + 1
     -- And the mail sent to the player's own characters, read from the
-    -- records (2d, MM.SentSince), is read again.
-    MM.sentGen = MM.sentGen + 1
+    -- records (2d, MM.SentSince), is read again: a Sent or Returned
+    -- record's, never History's, which none of that reads.
+    if sent then MM.sentGen = MM.sentGen + 1 end
     for i = 1, n - drop do list[i] = list[i + drop] end
     for i = n, n - drop + 1, -1 do list[i] = nil end
   end
@@ -1607,7 +1609,7 @@ local function PruneAllHistory()
         if type(byRealm) == "table" then
           for name, list in pairs(byRealm) do
             if type(list) == "table" then
-              PruneHistory(list, now)
+              PruneHistory(list, now, pass ~= 1)
               if #list == 0 then
                 byRealm[name] = nil
                 if pass == 1 then MM.HistoryChanged() else MM.SentChanged() end
@@ -1711,7 +1713,7 @@ do
     local byRealm = type(root) == "table" and root[item.realm] or nil
     local list = type(byRealm) == "table" and byRealm[item.name] or nil
     if type(list) ~= "table" then return nil end
-    PruneHistory(list, time())
+    PruneHistory(list, time(), key ~= "mailHistory")
     return list
   end
 
@@ -1730,9 +1732,10 @@ do
   -- (MM.ReturnRecord; each such entry carries r = true, set again here for
   -- one kept before it did). Without returns, the Sent record itself, as
   -- before. A merged list is made once per write and kept, one per
-  -- character, until either record moves (MM.recordWrites, or another
-  -- list); a refresh makes nothing. Read only: neither record is written
-  -- but by its pruning, as every read of them prunes.
+  -- character, until either record moves (MM.sentGen, which a collect
+  -- leaves be, or another list); a refresh makes nothing. Read only:
+  -- neither record is written but by its pruning, as every read of them
+  -- prunes.
   local listed = {}
   local NONE_SENT = {}
   local function Listed(realm, name, sent)
@@ -1740,7 +1743,7 @@ do
     local byRealm = type(root) == "table" and root[realm] or nil
     local back = type(byRealm) == "table" and byRealm[name] or nil
     if type(back) ~= "table" or back[1] == nil then return sent end
-    PruneHistory(back, time())
+    PruneHistory(back, time(), true)
     if back[1] == nil then return sent end
     sent = sent or NONE_SENT
     local mine = listed[realm]
@@ -1749,7 +1752,7 @@ do
       listed[realm] = mine
     end
     local kept = mine[name]
-    if kept and kept.writes == MM.recordWrites and kept.sent == sent and kept.back == back
+    if kept and kept.gen == MM.sentGen and kept.sent == sent and kept.back == back
         and kept.ns == #sent and kept.nb == #back then
       return kept.list
     end
@@ -1766,7 +1769,7 @@ do
         i = i + 1
       end
     end
-    mine[name] = { writes = MM.recordWrites, sent = sent, back = back, ns = ns_, nb = nb, list = list }
+    mine[name] = { gen = MM.sentGen, sent = sent, back = back, ns = ns_, nb = nb, list = list }
     return list
   end
 
@@ -1859,7 +1862,7 @@ do
   function MM.Sent()
     local list = SentList(false)
     if not list then return NONE end
-    PruneHistory(list, time())
+    PruneHistory(list, time(), true)
     return list
   end
 
@@ -1882,7 +1885,7 @@ do
     -- character list, the minimap), not at the next minute, as a return's.
     local realm, name = Me()
     if MM.SentTarget and MM.SentTarget(entry, realm, name) then CharactersChanged() end
-    PruneHistory(list, entry.t)
+    PruneHistory(list, entry.t, true)
     return entry
   end
 
@@ -2211,7 +2214,7 @@ do
     local gen = MM.sentGen
     MM.sentGen = gen + 1
     MM._SentAdded(entry, gen, true)
-    PruneHistory(list, entry.t)
+    PruneHistory(list, entry.t, true)
     -- Mail on its way to that character, counted where its box is listed.
     NoteArrival(target.realm, target.name, nil, false)
     CharactersChanged()
