@@ -1704,8 +1704,13 @@ end
 --         switched off hands out nothing. The recipient manager passes true,
 --         to know those names and keep them out of its list (CS.INCLUDE_OFF
 --         says this build honours it).
+--         { hiddenMatches = bool } -- the Send tab's typing list: the names
+--         the player hid that match `text` are handed back too, apart, in
+--         `hidden` (each once, in the order the sources give them), so its
+--         foot can offer them again. The one pass that leaves them out
+--         collects them; nothing more is walked.
 --
--- Returns eight array-valued keys. Each one means exactly what it says, and a
+-- Returns eight array-valued keys (nine with hiddenMatches). Each one means exactly what it says, and a
 -- recipient appears in EVERY key that describes them:
 --
 --   favorites  the player's own curated list, from stored state
@@ -1746,6 +1751,15 @@ function CS.BuildSuggestions(text, opts)
     favorites = {}, recent = {}, alts = {}, friends = {}, guild = {},
     grouped = {}, manual = {}, other = {},
   }
+  -- The hidden matches (opts.hiddenMatches): asked of the pass that leaves
+  -- them out, so they cost nothing it does not already do. Made below, once
+  -- anything is known to be hidden.
+  local hiddenOut, hiddenSeen = nil, nil
+  local function NoteHidden(key, address)
+    if hiddenSeen[key] then return end
+    hiddenSeen[key] = true
+    hiddenOut[#hiddenOut + 1] = address
+  end
 
   EnsureSources()
 
@@ -1775,6 +1789,10 @@ function CS.BuildSuggestions(text, opts)
     if anyHidden then
       state = {}
       R.ForEach(function(key, row) state[key] = row.hidden == true end)
+      if type(opts) == "table" and opts.hiddenMatches then
+        hiddenOut, hiddenSeen = {}, {}
+        results.hidden = hiddenOut
+      end
     end
   end
 
@@ -1809,7 +1827,11 @@ function CS.BuildSuggestions(text, opts)
     if query == "" then
       for i = 1, #source do
         local e = source[i]
-        if not IsHidden(e.key) then dest[#dest + 1] = e.address end
+        if not IsHidden(e.key) then
+          dest[#dest + 1] = e.address
+        elseif hiddenOut then
+          NoteHidden(e.key, e.address)
+        end
       end
       return
     end
@@ -1817,10 +1839,13 @@ function CS.BuildSuggestions(text, opts)
     local rest = nil
     for i = 1, #source do
       local e = source[i]
-      if not IsHidden(e.key) then
+      local hidden = IsHidden(e.key)
+      if not hidden or hiddenOut then
         local addressAt = e.lower:find(query, 1, true)
         local keyAt = e.key:find(query, 1, true)
-        if addressAt == 1 or keyAt == 1 then
+        if hidden then
+          if addressAt or keyAt then NoteHidden(e.key, e.address) end
+        elseif addressAt == 1 or keyAt == 1 then
           dest[#dest + 1] = e.address
         elseif addressAt or keyAt then
           rest = rest or {}
@@ -1909,6 +1934,9 @@ function CS.BuildSuggestions(text, opts)
         -- A source switched off counts as not knowing it: a name the player
         -- added is his own and stays offered.
         results.manual[#results.manual + 1] = address
+      elseif hiddenOut and not HeldByOffered(key) then
+        -- Hidden, and so out of the list above: a hidden match all the same.
+        NoteHidden(key, address)
       end
     end)
 

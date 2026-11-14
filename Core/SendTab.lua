@@ -2646,6 +2646,12 @@ end
 -- records none that was one.
 ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "manual" }
 
+-- The typing list's Hidden foot (15c): the one options table its pass asks
+-- with, kept, so a keystroke builds none; and how many hidden names it lists
+-- under the foot before "See all" hands the rest to Manage Recipients.
+ST.Curate.SUGGEST_OPTS = { hiddenMatches = true }
+ST.Curate.SUGGEST_HIDDEN_MAX = 3
+
 -- picker, filter -> the hidden names of the sections the filter puts on
 -- screen, each once, in the picker's two kept tables (unsorted). Favorites
 -- gathers every section's, as All does: a hidden name was perhaps a
@@ -3482,6 +3488,9 @@ local SUGGEST_ORDER = {
 -- the gesture the tooltip advertised appeared to do nothing at all in the one
 -- list it was performed in. The field is free text, so a hidden name can still
 -- be typed out in full; the recipient manager's Hidden filter is the way back.
+-- And the list's own foot (15c): "Hidden (N)" under the matches for the hidden
+-- names that match what is typed, a click away from being shown again. They
+-- are never among the matches, so Tab and the completion never reach them.
 
 local suggestFlat, suggestSeen = {}, {}
 
@@ -3597,6 +3606,9 @@ local function FirstInlineCompletion(typed)
   local R = ns.Recipients
   local address = (type(R) == "table" and type(R.Address) == "function") and R.Address(typed) or ""
   if suggestSeen[H.Lower(address ~= "" and address or typed)] then return nil end
+  -- A name hidden from the list, typed in full, is a whole name too: it shows
+  -- under the foot, and "Bob" hidden with Bobby listed stays Bob.
+  if type(R) == "table" and type(R.IsHidden) == "function" and R.IsHidden(typed) then return nil end
 
   local folded = CS.Fold(typed)
   local count = H.CharCount(typed)
@@ -3812,8 +3824,27 @@ local function RefreshSuggestions(panel)
     return
   end
 
-  -- No opts: hidden means hidden here too. See the note above SUGGEST_ORDER.
-  local results = Contacts().BuildSuggestions(text)
+  -- Hidden means hidden here too (see the note above SUGGEST_ORDER): the hidden
+  -- names that match come back apart, for the foot (15c).
+  local Curate = ST.Curate
+  local results = Contacts().BuildSuggestions(text, Curate.SUGGEST_OPTS)
+
+  -- The eight rows are shared: the foot takes what it needs -- its line,
+  -- unfolded up to three names and "See all" past three, at most five -- and
+  -- the matches have the rest, three at the least, so the foot never takes
+  -- the first match's place.
+  local hidden = results.hidden
+  local nHidden = hidden and #hidden or 0
+  -- Folded until clicked open, or opened by a hide here; a hidden name typed in
+  -- full opens it too, unless the foot was folded by hand (false, not nil).
+  local wish = panel._suggestFootOpen
+  local footOpen = nHidden > 0
+    and (wish == true or (wish == nil and Curate.TypedHidden(hidden, text))) or false
+  panel._suggestFootShown = footOpen
+  local listed = footOpen and math.min(nHidden, Curate.SUGGEST_HIDDEN_MAX) or 0
+  local seeAll = footOpen and nHidden > listed
+  local footRows = (nHidden > 0) and (1 + listed + (seeAll and 1 or 0)) or 0
+  local cap = K.MAX_SUGGESTIONS - footRows
 
   for i = #suggestFlat, 1, -1 do suggestFlat[i] = nil end
   for key in pairs(suggestSeen) do suggestSeen[key] = nil end
@@ -3834,13 +3865,16 @@ local function RefreshSuggestions(panel)
           suggestSeen[key] = true
           suggestFlat[#suggestFlat + 1] = name
         end
-        if #suggestFlat >= K.MAX_SUGGESTIONS then break end
+        if #suggestFlat >= cap then break end
       end
     end
-    if #suggestFlat >= K.MAX_SUGGESTIONS then break end
+    if #suggestFlat >= cap then break end
   end
 
-  if #suggestFlat == 0 then
+  -- Nothing to offer and nothing hidden that matches. A list of hidden
+  -- matches alone stays: a name just hidden, or one typed in full, is seen
+  -- there rather than looking unknown.
+  if #suggestFlat == 0 and nHidden == 0 then
     ClearCompletionOffer(panel)
     sf:Hide()
     return
@@ -3851,10 +3885,23 @@ local function RefreshSuggestions(panel)
   local R = ns.Recipients
   local GetRow = (type(R) == "table" and type(R.Get) == "function") and R.Get or nil
 
+  local matches = #suggestFlat
   for i = 1, K.MAX_SUGGESTIONS do
     local btn = sf.buttons[i]
     local name = suggestFlat[i]
-    if name then
+    local j = i - matches
+    if not name and j >= 1 and j <= footRows then
+      -- The foot's rows, after the matches (15c).
+      if j == 1 then
+        Curate.BindSuggestKind(btn, "foot", L("PICKER_HIDDEN", nHidden), footOpen)
+      elseif j - 1 <= listed then
+        Curate.BindSuggestKind(btn, "hidden", hidden[j - 1])
+      else
+        Curate.BindSuggestKind(btn, "all", L["SUGGEST_SEE_ALL"])
+      end
+      btn:Show()
+    elseif name then
+      if btn._kind then Curate.BindSuggestKind(btn, nil) end
       btn.label:SetText(DecorateAddress(name))
       btn.value = name
 
@@ -3873,8 +3920,19 @@ local function RefreshSuggestions(panel)
       btn:Hide()
     end
   end
+  -- The hairline over the foot, between the names offered and the ones that
+  -- are not, as the picker draws it; none when the foot is the list's top.
+  local rule = sf.FootRule
+  if footRows > 0 and matches > 0 then
+    rule:ClearAllPoints()
+    rule:SetPoint("TOPLEFT", sf.buttons[matches + 1], "TOPLEFT", 0, 0)
+    rule:SetPoint("TOPRIGHT", sf.buttons[matches + 1], "TOPRIGHT", 0, 0)
+    rule:Show()
+  else
+    rule:Hide()
+  end
 
-  sf:SetHeight(2 * SUGGEST_PAD + #suggestFlat * SUGGEST_ROW_H)
+  sf:SetHeight(2 * SUGGEST_PAD + (matches + footRows) * SUGGEST_ROW_H)
   -- Two lists this addon owns must never overlap.
   CloseOtherLists(panel, sf)
   sf:Show()
@@ -3990,6 +4048,14 @@ end
 -- Right-click hides a name in every list of names now, and the star at the
 -- row's end favorites it (14a).
 local function SuggestionEnter(self)
+  if self._kind == "hidden" then
+    -- As the picker's hidden row says it (RowEnter).
+    Theme.TipBegin(self)
+    Theme.TipTitle(Contacts().GetClassColoredName(self._hiddenName or "", nil, "tooltip"))
+    Theme.TipHint(L["GROUPS_HIDDEN_HINT"])
+    GameTooltip:Show()
+    return
+  end
   if not self.value then return end
   self._hot = true
   ST.Curate.PaintStar(self)
@@ -4004,13 +4070,17 @@ end
 
 local function SuggestionClick(self, button)
   local panel = self._panel
+  if panel and self._kind then return ST.Curate.SuggestKindClick(self) end
   local name = self.value
   if not panel or not name then return end
 
   if button == "RightButton" then
-    -- Hides, as in the picker (14a): the name leaves this list.
+    -- Hides, as in the picker (14a): the name leaves this list for its foot,
+    -- which unfolds at once, so where it went is on screen and so is the way
+    -- back (15c); it folds again when the list closes.
     ST.Curate.Hide(name)
     GameTooltip:Hide()
+    panel._suggestFootOpen = true
     -- Rebuilt in place, like the picker, and the bar's star count follows (a
     -- hidden favourite is a favourite no more). The popup stays open and the
     -- To: box keeps its focus and its text -- nothing here touches the edit
@@ -4064,6 +4134,111 @@ function ST.Curate.SuggestStarClick(self, button)
   else
     GameTooltip:Hide()
   end
+end
+
+-------------------------------------------------------------
+-- 15c. The typing list's Hidden foot
+--
+-- The picker's foot (14b), under the matches: "Hidden (N)" for the hidden
+-- names that match what is typed, folded until it is clicked, or unfolded at
+-- once by a right-click hide here, so the slip is seen and undone where it
+-- happened. Unfolded, up to three of the names follow, gray with Show at
+-- the end; past three, "See all" opens Manage Recipients on its Hidden list.
+-- A click on a name shows it again, as the picker's does: unhidden, back
+-- among the matches; a star it lost by hiding stays off. It folds as the
+-- list closes. Tab and the completion never land on its rows (suggestFlat
+-- holds the matches alone).
+-------------------------------------------------------------
+
+-- btn, kind -> the row drawn as the foot ("foot", `text` its line, `bright`
+-- while unfolded), a hidden name ("hidden", `text` the name), "See all"
+-- ("all"), or a match again (nil; the caller fills it).
+function ST.Curate.BindSuggestKind(btn, kind, text, bright)
+  btn._kind = kind
+  if btn._layoutKind ~= kind then
+    btn._layoutKind = kind
+    local label = btn.label
+    label:ClearAllPoints()
+    label:SetPoint("LEFT", btn, "LEFT", M.inset - SUGGEST_PAD, 0)
+    if kind == "hidden" then
+      label:SetPoint("RIGHT", btn.ShowText, "LEFT", -M.gap, 0)
+    elseif kind then
+      label:SetPoint("RIGHT", btn, "RIGHT", -3, 0)
+    else
+      label:SetPoint("RIGHT", btn, "RIGHT", -16, 0)
+    end
+  end
+  if not kind then
+    btn._hiddenName = nil
+    btn.ShowText:Hide()
+    btn.StarButton:Show()
+    return
+  end
+  btn.value = nil
+  btn._fav, btn._hot, btn._starHot = false, false, false
+  btn.StarButton:Hide()
+  btn.Star:Hide()
+  if kind == "hidden" then
+    btn._hiddenName = text
+    btn.label:SetText(Theme.Colorize("textDisabled", text or ""))
+    btn.ShowText:SetText(L["PICKER_SHOW"])
+    btn.ShowText:Show()
+  else
+    -- The foot brighter while unfolded: its state rises in colour, as the
+    -- picker's does.
+    btn._hiddenName = nil
+    btn.label:SetText(Theme.Colorize(bright and "textPrimary" or "textSecondary", text or ""))
+    btn.ShowText:Hide()
+  end
+end
+
+-- hidden, text -> true when `text` is itself a hidden name, typed in full:
+-- the foot then unfolds with that name first, so it is seen as one he hid
+-- rather than looking unknown. One R.IsHidden per pass; the walk runs only
+-- when it is one.
+function ST.Curate.TypedHidden(hidden, text)
+  local R = ns.Recipients
+  if type(R) ~= "table" or type(R.IsHidden) ~= "function" or not R.IsHidden(text) then return false end
+  local H = Helpers()
+  local address = type(R.Address) == "function" and R.Address(text) or text
+  local want = H.Lower(address ~= "" and address or text)
+  for i = 1, #hidden do
+    if H.Lower(hidden[i]) == want then
+      if i > 1 then hidden[1], hidden[i] = hidden[i], hidden[1] end
+      return true
+    end
+  end
+  return false
+end
+
+-- A click on one of the foot's rows, with either button.
+function ST.Curate.SuggestKindClick(btn)
+  local panel = btn._panel
+  local kind = btn._kind
+  if kind == "all" then
+    panel._suggestToken = (panel._suggestToken or 0) + 1
+    panel.SuggestFrame:Hide()
+    GameTooltip:Hide()
+    local RM = ns.RecipientManager
+    if RM and type(RM.SetFilter) == "function" and type(RM.Show) == "function" then
+      RM.SetFilter("hidden")
+      local UI = ns.MailboxUI
+      RM.Show(UI and UI._frame, "main")
+    else
+      ns.Print(L["RM_NOT_AVAILABLE"])
+    end
+    return
+  end
+  if kind == "foot" then
+    panel._suggestFootOpen = not panel._suggestFootShown
+  elseif kind == "hidden" then
+    local R = ns.Recipients
+    local name = btn._hiddenName
+    if name and type(R) == "table" and type(R.SetHidden) == "function" then R.SetHidden(name, false) end
+  end
+  RefreshSuggestions(panel)
+  RefreshContactBar(panel)
+  if btn:IsShown() and btn:IsMouseOver() then SuggestionEnter(btn) else GameTooltip:Hide() end
 end
 
 -- The type-ahead list closed by an Escape that reached it (the To box not
@@ -4127,6 +4302,11 @@ local function CreateSuggestionPopup(panel)
     btn.Star:Hide()
     btn.StarOutline = Theme.StarOutline(btn.StarButton, 11, "OVERLAY")
     if btn.StarOutline then btn.StarOutline:SetPoint("CENTER", btn.Star, "CENTER", 0, 0) end
+    -- "Show" at a hidden name's end under the foot (15c), as the picker's.
+    btn.ShowText = Theme.CreateText(btn, "secondary")
+    btn.ShowText:SetPoint("RIGHT", btn, "RIGHT", -3, 0)
+    btn.ShowText:SetJustifyH("RIGHT")
+    btn.ShowText:Hide()
 
     local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
@@ -4142,6 +4322,15 @@ local function CreateSuggestionPopup(panel)
     btn:Hide()
     sf.buttons[i] = btn
   end
+  -- The foot's hairline (15c), placed by each fill; and the foot folds as
+  -- the list closes, as the picker's does. Owned by the first row, which is
+  -- shown whenever the rule is (it stands under a match), and not by the
+  -- card: EllesmereUI fades the textures a tagged panel owns itself.
+  sf.FootRule = sf.buttons[1]:CreateTexture(nil, "ARTWORK")
+  sf.FootRule:SetHeight(1)
+  Theme.FillChrome(sf.FootRule, 0.12)
+  sf.FootRule:Hide()
+  sf:HookScript("OnHide", function() panel._suggestFootOpen, panel._suggestFootShown = nil, nil end)
   -- One Escape closes it before the window (Helpers.RegisterEscPopup).
   ns.Core.UI.Helpers.RegisterEscPopup(sf, ST.CloseSuggestions)
 
