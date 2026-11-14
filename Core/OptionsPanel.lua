@@ -1720,7 +1720,10 @@ do
   -- window tabs' tokens; a host UI's list, band and button by that UI's own
   -- skin pass, its edge by its own border (EllesmereUI) or its own template
   -- (ElvUI); the stripes, dots, senders and figures by the Mail tab's own
-  -- rules (Theme.StyleMailRow, CollectTab.RowRules). Its text wears
+  -- rules (Theme.StyleMailRow, CollectTab.RowRules), on the ground a look
+  -- lays under its rows (Theme.RowGround, Theme.ROW). A look drawn in the
+  -- game's art (the Blizzard style) lays that art over what was painted, at
+  -- the drawing's scale (MW.Look). Its text wears
   -- Postbox's fonts, so the face, the size and the outline show as they
   -- change.
   --
@@ -1901,7 +1904,10 @@ do
     local own = MW.Own()
     local caption = MW.Line("bodySmall")
     local line = math.max(MW.Line("label"), MW.Line("value"), MW.Line("secondary"))
-    h.strip = own and S_(MW.STRIP) or 0
+    -- The strip's room: the Postbox style's, and a look that draws its own
+    -- title band there (the Blizzard style's, Skin.PreviewStrip).
+    local skin = ns.Skin
+    h.strip = (own or (skin and skin.PreviewStrip)) and S_(MW.STRIP) or 0
     h.titleGap = S_(TM.inset)
     h.tab = math.max(S_(TM.tabHeight), caption + MW.CONTROL_AIR)
     h.underTabs = S_(TM.space.snug + TM.inset)
@@ -2316,8 +2322,9 @@ do
   -- OutcomeSender, short), so the small rows keep room for the item's name.
   function MW.PaintOutcome(fs, kind)
     local R = ns.CollectTab and ns.CollectTab.RowRules
-    fs:SetText(R and R.OutcomeSender and R.OutcomeSender(kind, nil, true) or "")
-    if R and R.PaintSender then R.PaintSender(fs, nil) end
+    local ground = ns.Theme.ROW
+    fs:SetText(R and R.OutcomeSender and R.OutcomeSender(kind, ground, true) or "")
+    if R and R.PaintSender then R.PaintSender(fs, nil, nil, ground) end
   end
 
   -- The rows, by the list's own rules: the stripe of the row's place, the
@@ -2341,7 +2348,10 @@ do
     for i = 1, #rows do
       local row, s = rows[i], MW.SAMPLES[i]
       T.StyleMailRow(row, i, false)
-      if R and R.PaintDot then R.PaintDot(row.Indicator, s.read, false)
+      -- The ground a look lays under its rows, and its inks (T.ROW), as the
+      -- list's binders have them: nil in every look without one.
+      if T.RowGround then T.RowGround(row, i, MW.h.rowGap) end
+      if R and R.PaintDot then R.PaintDot(row.Indicator, s.read, false, T.ROW)
       else T.SetColor(row.Indicator, s.read and "read" or "unread") end
       local sender = row.Sender
       -- Measured whole: the width a fit earlier set is let go first.
@@ -2352,7 +2362,7 @@ do
       else
         MW.PaintMe(sender)
       end
-      row.Gold:SetText(T.Colorize(s.tone, figs[s.fig]))
+      row.Gold:SetText(T.Colorize(s.tone, figs[s.fig], T.ROW))
       goldW = math.max(goldW, T.TextWidth(row.Gold))
     end
     -- The room the sender and the subject share, then the auctions' column.
@@ -2387,7 +2397,7 @@ do
     local H = ns.Helpers
     local name = H.PlayerName()
     fs:SetText(H.ShownName(name) or "")
-    if R and R.PaintSender then R.PaintSender(fs, name) end
+    if R and R.PaintSender then R.PaintSender(fs, name, nil, T.ROW) end
     if fs.__pbClass then return end
     local CS = ns.ContactService
     local token
@@ -2397,6 +2407,9 @@ do
     end
     local r, g, b
     if token and CS and type(CS.ClassColour) == "function" then r, g, b = CS.ClassColour(token) end
+    -- On a look's own row ground, the class colour in its ink there.
+    local rows = T.ROW and T._rowInks
+    if r and rows then r, g, b = rows.RGB(r, g, b) end
     if r then T.SetTextRGB(fs, r, g, b) end
   end
 
@@ -2434,6 +2447,15 @@ do
     MW.PaintTabs(win)
     MW.PaintRows(win)
     MW.PaintBand(win, SAMPLE_SALE + MW.GIFT, SAMPLE_PRICE)
+    MW.Look(win)
+  end
+
+  -- A look that draws the drawing in its own art lays it over what was
+  -- painted, at the drawing's scale (the Blizzard style's PaintPreview); nil
+  -- in every other look.
+  function MW.Look(win)
+    local skin = ns.Skin
+    if skin and skin.PaintPreview then skin.PaintPreview(win, MW.K()) end
   end
 
   ---------------------------------------------------------
@@ -2927,7 +2949,7 @@ do
       MW.PaintMe(fs)
     else
       fs:SetText(m.from)
-      if R and R.PaintSender then R.PaintSender(fs, m.from) end
+      if R and R.PaintSender then R.PaintSender(fs, m.from, nil, T.ROW) end
       MW.PaintClass(fs, m.class)
     end
     row.senderText, row.senderW = fs:GetText() or "", TextW(fs)
@@ -2935,12 +2957,12 @@ do
     -- With coins where the rows' arrangement chose them (CollectTab's
     -- RV.RowCoins), measured with them (RV.CoinW).
     local coins = R and R.RowCoins and R.RowCoins(two and MW.AS_LARGE or MW.LAYOUT, row.Money) or nil
-    if R and R.MoneyText then money, kind = R.MoneyText(false, m.money or 0, 0, m.price, not two, nil, coins) end
+    if R and R.MoneyText then money, kind = R.MoneyText(false, m.money or 0, 0, m.price, not two, nil, coins, T.ROW) end
     if money and R.MoneyShown and not R.MoneyShown(kind, MW.LAYOUT) then money = nil end
     local slots
     if (m.items or 0) > 0 then
       slots = T.Colorize("textSecondary", (R and R.SlotsText) and R.SlotsText(m.items, not two)
-        or ns.Plural("COUNT_SLOTS", m.items))
+        or ns.Plural("COUNT_SLOTS", m.items), T.ROW)
     end
     row.moneyText, row.slotsText, row.moneyW, row.slotsW = money, slots, 0, 0
     if money then
@@ -2998,7 +3020,9 @@ do
     -- color reads under 4.5:1 on the list.
     row:SetSize(win.rowW, rowH)
     MW.At(row, "TOPLEFT", win.Clip, 0, -(y or (k - 1) * (rowH + h.rowGap)))
-    if R and R.PaintDot then R.PaintDot(row.Indicator, m.read, false)
+    -- A look's own row ground and inks, as on the window (MW.PaintRows).
+    if T.RowGround then T.RowGround(row, k, h.rowGap) end
+    if R and R.PaintDot then R.PaintDot(row.Indicator, m.read, false, T.ROW)
     else T.SetColor(row.Indicator, m.read and "read" or "unread") end
     if row.iconSize ~= size then
       row.iconSize = size
@@ -3459,6 +3483,7 @@ do
     local fs = win.Button.Text or win.Button:GetFontString()
     if fs then MW.Caption(fs, win.inner, all) end
     MW.PaintGrid(win, st)
+    MW.Look(win)
     MW.PaintRing(win, st)
   end
 
@@ -9023,6 +9048,8 @@ function Pages.window(col)
         set = function(id)
           ns.MailboxUI[setter](id)
           if type(worn[changed]) == "function" then worn[changed]() end
+          -- The drawing above wears it too.
+          Ctx.Repaint()
         end,
       })
     end
@@ -9044,6 +9071,7 @@ function Pages.window(col)
       set = function(id)
         ns.MailboxUI.SetBlizzOpacity((tonumber(id) or 100) / 100)
         if type(worn.OpacityChanged) == "function" then worn.OpacityChanged() end
+        Ctx.Repaint()
       end,
     })
   end

@@ -43,7 +43,8 @@ local _, ns = ...
 -- lists, the options' tabs, checkboxes, heading rules, Find box and footer
 -- buttons, and the lit Test mail switches and Arrange key; the mail rows
 -- stand on the ground Row texture chooses (the game's letter paper by
--- default), with inks of their own. Other bands and the options preview
+-- default), with inks of their own; and the options' small drawings of the
+-- mail window wear all of it, at their size (Skin.PaintPreview). Other bands
 -- draw as they did.
 -- =====================================================================
 
@@ -250,6 +251,13 @@ do
       a[2] = nil
     end
     return true
+  end
+
+  -- The rule's numbers for this client's art (nil where they were not
+  -- measured from it), and EDGE: the options' drawings of the window seat
+  -- their small copy of the frame by the same rule (Parts.PreviewFrame).
+  function Parts.Metal()
+    return METAL[Parts.Size("!UI-Frame-Metal-EdgeLeft") or 0], EDGE
   end
 end
 
@@ -559,7 +567,10 @@ local function SinkPanel(c)
   holder:SetAllPoints(c)
   holder:SetFrameLevel(c:GetFrameLevel() + BEVEL_LEVEL)
   c.__pbBlizzBevel = holder
-  local corners = {}
+  -- Kept, for a drawing of the window that lays them at its own size
+  -- (Parts.PreviewBevel): the corners by key, the edges in INSET_EDGES' order.
+  local corners, edges = {}, {}
+  holder.__pbCorners, holder.__pbEdges = corners, edges
   for i = 1, #INSET do
     local spec = INSET[i]
     local t = holder:CreateTexture(nil, "BORDER", nil, 7)
@@ -570,6 +581,7 @@ local function SinkPanel(c)
   for i = 1, #INSET_EDGES do
     local spec = INSET_EDGES[i]
     local t = holder:CreateTexture(nil, "BORDER", nil, 7)
+    edges[i] = t
     if Atlas(t, spec.atlas, true) then
       if spec.across then t:SetHorizTile(true) else t:SetVertTile(true) end
       t:SetPoint(spec[1], corners[spec[2]], spec[3], 0, 0)
@@ -645,34 +657,52 @@ do
 
   -- Three pieces in `layer`, or nil (and nothing made) where the client
   -- lacks one.
-  local function Lay(tab, set, layer)
+  local function Make(tab, set, layer)
     for i = 1, 3 do
       if not HasAtlas(set[i]) then return nil end
     end
-    local plateH = tab:GetHeight()
-    if type(plateH) ~= "number" or plateH <= 0 then plateH = 28 end
-    local keep = plateH + SHADOW
     local pieces = {}
     for i = 1, 3 do
       local t = tab:CreateTexture(nil, layer)
       Atlas(t, set[i], false)
-      -- Turned over (the closed end on top) and trimmed at the joining end
-      -- to the plate's height plus the shadow, as a share of the art's own.
+      pieces[i] = t
+    end
+    return pieces
+  end
+
+  -- The pieces laid on `tab`, a plate `plateH` units tall, the art drawn at
+  -- `k` units a unit of its own: 1 on the window; on the options' drawings of
+  -- it the drawing's tab height over the window's (Parts.PreviewTabs). Again
+  -- where the height moves (the same points set anew).
+  local function Fit(pieces, tab, set, plateH, k)
+    -- Turned over (the closed end on top) and trimmed at the joining end
+    -- to the plate's height plus the shadow, as a share of the art's own.
+    local keep = plateH / k + SHADOW
+    for i = 1, 3 do
       local _, h = Parts.Size(set[i])
       local cut = h and (1 - keep / h) or 0
       if cut < 0 then cut = 0 end
-      t:SetTexCoord(0, 1, 1, cut)
-      pieces[i] = t
+      pieces[i]:SetTexCoord(0, 1, 1, cut)
     end
     local L, M, R = pieces[1], pieces[2], pieces[3]
-    L:SetWidth(Parts.Size(set[1]) or 35)
-    L:SetPoint("TOPLEFT", tab, "TOPLEFT", -set.l, SHADOW)
-    L:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", -set.l, 0)
-    R:SetWidth(Parts.Size(set[3]) or 37)
-    R:SetPoint("TOPRIGHT", tab, "TOPRIGHT", set.r, SHADOW)
-    R:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", set.r, 0)
+    local shadow = SHADOW * k
+    L:SetWidth((Parts.Size(set[1]) or 35) * k)
+    L:SetPoint("TOPLEFT", tab, "TOPLEFT", -set.l * k, shadow)
+    L:SetPoint("BOTTOMLEFT", tab, "BOTTOMLEFT", -set.l * k, 0)
+    R:SetWidth((Parts.Size(set[3]) or 37) * k)
+    R:SetPoint("TOPRIGHT", tab, "TOPRIGHT", set.r * k, shadow)
+    R:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT", set.r * k, 0)
     M:SetPoint("TOPLEFT", L, "TOPRIGHT", 0, 0)
     M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
+  end
+
+  -- Three pieces laid on the window's tab at its height, or nil.
+  local function Lay(tab, set, layer)
+    local pieces = Make(tab, set, layer)
+    if not pieces then return nil end
+    local plateH = tab:GetHeight()
+    if type(plateH) ~= "number" or plateH <= 0 then plateH = 28 end
+    Fit(pieces, tab, set, plateH, 1)
     return pieces
   end
 
@@ -742,6 +772,67 @@ do
     line:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", -DIVIDER_RUN, 0)
     line:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", DIVIDER_RUN, 0)
     frame.__pbBlizzTabLine = line
+  end
+
+  -- The options' drawings of the window (Skin.PaintPreview): their Mail and
+  -- Send tabs, `win.Tabs`, in the same art, the open one's for the lit tab,
+  -- with the rule under them. Their text is at its real size, so a drawn tab
+  -- is taller for the window it stands for than the window's tab: the art is
+  -- drawn at the drawn tab's height over the window's (Theme's tabHeight),
+  -- so each tab is the game's tab at that height, its ends and shadow with
+  -- it. The rule runs from the first tab to the last, the run past each end
+  -- at the drawing's scale `k`. Made once; laid again only when the tab's
+  -- height moves (the text size). No glow: the drawing takes no pointer.
+  local NONE = {}
+  function Parts.PreviewTabs(win, k)
+    local tabs = win.Tabs
+    local d = win.__pbBlizzPvTabs
+    if d == nil then
+      d = false
+      win.__pbBlizzPvTabs = false
+      if type(tabs) ~= "table" or not (tabs[1] and tabs[2]) then return end
+      for i = 1, 3 do
+        if not (HasAtlas(SETS.rest[i]) and HasAtlas(SETS.open[i])) then return end
+      end
+      for i = 1, 2 do
+        local tab = tabs[i]
+        tab.__pbBlizzTab = { rest = Make(tab, SETS.rest, "BACKGROUND"), open = Make(tab, SETS.open, "BACKGROUND"), glow = NONE }
+      end
+      d = { h = false }
+      if HasAtlas(DIVIDER) then
+        local line = win:CreateTexture(nil, "ARTWORK")
+        if Atlas(line, DIVIDER, false) then
+          Parts.OneUnit(line, win, DIVIDER)
+          d.line = line
+        else
+          line:Hide()
+        end
+      end
+      win.__pbBlizzPvTabs = d
+      for i = 1, 2 do
+        local tab = tabs[i]
+        tab.__setSelectedOverride = PaintTab
+        local T = ns.Theme
+        if T and type(T.SetPlateSelected) == "function" then T.SetPlateSelected(tab, tab.isSelected) else PaintTab(tab, tab.isSelected) end
+      end
+    end
+    if not d then return end
+    local h = tabs[1]:GetHeight()
+    if type(h) ~= "number" or h <= 0 or (d.h == h and d.k == k) then return end
+    d.h, d.k = h, k
+    local T = ns.Theme
+    local s = h / (T and T.Metrics and T.Metrics.tabHeight or 28)
+    for i = 1, 2 do
+      local art = tabs[i].__pbBlizzTab
+      Fit(art.rest, tabs[i], SETS.rest, h, s)
+      Fit(art.open, tabs[i], SETS.open, h, s)
+    end
+    local line = d.line
+    if line then
+      line:ClearAllPoints()
+      line:SetPoint("TOPLEFT", tabs[1], "BOTTOMLEFT", -DIVIDER_RUN * k, 0)
+      line:SetPoint("TOPRIGHT", tabs[2], "BOTTOMRIGHT", DIVIDER_RUN * k, 0)
+    end
   end
 end
 
@@ -1073,6 +1164,30 @@ do
       Paint(button)
     end
     return true
+  end
+
+  -- A button the walk dressed that stands for one that collects mail: the
+  -- options' drawings' All mail (`gold`: with its gold rim, as the window's
+  -- wears it) and their category buttons (Skin.PaintPreview), which the
+  -- test above cannot know. Once each; a change of the choice paints it as
+  -- every other (Skin.ButtonLookChanged).
+  function Parts.MailButton(button, gold)
+    local art = button and button.__pbBlizzButton
+    if not art or art.mail then return end
+    art.mail = true
+    if gold and GOLD_ALL_MAIL and art.names ~= GOLD and Has(GOLD) then
+      art.names = GOLD
+      local glow = Glow(button, GOLD.highlight)
+      if glow then
+        glow:ClearAllPoints()
+        glow:SetPoint("TOPLEFT", art[1], "TOPLEFT", 0, 0)
+        glow:SetPoint("BOTTOMRIGHT", art[3], "BOTTOMRIGHT", 0, 0)
+        art.glow = glow
+      end
+    end
+    -- Painted anew: the kind and the state read again.
+    art.kind, art.state = nil, nil
+    Paint(button)
   end
 
   -- A switch drawn as a plate of its own that is the red button held down
@@ -1887,8 +2002,8 @@ end
 -- moves.
 --
 -- How it reaches the bar: the walk meets the window's three copies (the
--- panel's Notch, Divider and DividerPin; never the options' drawing, whose
--- copies stand for a panel of their own) and dresses each once. The window
+-- panel's Notch, Divider and DividerPin) and the options' Mail tab drawing's
+-- two, and dresses each once. The window
 -- then calls back at the moments its own look sets these parts, through
 -- fields on the copy that are nil in every other look: f.__pbDress after a
 -- copy is typed (RV.BarType, RV.LineType) and when the island's inks move
@@ -2047,11 +2162,17 @@ do
     return ("%02x%02x%02x"):format(floor(r * DIM * 255 + 0.5), floor(g * DIM * 255 + 0.5), floor(b * DIM * 255 + 0.5))
   end
 
-  -- A copy of the bar (it has Hairline's strokes, `SignH`), met by the walk.
+  -- A copy of the bar (it has Hairline's strokes, `SignH`), met by the walk:
+  -- the window's three, and the options' drawings' two (Hairline's and Full
+  -- row's copy at the list's foot and the island), which stand for a list of
+  -- their own (OptionsPanel's MW.barList: a preview's, holding no bar).
   function Parts.Bar(f)
     f.__pbBlizzBar = false
     local panel = f.__panel
-    if not (panel and (panel.Notch == f or panel.Divider == f or panel.DividerPin == f)) then return end
+    if not (panel and (panel.Notch == f or panel.Divider == f or panel.DividerPin == f
+        or (panel._preview == true and panel.Notch == nil))) then
+      return
+    end
     local a = {}
     local marks = HasAtlas(MARK_OPEN) and HasAtlas(MARK_SHUT)
     local P = f.Isle
@@ -2510,8 +2631,9 @@ end
 -- Recipients key) is the field's last cell: the field's border has no end
 -- cap there and runs on into the cell (Parts.FieldEnd), which wears the art
 -- without its left end (its rim at its top, foot and right) and the rim's
--- one-unit column at its left, the line between field and key. The options
--- preview's plates keep their look.
+-- one-unit column at its left, the line between field and key. The options'
+-- Mail tab drawing's Inbox and Done are dressed by its paint (Skin.
+-- PaintPreview), each standing alone; the arrange inspector's keep their look.
 do
   local BASE = "common-button-tertiary-"
   local NAMES = {
@@ -2838,8 +2960,9 @@ do
     plate:HookScript("OnHide", BarMoved)
   end
 
-  -- A segment or tile plate this skin dresses: not one joined to a field
-  -- (Theme.JoinCell), not the options preview's, not the Send tab's Sent
+  -- A segment or tile plate the walk dresses: not one joined to a field
+  -- (Theme.JoinCell), not one in a `Segs` set (the options' drawing's, which
+  -- its paint dresses, and the arrange inspector's), not the Send tab's Sent
   -- clock (Send mail's cell), not one another look already owns.
   function Parts.IsSeg(c)
     if not IsPlate(c) or c.__setSelectedOverride then return false end
@@ -3963,7 +4086,8 @@ do
     "Subject", "textPrimary", "Detail", "textSecondary", "ColTime", "textSecondary",
     "ColMoney", "textSecondary", "ColSlots", "textSecondary", "Age", "textSecondary", "Money", "textSecondary",
   }
-  local SHADOWED = { "Sender", "Subject", "Detail", "ColTime", "ColMoney", "ColSlots", "Age", "Money" }
+  -- (Gold and Slots: the options' drawings' rows, OptionsPanel's MW.)
+  local SHADOWED = { "Sender", "Subject", "Detail", "ColTime", "ColMoney", "ColSlots", "Age", "Money", "Gold", "Slots" }
 
   -- A text's shadow off (clean, on the paper) or back as its font gave it,
   -- read once from the string.
@@ -4405,6 +4529,250 @@ do
   function Skin.ApplyScale()
     R.Relay()
     Parts.RelayLines()
+  end
+end
+
+-------------------------------------------------------------
+-- The options' drawings of the mail window
+-------------------------------------------------------------
+
+-- Options > Window's Preview and Options > Mail tab's drawing (OptionsPanel's
+-- MW: the mail window small, laid out by its own rules, its text at its real
+-- size) wear this style as the window wears it. The panel paints every part
+-- as it does for any look but Postbox's own, the rows on Row texture's ground
+-- by the binders' own contract (Theme.RowGround, Theme.ROW); the walk has
+-- dressed what it knows there (the list sunk, the buttons, the bar's two
+-- copies); then the panel calls Skin.PaintPreview(win, k), `k` the drawing's
+-- width over the window's, which lays over that:
+--   The frame: the window's metal frame and rock at the drawing's scale. The
+--     client's own eight pieces by atlas name, each its atlas size times k,
+--     on textures of the drawing's own, seated by the window's rule (Parts.
+--     Metal: the metal's inner edge EDGE in from the sides and foot, times
+--     k), the top corners at the height the client's layout gives them
+--     (NineSliceUtil's ButtonFrameTemplateNoPortrait, read, never applied:
+--     it lays the art at its own size). The edges are stretched between the
+--     corners, not tiled. Inside, the rock and its streaks where the window
+--     lays them (2 in, 22 under the top; the streaks 4 in, the art's height),
+--     times k: the rock at its own grain, untinted. Background opacity on the
+--     rock and the streaks, as on the window; the drawn panel's own fill and
+--     edge faded. The title band's room is the drawing's own strip, which it
+--     keeps under this style too (Skin.PreviewStrip).
+--   The Mail and Send tabs (Parts.PreviewTabs).
+--   The list's bevel at the drawing's scale (Parts.PreviewBevel): at the
+--     window's 3 units it stood over the drawing's 2-unit padding and cut the
+--     rows' edges.
+--   The totals band: the strip's gold edge on marble (Parts.GoldEdge) laid by
+--     its rim on the band's height, the words in the game's gold.
+--   All mail with its gold rim, and the category buttons, are buttons that
+--     collect mail (Parts.MailButton): red or dark by Options > Window >
+--     Buttons, live with the window's.
+--   Inbox and Done: the small dark button, each standing alone (Parts.Seg).
+--   The Mail tab drawing's list under its last mail: empty rows of the
+--     paper to its foot, as the window's list (Skin.ListGround).
+-- Where the client lacks a part's art, that part stays as the drawing drew
+-- it. All of it is made at the first paint; a paint after that compares a
+-- few numbers, sets what moved (the opacity, a height) and inks the band's
+-- words: no table, no string, no timer.
+Skin.PreviewStrip = true
+do
+  local ROCK = "Interface\\FrameGeneral\\UI-Background-Rock"
+  -- The rock's place in the window (Theme.ApplyFrameTheme's stone: 2 in from
+  -- the sides and the foot, 22 under the top), and the streaks' (LayGround).
+  local ROCK_X, ROCK_TOP, STREAKS_X = 2, 22, 4
+  -- The four corners: the layout's key, the piece (FRAME_ATLASES), its
+  -- point, its side, whether it is a foot corner.
+  local CORNER = {
+    { "TopLeftCorner", 1, "TOPLEFT", "left", false }, { "TopRightCorner", 2, "TOPRIGHT", "right", false },
+    { "BottomLeftCorner", 3, "BOTTOMLEFT", "left", true }, { "BottomRightCorner", 4, "BOTTOMRIGHT", "right", true },
+  }
+  -- The four edges: the piece, whether it runs across, and its two points on
+  -- two corners, as NineSliceUtil sets them.
+  local EDGES = {
+    { 5, true, "TOPLEFT", 1, "TOPRIGHT", "TOPRIGHT", 2, "TOPLEFT" },
+    { 6, true, "BOTTOMLEFT", 3, "BOTTOMRIGHT", "BOTTOMRIGHT", 4, "BOTTOMLEFT" },
+    { 7, false, "TOPLEFT", 1, "BOTTOMLEFT", "BOTTOMLEFT", 3, "TOPLEFT" },
+    { 8, false, "TOPRIGHT", 2, "BOTTOMRIGHT", "BOTTOMRIGHT", 4, "TOPRIGHT" },
+  }
+
+  -- The frame's textures, made once, or false where the client lacks a
+  -- piece or the layout.
+  local function MakeFrame(win)
+    for i = 1, #FRAME_ATLASES do
+      if not HasAtlas(FRAME_ATLASES[i]) then return false end
+    end
+    local util = _G.NineSliceUtil
+    local layout = type(util) == "table" and type(util.GetLayout) == "function" and util.GetLayout(FRAME_LAYOUT) or nil
+    if type(layout) ~= "table" then return false end
+    local f = { corners = {}, edges = {}, x = {}, y = {} }
+    local m, edge = Parts.Metal()
+    for i = 1, 4 do
+      local c = CORNER[i]
+      local spec = layout[c[1]]
+      local x = type(spec) == "table" and type(spec.x) == "number" and spec.x or 0
+      local y = type(spec) == "table" and type(spec.y) == "number" and spec.y or 0
+      if m then
+        x = (c[4] == "left") and (edge - m.left) or (m.right - edge)
+        if c[5] then y = edge - m.bottom end
+      end
+      f.x[i], f.y[i] = x, y
+      local t = win:CreateTexture(nil, "BORDER")
+      Atlas(t, FRAME_ATLASES[c[2]], false)
+      f.corners[i] = t
+    end
+    for i = 1, 4 do
+      local e = EDGES[i]
+      local t = win:CreateTexture(nil, "BORDER")
+      Atlas(t, FRAME_ATLASES[e[1]], false)
+      t:SetPoint(e[3], f.corners[e[4]], e[5], 0, 0)
+      t:SetPoint(e[6], f.corners[e[7]], e[8], 0, 0)
+      f.edges[i] = t
+    end
+    -- The rock, over the panel's faded fill; the streaks over the rock.
+    local rock = win:CreateTexture(nil, "BACKGROUND", nil, -7)
+    rock:SetTexture(ROCK)
+    rock:SetHorizTile(true)
+    rock:SetVertTile(true)
+    f.rock = rock
+    if HasAtlas(STREAKS) then
+      local streaks = win:CreateTexture(nil, "BACKGROUND", nil, -6)
+      if Atlas(streaks, STREAKS, false) then f.streaks = streaks else streaks:Hide() end
+    end
+    Fade(win.Fill)
+    local e = win.Edges
+    if type(e) == "table" then
+      for i = 1, #e do Fade(e[i]) end
+    end
+    return f
+  end
+
+  -- Each piece at its size times `k`, where it stands times `k`.
+  local function LayFrame(win, f, k)
+    for i = 1, 4 do
+      local c, t = CORNER[i], f.corners[i]
+      local w, h = Parts.Size(FRAME_ATLASES[c[2]])
+      t:SetSize((w or 0) * k, (h or 0) * k)
+      t:ClearAllPoints()
+      t:SetPoint(c[3], win, c[3], f.x[i] * k, f.y[i] * k)
+    end
+    for i = 1, 4 do
+      local e, t = EDGES[i], f.edges[i]
+      local w, h = Parts.Size(FRAME_ATLASES[e[1]])
+      if e[2] then t:SetHeight((h or 0) * k) else t:SetWidth((w or 0) * k) end
+    end
+    local rock = f.rock
+    rock:ClearAllPoints()
+    rock:SetPoint("TOPLEFT", win, "TOPLEFT", ROCK_X * k, -ROCK_TOP * k)
+    rock:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -ROCK_X * k, ROCK_X * k)
+    local streaks = f.streaks
+    if streaks then
+      local _, h = Parts.Size(STREAKS)
+      streaks:ClearAllPoints()
+      streaks:SetPoint("TOPLEFT", rock, "TOPLEFT", STREAKS_X * k, 0)
+      streaks:SetPoint("TOPRIGHT", rock, "TOPRIGHT", 0, 0)
+      streaks:SetHeight((h or 43) * k)
+    end
+  end
+
+  -- The list's bevel (SinkPanel's pieces) at its size times `k`.
+  function Parts.PreviewBevel(list, k)
+    local holder = list and list.__pbBlizzBevel
+    local corners = holder and holder.__pbCorners
+    local edges = holder and holder.__pbEdges
+    if not (corners and edges) then return end
+    for i = 1, #INSET do
+      local spec = INSET[i]
+      local w, h = Parts.Size(spec.atlas)
+      if w and corners[spec.key] then corners[spec.key]:SetSize(w * k, h * k) end
+    end
+    for i = 1, #INSET_EDGES do
+      local spec, t = INSET_EDGES[i], edges[i]
+      local w, h = Parts.Size(spec.atlas)
+      if w and t then
+        if spec.across then t:SetHeight(h * k) else t:SetWidth(w * k) end
+      end
+    end
+  end
+
+  -- The totals band's gold edge, made once and laid again when its height
+  -- moves; its words in the game's gold at every paint (the drawing writes
+  -- them anew).
+  local function PaintBand(win, pv)
+    local band = win.Band
+    if not band then return end
+    local h = band:GetHeight()
+    if type(h) ~= "number" or h <= 0 then h = 24 end
+    local b = pv.band
+    if not b then
+      local pieces, marble = Parts.GoldEdge(band, band, h, "BACKGROUND", 2, "BORDER", -1)
+      b = { pieces = pieces, marble = marble, h = h }
+      pv.band = b
+      Fade(band.Center)
+      for i = 1, #BACKDROP_EDGES do Fade(band[BACKDROP_EDGES[i]]) end
+      Fade(band.pbSurfaceTexture)
+    elseif b.h ~= h then
+      b.h = h
+      Parts.EdgeOn(b.pieces, band, h)
+    end
+    local text = band.Text
+    if text and type(text.SetTextColor) == "function" then
+      text:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+    end
+  end
+
+  -- OptionsPanel's Ctx.PaintMini, after the drawing `win` painted itself; `k`
+  -- the drawing's width over the window's.
+  function Skin.PaintPreview(win, k)
+    if type(win) ~= "table" or type(k) ~= "number" or k <= 0 then return end
+    local pv = win.__pbBlizzPv
+    if not pv then
+      pv = { k = false, alpha = false, frame = MakeFrame(win) }
+      win.__pbBlizzPv = pv
+    end
+    local f = pv.frame
+    if pv.k ~= k then
+      pv.k = k
+      if f then LayFrame(win, f, k) end
+      Parts.PreviewBevel(win.List, k)
+    end
+    if f then
+      local O = Parts.Opacity
+      O.Read()
+      local a = O.alpha
+      if pv.alpha ~= a then
+        pv.alpha = a
+        f.rock:SetAlpha(a)
+        if f.streaks then f.streaks:SetAlpha(a) end
+      end
+    end
+    Parts.PreviewTabs(win, k)
+    PaintBand(win, pv)
+    Parts.MailButton(win.Button, true)
+    local sweeps = win.Sweeps
+    if type(sweeps) == "table" then
+      for _, b in pairs(sweeps) do Parts.MailButton(b, false) end
+    end
+    local segs = win.Segs
+    if type(segs) == "table" then
+      for i = 1, #segs do
+        if segs[i].__pbBlizzSeg == nil then Parts.Seg(segs[i]) end
+      end
+    end
+    -- The Mail tab drawing's list: the part under its last mail on the
+    -- paper too, empty rows to the foot, as the window's (Skin.ListGround;
+    -- nothing on the dark list). Its pitch is read from where the drawing
+    -- stood its first two rows (OptionsPanel's MW.At keeps `__mwY`).
+    local clip, rows = win.Clip, win.Rows
+    if clip and type(rows) == "table" and rows[2] then
+      local n = 0
+      for i = 1, #rows do
+        if rows[i]:IsShown() then n = i end
+      end
+      local a, b = rows[1].__mwY, rows[2].__mwY
+      local h = rows[1]:GetHeight()
+      if n > 0 and type(a) == "number" and type(b) == "number" and a > b and type(h) == "number" then
+        Skin.ListGround(clip, clip, n, a - b, 0, (a - b) - h)
+      end
+    end
   end
 end
 
