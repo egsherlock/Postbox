@@ -238,6 +238,8 @@ for _, category in ipairs(CATEGORIES) do CATEGORY_BY_ID[category.id] = category 
 -- Filters whose membership changes the moment a row is favourited or hidden.
 -- A toggle under one of these has to re-filter rather than merely repaint: the
 -- row that just changed no longer belongs in the list it is sitting in.
+-- A hidden name is listed under Hidden alone, so a hide or a show changes
+-- every tile's list: that re-filters wherever it happens (RM.SoftRefresh).
 local STATEFUL_FILTERS = { favourites = true, hidden = true }
 
 -------------------------------------------------------------
@@ -795,15 +797,22 @@ local ClearSelection
 -- Category and search are one pass and both narrow: the category decides
 -- which names are on the table, the search narrows within them. The list's
 -- content changes under any selection, so the selection goes.
+--
+-- A hidden name is listed under Hidden and nowhere else, search included:
+-- every other tile lists what the Send tab offers, and Hidden is the one
+-- place to find a hidden name and show it again.
 local function ApplyFilter()
   local filtered = Wipe(RM._filtered)
   local sorted = RM._sorted
   local query = RM._queryLower or ""
-  local match = ActiveCategory().match
+  local category = ActiveCategory()
+  local match = category.match
+  local underHidden = category.id == "hidden"
   local n = 0
   for i = 1, #sorted do
     local entry = sorted[i]
-    if ((not match) or match(entry)) and (query == "" or entry.search:find(query, 1, true)) then
+    if (underHidden or not entry.hidden)
+       and ((not match) or match(entry)) and (query == "" or entry.search:find(query, 1, true)) then
       n = n + 1
       filtered[n] = entry
     end
@@ -812,18 +821,23 @@ local function ApplyFilter()
   return filtered
 end
 
--- Per-category totals for the tile tooltips, into a reused table.
+-- Per-category totals for the tile tooltips, into a reused table: the names
+-- each tile lists, so a hidden name counts under Hidden alone (ApplyFilter).
 local function CountCategories()
   local counts = RM._catCounts
   local entries = RM._entries or {}
 
   for _, category in ipairs(CATEGORIES) do counts[category.id] = 0 end
-  counts.all = #entries
 
   for _, entry in ipairs(entries) do
-    for _, category in ipairs(CATEGORIES) do
-      if category.match and category.match(entry) then
-        counts[category.id] = counts[category.id] + 1
+    if entry.hidden then
+      counts.hidden = counts.hidden + 1
+    else
+      counts.all = counts.all + 1
+      for _, category in ipairs(CATEGORIES) do
+        if category.match and category.match(entry) then
+          counts[category.id] = counts[category.id] + 1
+        end
       end
     end
   end
@@ -2123,13 +2137,14 @@ end
 
 -- State-only redraw: no source rescan, so a click does not trigger a guild
 -- roster pass. Under Favourites or Hidden the changed row has just left the
--- list it is sitting in, so those two re-filter instead. Scroll position is
--- kept.
-function RM.SoftRefresh()
+-- list it is sitting in, so those two re-filter instead; so does every tile
+-- after a hide or a show (`hideChanged`), a hidden name being listed under
+-- Hidden alone. Scroll position is kept.
+function RM.SoftRefresh(hideChanged)
   if not RM._frame then return end
 
   CountCategories()
-  if STATEFUL_FILTERS[RM._filter or "all"] then
+  if hideChanged or STATEFUL_FILTERS[RM._filter or "all"] then
     ApplyFilter()
     UpdateCategoryBar()
     RelayoutList(false)
@@ -2190,7 +2205,7 @@ function RM.ToggleHidden(entry)
   entry._nameGen = nil
   entry.stale = StaleFor(entry)
   ToggleSound(on)
-  RM.SoftRefresh()
+  RM.SoftRefresh(true)
 end
 
 -- Switches the active category. Scroll resets: the list underneath is a
@@ -2403,7 +2418,7 @@ function RM.ApplyBulk(hide, keys)
   end
   SyncStates()
   ClearSelection()
-  RM.SoftRefresh()
+  RM.SoftRefresh(true)
 end
 
 -- Every name the question named that can still be deleted, deleted; then the
