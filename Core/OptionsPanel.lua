@@ -6234,6 +6234,8 @@ do
     -- Each paint's widths: the labels' whole, their room, the values'.
     -- Four slots each, made once.
     lw = { 0, 0, 0, 0 }, room = { 0, 0, 0, 0 }, vw = { 0, 0, 0, 0 },
+    -- Where each letter of a name being cut ends (Week.CutName), refilled.
+    cutEnds = {},
     -- The line's forms, tried in turn until one fits (Week.Fit): which
     -- labels each keeps -- Earned, Spent, Collected, Sent. All four; then
     -- Collected's and Sent's, Earned's and Spent's figures saying what they
@@ -7235,16 +7237,64 @@ do
   -- under the pointer. What is still over in the last form is taken from
   -- the heading. Each cut by Theme.FitText, said whole under the pointer.
   -- Answers nothing; the widths go in Week's own slots.
-  -- The heading's own words with the cut's ellipsis where the name stood
-  -- (OPT_WEEK_ON before its %s): the least the name gives way to. Made
-  -- once.
+  -- The heading's own words either side of the name (OPT_WEEK_ON before
+  -- and after its %s): in Chinese the name stands between brackets, so the
+  -- words after it are kept as the words before it are. Made once.
+  function Week.HeadParts()
+    local lead = Week.headLead
+    if not lead then
+      local format = tostring(L["OPT_WEEK_ON"])
+      local before, after = format:match("^(.-)%%s(.*)$")
+      lead, Week.headTail = before or format, after or ""
+      Week.headLead = lead
+    end
+    return lead, Week.headTail
+  end
+
+  -- The heading's own words with the cut's ellipsis where the name stood:
+  -- the least the name gives way to. Made once.
   function Week.HeadWords()
     local words = Week.headWords
     if not words then
-      words = (tostring(L["OPT_WEEK_ON"]):match("^(.-)%%s") or "") .. "..."
+      local lead, tail = Week.HeadParts()
+      words = lead .. "..." .. tail
       Week.headWords = words
     end
     return words
+  end
+
+  -- The heading with only its name cut, into `room` (Week.Fit): the words
+  -- either side whole, the name's first letters, whole UTF-8 letters, in
+  -- its class colour, then the ellipsis. The most letters that fit, found
+  -- by halving: a handful of measures, on a paint that cuts.
+  function Week.CutName(title, heading, room)
+    local lead, tail = Week.HeadParts()
+    local name = heading:sub(#lead + 1, #heading - #tail)
+    local open = name:match("^|c%x%x%x%x%x%x%x%x") or ""
+    local close = (open ~= "" and name:sub(-2) == "|r") and "|r" or ""
+    local plain = name:sub(#open + 1, #name - #close)
+    local ends, n, i = Week.cutEnds, 0, 1
+    while i <= #plain do
+      local c = plain:byte(i)
+      i = i + ((c >= 0xF0 and 4) or (c >= 0xE0 and 3) or (c >= 0xC0 and 2) or 1)
+      n = n + 1
+      ends[n] = i - 1
+    end
+    -- Letters kept: `lo` known to fit (none: the heading's own words), at
+    -- most all but one.
+    local lo, hi = 0, n - 1
+    while lo < hi do
+      local mid = math.floor((lo + hi + 1) / 2)
+      title:SetText(lead .. open .. plain:sub(1, ends[mid]) .. close .. "..." .. tail)
+      if TextW(title) <= room then lo = mid else hi = mid - 1 end
+    end
+    -- No space before the ellipsis (a full name cut after its first).
+    while lo > 0 and plain:byte(ends[lo]) == 32 do lo = lo - 1 end
+    if lo > 0 then
+      title:SetText(lead .. open .. plain:sub(1, ends[lo]) .. close .. "..." .. tail)
+    else
+      title:SetText(Week.HeadWords())
+    end
   end
 
   -- `named`: the heading names a character (not the count of them all).
@@ -7285,10 +7335,10 @@ do
     -- words: its words, the labels and the counts stay whole while a name
     -- can give the room (cut by Theme.FitText, said whole under the
     -- pointer: HeadEnter).
-    local give = 0
+    local give, least = 0, math.huge
     if whole > 0 and named then
       title:SetText(Week.HeadWords())
-      local least = TextW(title)
+      least = TextW(title)
       title:SetText(heading)
       give = math.min(whole, math.max(0, titleW - least))
       whole = whole - give
@@ -7328,9 +7378,17 @@ do
       end
     end
     for j = 1, 4 do room[j] = keep[j] and math.min(lw[j], cap) or 0 end
-    -- The heading: whole, or cut by what is still over.
+    -- The heading: whole, or cut by what is still over: its name alone
+    -- while its own words fit (Week.CutName), else the whole of it from
+    -- its end; said whole under the pointer either way.
     local titleRoom = math.max(1, titleW - give - math.max(0, over))
-    T.FitText(title, titleRoom, heading, d.head)
+    if titleRoom < titleW and titleRoom >= least then
+      Week.CutName(title, heading, titleRoom)
+      title:SetWidth(titleRoom)
+      d.head.__pbOverflowText = heading
+    else
+      T.FitText(title, titleRoom, heading, d.head)
+    end
     local x = NAME_X + math.min(titleW, titleRoom) + GAP
     for j = 1, 4 do
       local label, value, zone = labels[j], values[j], zones[j]
