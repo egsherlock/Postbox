@@ -4693,11 +4693,21 @@ local function PaintPlate(plate)
     local ground
     if own then ground = selected and "tabSelected" or "tab"
     else ground = selected and "plateSelected" or "plate" end
+    -- A plate whose feature is off (`__pbDim`: the options' Minimap tab
+    -- while the icon is off) keeps its caption grey in every state; its
+    -- fill, ring and wash still say hover and selection.
     local token = T.captionToken or "plateCaption"
-    if selected then token = "accentBright"
+    if plate.__pbDim then token = "textDisabled"
+    elseif selected then token = "accentBright"
     elseif Theme.EmptyTile(plate) then token = "textDisabled"
     elseif hovered and T.captionHoverToken then token = T.captionHoverToken end
     Theme.SetColor(plate.Text, token, ground)
+    -- White art beside the caption (`__pbInks`: the Minimap tab's mark)
+    -- wears the caption's ink.
+    local inks = plate.__pbInks
+    if inks then
+      for i = 1, #inks do Theme.SetColor(inks[i], token, ground) end
+    end
   end
 
   -- Its glyph's halo, after the caption's font is settled above.

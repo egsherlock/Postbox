@@ -770,7 +770,7 @@ local TABS = {
   { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
-  { key = "minimap", caption = "OPT_MINIMAP_HEADING", square = true },
+  { key = "minimap", caption = "OPT_MINIMAP_HEADING", mark = true },
 }
 
 -- Everything the panel keeps between calls, on one table.
@@ -7596,11 +7596,13 @@ end
 --
 -- Six house plates, like the window's own segments, each as wide as its
 -- caption (Tabs.Fit): the selected one in the accent, the others neutral. The tab a feature's switch leads,
--- Minimap, carries a small square beside its name that says whether the
--- feature is on: green on, a grey ring off. The others have none: no one
--- switch is what such a tab is about (whose look the window wears is the
--- dot on Window's inspector's host badge; Mail Memory's switch is one row
--- of General's).
+-- Minimap, says whether the feature is on: while the minimap icon is on,
+-- after its name a small copy of the icon as chosen (Icon style), as tall
+-- as the name's capitals; while it is off, no mark and the name in the
+-- disabled grey (the plate's `__pbDim`, Theme's PaintPlate), the tab
+-- opening as any tab. The others have none: no one switch is what such a
+-- tab is about (whose look the window wears is the dot on Window's
+-- inspector's host badge; Mail Memory's switch is one row of General's).
 -------------------------------------------------------------
 do
   local function TabClick(self)
@@ -7621,31 +7623,33 @@ do
     if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
   end
 
-  local function AddSquare(plate)
-    local sq = CreateFrame("Frame", nil, plate)
-    sq:SetSize(8, 8)
-    sq.Fill = sq:CreateTexture(nil, "OVERLAY")
-    sq.Fill:SetAllPoints()
-    local ring = {}
-    for i = 1, 4 do
-      ring[i] = sq:CreateTexture(nil, "OVERLAY")
-      ring[i]:SetColorTexture(0.54, 0.54, 0.58, 1)
+  -- The mark: on a holder of its own (a host skin restyles the plate's own
+  -- textures), three ways of drawing it, one shown. `Art`, a painted style
+  -- in its own colours, as the map draws it (white vertex, never tinted);
+  -- `Plain`, Postbox's white envelope; `Check`, the house check (8 units,
+  -- its own size, sharp) for a style too fine to read this small. The two
+  -- white ones wear the name's ink, painted with the plate (Theme's
+  -- PaintPlate, `__pbInks`), so they follow its hover, selection,
+  -- accent and palette.
+  local function AddMark(plate)
+    local T = ns.Theme
+    local mark = CreateFrame("Frame", nil, plate)
+    mark:SetSize(8, 8)
+    mark.Art = mark:CreateTexture(nil, "OVERLAY")
+    mark.Plain = mark:CreateTexture(nil, "OVERLAY")
+    mark.Check = T.Glyph(mark, "check", 8, "OVERLAY") or mark:CreateTexture(nil, "OVERLAY")
+    for _, tex in ipairs({ mark.Art, mark.Plain }) do
+      tex:SetPoint("TOPLEFT", mark, "TOPLEFT", 0, 0)
+      if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
+      if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+      tex:Hide()
     end
-    ring[1]:SetPoint("TOPLEFT", sq, "TOPLEFT", 0, 0)
-    ring[1]:SetPoint("TOPRIGHT", sq, "TOPRIGHT", 0, 0)
-    ring[1]:SetHeight(1)
-    ring[2]:SetPoint("BOTTOMLEFT", sq, "BOTTOMLEFT", 0, 0)
-    ring[2]:SetPoint("BOTTOMRIGHT", sq, "BOTTOMRIGHT", 0, 0)
-    ring[2]:SetHeight(1)
-    ring[3]:SetPoint("TOPLEFT", sq, "TOPLEFT", 0, -1)
-    ring[3]:SetPoint("BOTTOMLEFT", sq, "BOTTOMLEFT", 0, 1)
-    ring[3]:SetWidth(1)
-    ring[4]:SetPoint("TOPRIGHT", sq, "TOPRIGHT", 0, -1)
-    ring[4]:SetPoint("BOTTOMRIGHT", sq, "BOTTOMRIGHT", 0, 1)
-    ring[4]:SetWidth(1)
-    sq.Ring = ring
-    sq:Hide()
-    plate.Square = sq
+    mark.Check:SetPoint("TOPLEFT", mark, "TOPLEFT", 0, 0)
+    mark.Check:Hide()
+    mark.on, mark.inkL, mark.inkW = false, 0, 0
+    mark:Hide()
+    plate.Mark = mark
+    plate.__pbInks = { mark.Plain, mark.Check }
   end
 
   function Tabs.Build(frame)
@@ -7662,7 +7666,7 @@ do
       plate:SetScript("OnClick", TabClick)
       plate:HookScript("OnEnter", TabEnter)
       plate:HookScript("OnLeave", TabLeave)
-      if spec.square then AddSquare(plate) end
+      if spec.mark then AddMark(plate) end
       -- Under the Postbox style, the window tabs' plates (the options
       -- mockup's tabs): dark idle, a lit plate selected, a ring each.
       local skin = ns.Skin
@@ -7674,22 +7678,86 @@ do
   -- The least room each side of a tab's caption (Tabs.Fit).
   local TAB_PAD = 6
 
+  -- The mark's room after the name: the gap to its ink, then its ink.
+  local MARK_GAP = 5
+  -- Styles whose art cannot be read at a capital's height (looked at drawn
+  -- 9 to 11 units: a thin strip, or a busy or dark picture that turns to a
+  -- smudge): the check in their place.
+  local MARK_CHECK = { scroll = true, bundle = true, bundleclean = true, mailbag = true, satchel = true,
+    quill = true, wood = true, woodclean = true }
+
+  -- The mark drawn for the icon as chosen, its art's visible box (the
+  -- style's `box`, as the map's marker stands on it) as tall as the name's
+  -- capitals, in whole units; its ink's left inset and width kept for the
+  -- layout (`inkL`, `inkW`), and the room it takes in the tab (`plate.markW`,
+  -- 0 while it is off). Run where the tab is measured (Tabs.Fit) and where
+  -- the icon or its switch moved (Tabs.SetMark).
+  local function SizeMark(plate)
+    local mark = plate.Mark
+    if not (mark and mark.on) then
+      plate.markW = 0
+      return
+    end
+    local Icon = ns.MinimapButton
+    local id = Icon and Icon.GetIcon and Icon.GetIcon()
+    local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec(id)
+    local art, plain, check = mark.Art, mark.Plain, mark.Check
+    if not spec or MARK_CHECK[id] then
+      art:Hide()
+      plain:Hide()
+      check:Show()
+      mark:SetSize(8, 8)
+      mark.inkL, mark.inkW = 0, 8
+    else
+      -- The capitals' height: the face's cap share of its size, as the
+      -- options' button icons stand on them (Rows.IconTop).
+      local cap = 9
+      local BP = ns.CollectTab and ns.CollectTab.BarParts
+      if BP and BP.FaceOf then
+        local face, size = BP.FaceOf(plate.Text)
+        if face and size then cap = math.max(6, math.floor(face[3] * size + 0.5)) end
+      end
+      local box = spec.box or false
+      local aspect = spec.aspect or 1
+      local bl, br, bt, bb = 0, 0, 0, 0
+      if box then bl, br, bt, bb = box.l or 0, box.r or 0, box.t or 0, box.b or 0 end
+      local side = math.max(1, math.floor(cap / (aspect * (1 - bt - bb)) + 0.5))
+      -- Postbox's own envelope is white art: it wears the name's ink.
+      local tex, other = art, plain
+      if id == "postbox" then tex, other = plain, art end
+      check:Hide()
+      other:Hide()
+      if spec.atlas then tex:SetAtlas(spec.atlas) else tex:SetTexture(spec.texture) end
+      if tex == art then tex:SetVertexColor(1, 1, 1, 1) end
+      tex:SetSize(side, side * aspect)
+      tex:Show()
+      mark:SetSize(side, side * aspect)
+      mark.inkL = math.floor(bl * side + 0.5)
+      mark.inkW = side - mark.inkL - math.floor(br * side + 0.5)
+    end
+    plate.markW = MARK_GAP + mark.inkW
+  end
+
   -- The caption, cut to its plate where a translation will not fit, and
-  -- centred with its square as one. A unit's leeway: the plate's width is
-  -- rounded to whole units.
+  -- centred with its mark as one. A unit's leeway: the plate's width is
+  -- rounded to whole units. The mark stands MARK_GAP after the words' end
+  -- to its ink, its middle on their capitals (Rows.IconTop).
   local function FitOne(plate)
     local T = ns.Theme
-    local sq = plate.Square
-    local withSquare = sq and sq:IsShown()
-    local room = (plate:GetWidth() or 0) - 2 * TAB_PAD - (withSquare and 14 or 0) + 1
+    local markW = plate.markW or 0
+    local W = plate:GetWidth() or 0
+    local room = W - 2 * TAB_PAD - markW + 1
     local text = plate.Text
     T.FitText(text, room, plate.caption, plate)
-    text:SetWidth(math.min(TextW(text), room))
+    local shown = math.min(TextW(text), room)
+    text:SetWidth(shown)
     text:ClearAllPoints()
-    text:SetPoint("CENTER", plate, "CENTER", withSquare and -7 or 0, 0)
-    if withSquare then
-      sq:ClearAllPoints()
-      sq:SetPoint("LEFT", text, "RIGHT", 6, 0)
+    text:SetPoint("CENTER", plate, "CENTER", -markW / 2, 0)
+    local mark = plate.Mark
+    if mark and markW > 0 then
+      local x = math.floor(W / 2 - markW / 2 + shown / 2 + MARK_GAP - mark.inkL + 0.5)
+      mark:ClearAllPoints()
+      mark:SetPoint("TOPLEFT", plate, "TOPLEFT", x, -Rows.IconTop(plate, text, mark))
     end
   end
 
@@ -7711,10 +7779,11 @@ do
     local sum = 0
     for i = 1, n do
       local plate = S.plates[TABS[i].key]
-      local text, sq = plate.Text, plate.Square
+      local text = plate.Text
       text:SetText(plate.caption)
-      -- The square stands 6 after the caption and is 8 wide (AddSquare).
-      need[i] = TextW(text) + ((sq and sq:IsShown()) and 14 or 0)
+      -- The mark after the caption, where it shows (SizeMark).
+      SizeMark(plate)
+      need[i] = TextW(text) + (plate.markW or 0)
       fixed[i] = need[i]
       sum = sum + need[i]
     end
@@ -7758,24 +7827,23 @@ do
     end
   end
 
-  -- state: "on", "off", or nil for no square at all.
-  function Tabs.SetSquare(key, state)
+  -- The tab's feature on or off: the mark for the icon as chosen, or none
+  -- and the name grey. Run when the switch or Icon style moves; the bar is
+  -- shared out again only where the mark's room changed.
+  function Tabs.SetMark(key, on)
     local plate = S.plates[key]
-    local sq = plate and plate.Square
-    if not sq then return end
-    if state == "on" then
-      sq.Fill:SetColorTexture(0.38, 0.80, 0.44, 1)
-      sq.Fill:Show()
-      for i = 1, 4 do sq.Ring[i]:Hide() end
-    elseif state == "off" then
-      sq.Fill:Hide()
-      for i = 1, 4 do sq.Ring[i]:Show() end
+    local mark = plate and plate.Mark
+    if not mark then return end
+    on = on and true or false
+    local was = plate.markW
+    mark.on = on
+    mark:SetShown(on)
+    SizeMark(plate)
+    if plate.__pbDim ~= not on then
+      plate.__pbDim = not on
+      ns.Theme.RepaintPlate(plate)
     end
-    local want = state ~= nil
-    if sq:IsShown() ~= want then
-      sq:SetShown(want)
-      FitOne(plate)
-    end
+    if plate.markW ~= was then Tabs.Fit() else FitOne(plate) end
   end
 
   function Tabs.Select(key)
@@ -7791,7 +7859,7 @@ end
 -- What a switch or a window changes elsewhere on the panel
 -------------------------------------------------------------
 
--- The minimap icon's switch: its rows grey with it, its tab's square, the
+-- The minimap icon's switch: its rows grey with it, its tab's mark, the
 -- icon on its stage.
 function State.Minimap()
   local Icon = ns.MinimapButton
@@ -7803,7 +7871,7 @@ function State.Minimap()
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
   State.Warnings()
-  Tabs.SetSquare("minimap", on and "on" or "off")
+  Tabs.SetMark("minimap", on)
   Ctx.Paint("minimap")
 end
 
@@ -9621,6 +9689,8 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
+      -- The tab's mark wears the icon as chosen.
+      Tabs.SetMark("minimap", ns.MinimapButton and ns.MinimapButton.GetEnabled())
       Ctx.Repaint()
     end,
   })
