@@ -208,8 +208,9 @@ compartment or `/postbox mail`; at a mailbox, click **Inbox** (it wears
 your class icon) to open the character list and show any character's box
 right in the Mail tab (right-click it to come back to your own). **Search
 every character** looks through all of them at once. Every box says how
-long ago it was seen; it never pretends to be live. Hover a mail to see
-what it holds. A character you no longer play can be hidden (right-click
+long ago it was seen; it never pretends to be live. Mail you sent or
+returned to one of your characters since then is listed on top, so you
+know what is waiting there. Hover a mail to see what it holds. A character you no longer play can be hidden (right-click
 it in the list, or tick it under Options > General > Characters > **Hidden
 characters**), and **Character order** above it sets the list's order:
 Warnings first (while Warn about expiring mail is on), Expiring soonest,
@@ -292,8 +293,8 @@ too, since Postbox can't take anyone off those lists.
 Optional, and off until you turn it on; while it's on, the game's own mail
 icon steps aside.
 
-- **When to show:** New mail, Mail on any character, or Always (resting in
-  gray until something arrives).
+- **When to show:** New since last visit, New mail, Mail on any character,
+  or Always (resting in gray until something arrives).
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back. **Minimap
   marker** (Options > Minimap > Expiring mail marker) switches it on, and

@@ -9,6 +9,14 @@
 - **Sent mail:** History, the clock on the Mail tab, now has **Received**
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
   C.O.D. On the Send tab, the clock beside Send opens it.
+- **Mail you send your own characters shows in their box:** on the Mail
+  tab and in Mail Memory, another of your characters lists what you sent
+  or returned to it since its last mailbox visit, under "Sent by you
+  since its last visit", and its count is a number where it said "new".
+  It covers mail sent or returned through Postbox while History is on.
+- **Minimap icon: New since last visit** (Options > Minimap > When to
+  show): the icon shows only while mail has arrived since you last opened
+  this character's mailbox. It needs Remember mailboxes.
 - **Sort and filter:** on the Mail tab, the sort button in the search box
   orders your mail by date, time left, gold or sender (click a sort again
   to reverse it; its arrow shows which way) and can show only unread
