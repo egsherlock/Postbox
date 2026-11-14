@@ -57,7 +57,8 @@
   choose the art for your characters on the Inbox button and in its
   character list: the game's own, Painted, Pixel, Comic, or Glyphs in class
   colors, or the game's round portraits (Game (round)). With EllesmereUI
-  installed, its sets are offered too, and None shows no icon at all.
+  installed, its sets are offered too, under a thin rule, and None shows
+  no icon at all.
 - **Character order** (Options > General > Characters): choose how the
   Inbox button's character list is ordered: Warnings first (as before),
   Expiring soonest, Most mail, Name or Last played. The character you are
@@ -113,7 +114,8 @@
   arrange.
 - **A weekly summary of gold earned and spent by mail** (Options >
   General): The last 7 days shows, on one line, gold earned and spent, and
-  mails collected and sent, for all your characters or this one. Point
+  mails collected and sent, for all your characters or this one (the
+  people button at its right end switches between them). Point
   at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
   cut are counted from this version on.
