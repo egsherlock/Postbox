@@ -1285,6 +1285,29 @@ do
     M:SetPoint("BOTTOMRIGHT", R, "BOTTOMLEFT", 0, 0)
   end
 
+  -- The same pieces laid so that the art's whole picture stops at the box's
+  -- foot: the art's 19 rows (a row of shadow and the line at the foot, two
+  -- rows of shadow and the line at the top, measured from the file) each
+  -- 1/18 of the box's height, the art's foot on the box's foot and its top
+  -- a row over the box's top, so the two lines stand evenly about the
+  -- box's middle (the words') and nothing is drawn below the box. The
+  -- marble between the lines' inner edges, two rows in. For the island,
+  -- whose box stands a unit over the list's foot (DividerNotch's stand):
+  -- laid by its line, the art ran under the list's foot and was cut there.
+  function Parts.EdgeLift(pieces, marble, box, h)
+    local row = h / 18
+    local L, R = pieces[1], pieces[3]
+    L:SetPoint("TOPLEFT", box, "TOPLEFT", -RIM_X, row)
+    L:SetPoint("BOTTOMLEFT", box, "BOTTOMLEFT", -RIM_X, 0)
+    R:SetPoint("TOPRIGHT", box, "TOPRIGHT", RIM_X, row)
+    R:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", RIM_X, 0)
+    if marble then
+      marble:ClearAllPoints()
+      marble:SetPoint("TOPLEFT", box, "TOPLEFT", MARBLE_IN, -2 * row)
+      marble:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -MARBLE_IN, 2 * row)
+    end
+  end
+
   -- The gold edge with the marble inside it, as textures of `owner` (the
   -- pieces on `layer` / `sub`, the marble on `mLayer` / `mSub`, over the
   -- pieces' black middle), laid on `box`, `h` units tall: the strip's own
@@ -1524,7 +1547,7 @@ do
       local h = Band(f)
       if a.band ~= h then
         a.band = h
-        Parts.EdgeOn(a.edge, f.Shape, h)
+        Parts.EdgeLift(a.edge, a.marble, f.Shape, h)
       end
       if a.wash then Tint(a.wash) end
     end
@@ -1555,6 +1578,7 @@ do
       a.band = h
       -- Over the shadow (BACKGROUND -8), above the capsule's pieces.
       a.edge, a.marble = Parts.GoldEdge(f, f.Shape, h, "BACKGROUND", -5, "BACKGROUND", -4)
+      Parts.EdgeLift(a.edge, a.marble, f.Shape, h)
       -- Over the marble, inside the gold line: Bar color's wash, then the
       -- pointer's.
       a.wash = f:CreateTexture(nil, "BACKGROUND", nil, -3)
