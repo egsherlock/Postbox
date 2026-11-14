@@ -2786,6 +2786,25 @@ do
     if T and type(T.SetRowInks) == "function" then T.SetRowInks((mode ~= "none") and R or nil) end
   end
 
+  -- Once, as the skin dresses its first window: the setting resolved, the
+  -- mail binders given this ground (Theme.RowGround), and Theme's row paint
+  -- (StyleMailRow) handing a paper row's stripe and hover over (Wash). Only
+  -- here: every other look keeps the functions it always ran.
+  function R.Install()
+    R.Resolve()
+    local T = ns.Theme
+    if not T or T.RowGround then return end
+    T.RowGround = Skin.RowGround
+    local style = T.StyleMailRow
+    if type(style) == "function" then
+      T.StyleMailRow = function(row, position, hovered)
+        style(row, position, hovered)
+        local paint = row and row.__pbRowPaint
+        if paint then paint(row, row._rowIndex, row._hovered) end
+      end
+    end
+  end
+
   -- The row's texts whose colour is their role's (the rest are painted per
   -- bind through the "row" ground): key, token.
   local STATIC = {
@@ -2840,7 +2859,6 @@ do
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
   -- mail, a heading in Mail Memory's list).
   function Skin.RowGround(row, position)
-    if not R.mode then R.Resolve() end
     local mode = R.mode
     local paper = row.__pbPaper
     if position == nil or mode == "none" then
@@ -2914,19 +2932,19 @@ do
   local function Words(box)
     local T = ns.Theme
     if not T then return end
-    T.SetColor(box, "textPrimary", "row")
+    T.SetColor(box, "textPrimary", T.ROW)
     Shadow(box, R.light)
     Highlight(box, R.light)
     local ph = box._placeholder
     if ph then
-      T.SetColor(ph, "textPlaceholder", "row")
+      T.SetColor(ph, "textPlaceholder", T.ROW)
       Shadow(ph, R.light)
     end
   end
 
   function Parts.MessageGround(wrap)
     grounds[wrap] = true
-    if not R.mode then R.Resolve() end
+    if not R.mode then R.Install() end
     local mode = R.mode
     local paper = wrap.__pbPaper
     if mode ~= "none" and not paper then
@@ -3084,7 +3102,7 @@ function Skin.Apply(frame)
   -- The shared claim record the other skins and the debug report read.
   ns.SkinAppliedBy = "blizzard"
   -- The rows' ground (Options > Window > Row texture) in force.
-  if not Parts.Rows.mode then Parts.Rows.Resolve() end
+  if not Parts.Rows.mode then Parts.Rows.Install() end
 
   -- Without the metal (a client missing a piece), the template's own thin
   -- frame stays: a window is never left without a frame.

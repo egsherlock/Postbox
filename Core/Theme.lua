@@ -615,14 +615,7 @@ local InkOf
 -- rendering a broken escape. `ground`, optional: the surface the text is
 -- read on (section 2c), where a style derives its inks from it.
 function Theme.Colorize(token, text, ground)
-  local ink
-  -- On a mail row ("row"): the rows' own ink where a look gives its rows a
-  -- ground of their own (Theme.SetRowInks), else as text with no ground.
-  if ground == "row" then
-    local rows = Theme._rowInks
-    ink, ground = rows and rows.Ink(token) or nil, nil
-  end
-  ink = ink or (InkOf and InkOf(token, ground))
+  local ink = InkOf and InkOf(token, ground)
   local hex = ink and ink.hex or Hex[token]
   if not hex then return tostring(text or "") end
   return "|cff" .. hex .. tostring(text or "") .. "|r"
@@ -1733,12 +1726,6 @@ end
 -- The escape colour of a token on a ground ("rrggbb"): its ink where a
 -- style derives them, the palette's otherwise.
 function Theme.InkHex(token, ground)
-  if ground == "row" then
-    local rows = Theme._rowInks
-    local e = rows and rows.Ink(token)
-    if e then return e.hex end
-    ground = nil
-  end
   local ink = InkOf and InkOf(token, ground)
   return ink and ink.hex or Hex[token]
 end
@@ -1746,12 +1733,6 @@ end
 -- r, g, b, a of a token as text on a ground: its ink where a style derives
 -- them, its own colour (an accent token's text tone) otherwise.
 function Theme.Ink(token, ground)
-  if ground == "row" then
-    local rows = Theme._rowInks
-    local e = rows and rows.Ink(token)
-    if e then return e[1], e[2], e[3], e[4] end
-    ground = nil
-  end
   local ink = InkOf and InkOf(token, ground)
   if ink then return ink[1], ink[2], ink[3], ink[4] end
   local r, g, b, a = ResolveAccentToken(token, true)
@@ -1767,11 +1748,6 @@ end
 -- by). Text there is drawn clean, no shadow and no outline (DressCopy), so
 -- an inline texture drawn in that ink goes without its keyline too.
 function Theme.InkOnLight(token, ground)
-  if ground == "row" then
-    local rows = Theme._rowInks
-    if rows then return rows.light and true or false end
-    ground = nil
-  end
   if lightPalette then return true end
   if not Grounds.on then return false end
   return Grounds.IsLight(ground or Grounds.HOME[token] or "content") and true or false
@@ -3022,24 +2998,6 @@ function Theme.SetColor(region, token, ground)
   if not region then return end
 
   local isText = type(region.SetTextColor) == "function"
-  -- On a mail row (Theme.SetRowInks): the rows' own ink, kept off the
-  -- accent's registry so no accent repaint reaches it; with no row inks,
-  -- exactly as with no ground.
-  if ground == "row" then
-    local rows = Theme._rowInks
-    local e = rows and rows.Ink(token)
-    if e then
-      if track then track.tint[region] = nil; track.grey[region] = nil end
-      if isText then
-        accentTexts[region] = nil
-        region:SetTextColor(e[1], e[2], e[3], e[4])
-      elseif type(region.SetVertexColor) == "function" then
-        region:SetVertexColor(e[1], e[2], e[3], e[4])
-      end
-      return
-    end
-    ground = nil
-  end
   if isText and Grounds.on then
     if ground then regionGround[region] = ground else ground = regionGround[region] end
     local ink = InkOf(token, ground)
@@ -6211,45 +6169,80 @@ function Theme.StyleMailRow(row, position, hovered)
   if RowStyling and RowStyling.Apply then
     RowStyling.Apply(row, row._rowIndex, row._hovered)
   end
-  -- A mail row a look laid a ground of its own on (Theme.RowGround) takes
-  -- its stripe and hover from that look.
-  local paint = row.__pbRowPaint
-  if paint then paint(row, row._rowIndex, row._hovered) end
 end
 
 -- THE MAIL ROWS' OWN GROUND. A look may lay a ground of its own under the
 -- mail rows (the Blizzard style's Row texture: the game's letter paper),
 -- which the rest of its window does not stand on. Its rows' texts then take
--- inks of their own: every row text painted or written with the ground
--- "row" (Theme.SetColor, Colorize, InkHex, Ink, InkOnLight) is given the
--- look's ink for its token, and everywhere else the palette's stands.
--- `inks` is nil (the default, and every other look): "row" then reads as
--- no ground at all, so nothing paints differently. Otherwise a table:
+-- inks of their own. The rows' code passes Theme.ROW as the ground of every
+-- text it paints or writes (Theme.SetColor, Colorize, InkHex, Ink,
+-- InkOnLight): nil in every other look -- the call it always made, at no
+-- cost -- and "row" while a look's row inks are in force, when those five
+-- answer the look's ink for the token (and the palette's for any other).
+-- They do so as wrappers put in place here and taken away again, so a look
+-- without row inks runs exactly the functions it always ran.
 --   inks.Ink(token)   -> { r, g, b, a, hex = "rrggbb" }, or nil for the
 --                        palette's own
 --   inks.RGB(r, g, b) -> a colour that is no token (a class colour) on it
 --   inks.light        -> dark ink on a light ground (text drawn clean)
--- Set by the look when its setting is resolved, never per paint.
+-- Set by the look when its setting is resolved, never per paint. The look
+-- that lays the ground also publishes Theme.RowGround(row, position), which
+-- the mail binders call where it is there (nil otherwise).
 Theme._rowInks = nil
+Theme.ROW = nil
 function Theme.SetRowInks(inks)
   Theme._rowInks = inks
-end
-
--- A mail row's dim (a finished mail sitting back, a remembered mail past
--- its date): `alpha` as asked, but none where a look gives its rows a ground
--- and inks of their own (Theme.SetRowInks), whose inks are held at the
--- contrast they need on that ground and would fall under it dimmed.
-function Theme.RowDim(alpha)
-  if Theme._rowInks then return 1 end
-  return alpha
-end
-
--- A mail row was bound (the Mail tab's list, History and Sent, the search,
--- Mail Memory's list) at displayed `position`: the look lays its ground,
--- where it has one. Nothing otherwise.
-function Theme.RowGround(row, position)
-  local skin = ns.Skin
-  if skin and skin.RowGround then skin.RowGround(row, position) end
+  Theme.ROW = inks and "row" or nil
+  local base = Theme._rowBase
+  if inks and not base then
+    base = { SetColor = Theme.SetColor, Colorize = Theme.Colorize, InkHex = Theme.InkHex, Ink = Theme.Ink,
+      InkOnLight = Theme.InkOnLight }
+    Theme._rowBase = base
+    local function RowInk(token)
+      local rows = Theme._rowInks
+      return rows and rows.Ink(token) or nil
+    end
+    -- Kept off the accent's registry, so no accent repaint reaches it.
+    function Theme.SetColor(region, token, ground)
+      if ground ~= "row" then return base.SetColor(region, token, ground) end
+      local e = RowInk(token)
+      if not (e and region) then return base.SetColor(region, token, nil) end
+      if track then track.tint[region] = nil; track.grey[region] = nil end
+      if type(region.SetTextColor) == "function" then
+        accentTexts[region] = nil
+        region:SetTextColor(e[1], e[2], e[3], e[4])
+      elseif type(region.SetVertexColor) == "function" then
+        region:SetVertexColor(e[1], e[2], e[3], e[4])
+      end
+    end
+    function Theme.Colorize(token, text, ground)
+      if ground ~= "row" then return base.Colorize(token, text, ground) end
+      local e = RowInk(token)
+      if not e then return base.Colorize(token, text, nil) end
+      return "|cff" .. e.hex .. tostring(text or "") .. "|r"
+    end
+    function Theme.InkHex(token, ground)
+      if ground ~= "row" then return base.InkHex(token, ground) end
+      local e = RowInk(token)
+      if not e then return base.InkHex(token, nil) end
+      return e.hex
+    end
+    function Theme.Ink(token, ground)
+      if ground ~= "row" then return base.Ink(token, ground) end
+      local e = RowInk(token)
+      if not e then return base.Ink(token, nil) end
+      return e[1], e[2], e[3], e[4]
+    end
+    function Theme.InkOnLight(token, ground)
+      if ground ~= "row" then return base.InkOnLight(token, ground) end
+      local rows = Theme._rowInks
+      return (rows and rows.light) and true or false
+    end
+  elseif not inks and base then
+    Theme.SetColor, Theme.Colorize, Theme.InkHex, Theme.Ink, Theme.InkOnLight =
+      base.SetColor, base.Colorize, base.InkHex, base.Ink, base.InkOnLight
+    Theme._rowBase = nil
+  end
 end
 
 -------------------------------------------------------------

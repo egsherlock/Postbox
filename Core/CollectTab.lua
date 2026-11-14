@@ -2453,7 +2453,7 @@ do
   -- A Sent row's "to" and a first name, made once per first name (as
   -- HV.SentWho keeps its own), and made again when the dim's ink changes.
   function FN.SentTo(first)
-    local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"], "row")
+    local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"], ns.Theme.ROW)
     if FN.toPrefix ~= prefix or FN.toN >= FN.MAX then
       for k in pairs(FN.to) do FN.to[k] = nil end
       FN.toN, FN.toPrefix = 0, prefix
@@ -2469,7 +2469,7 @@ do
 end
 
 local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief, coins)
-  return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index, coins, "row")
+  return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index, coins, ns.Theme.ROW)
 end
 
 -- texture, name, quality, mark, count -> one item's line in the tooltip
@@ -2572,10 +2572,10 @@ local function RowExpiryText(daysLeft, hasCOD, layout, fs, S, index, holds)
   local show, warn = ExpiryState(daysLeft, hasCOD, layout)
   if not show then return nil end
   if warn and holds and S then
-    local marked = RV.FateText(Helpers().TimeLeft(daysLeft), S.Fate(index), fs, "row")
+    local marked = RV.FateText(Helpers().TimeLeft(daysLeft), S.Fate(index), fs, ns.Theme.ROW)
     if marked then return marked end
   end
-  return Th().Colorize(warn and "warning" or "textSecondary", Helpers().TimeLeft(daysLeft), "row")
+  return Th().Colorize(warn and "warning" or "textSecondary", Helpers().TimeLeft(daysLeft), ns.Theme.ROW)
 end
 
 -------------------------------------------------------------
@@ -3472,7 +3472,7 @@ function RV.PaintSender(fs, sender, realm, ground)
   local T = Th()
   if r then
     fs.__pbClass = token
-    local rows = ground == "row" and T._rowInks
+    local rows = ground and T._rowInks
     if rows then r, g, b = rows.RGB(r, g, b) end
     T.SetTextRGB(fs, r, g, b)
   else
@@ -7491,7 +7491,7 @@ local function BuildRow(panel)
     local owner = self:GetParent()
     local T2 = Th()
     T2.StyleMailRow(owner, owner._rowIndex, true)
-    T2.SetColor(self.Glyph, "negative", "row")
+    T2.SetColor(self.Glyph, "negative", T2.ROW)
     -- The house tooltip: the title, then what the click does, which the
     -- glyph alone cannot say.
     T2.TipBegin(self)
@@ -7503,7 +7503,7 @@ local function BuildRow(panel)
     local owner = self:GetParent()
     local T2 = Th()
     T2.StyleMailRow(owner, owner._rowIndex, false)
-    T2.SetColor(self.Glyph, "textSecondary", "row")
+    T2.SetColor(self.Glyph, "textSecondary", T2.ROW)
     GameTooltip:Hide()
   end)
   row.Delete:SetScript("OnClick", function(self)
@@ -8045,7 +8045,7 @@ do
   end
   function RV.SAMPLE.Money(index, hasCOD, moneyValue, codValue, brief, coins)
     local m = At(index)
-    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief, nil, coins, "row")
+    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief, nil, coins, ns.Theme.ROW)
   end
   function RV.SAMPLE.Invoice(parts, index, withSaleTotal)
     local m = At(index)
@@ -8139,7 +8139,7 @@ do
           cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
         end
         if compact then
-          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil, RV.RowCoins(layout, sample.ColMoney), "row")
+          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil, RV.RowCoins(layout, sample.ColMoney), ns.Theme.ROW)
           local shown = true
           if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
           if text and shown then
@@ -8500,14 +8500,14 @@ local function BindRow(panel, row, index, position, compact, done)
   -- from. `position` is the DISPLAYED position, never the inbox index.
   T.StyleMailRow(row, position, false)
   -- The ground the look lays under its rows, where it has one.
-  T.RowGround(row, position)
+  if T.RowGround then T.RowGround(row, position) end
   PaintRowSelection(panel, row)
   -- A finished mail is kept, not waiting: it sits back under the divider.
-  row:SetAlpha(showDelete and T.RowDim(0.6) or 1)
+  row:SetAlpha(showDelete and (T.ROW and 1 or 0.6) or 1)
 
   -- The read mark, or on a stuck mail the warning triangle in its place
   -- (RV.PaintDot; RV.Place shows the triangle).
-  RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil, "row")
+  RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil, T.ROW)
   -- A sold auction's gold: the item that sold, where it can be told (RV.SoldIcon).
   local icon = (S == RV.LIVE and kind == "sold" and (tonumber(itemCount) or 0) == 0)
     and RV.SoldIcon(subject, panel._bindGen) or nil
@@ -8516,7 +8516,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
   -- unhovered row: this row is being bound to a different mail, so whatever
   -- hover state the last one left on it is not this one's.
-  if showDelete then T.SetColor(row.Delete.Glyph, "textSecondary", "row") end
+  if showDelete then T.SetColor(row.Delete.Glyph, "textSecondary", T.ROW) end
 
   -- The tooltip's reason line reads it.
   row.stuckReason = stuckReason
@@ -8596,7 +8596,7 @@ local function BindRow(panel, row, index, position, compact, done)
   -- player chose it and the count stands in its column: a one-line row's.
   -- The two-line row spells its figures out, with no column to say what a
   -- bare "4" counts, and the tooltip always has the words (below).
-  local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact), "row") or nil
+  local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact), T.ROW) or nil
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- in the tooltip whenever the row does not say it. A short mail that
@@ -8637,10 +8637,10 @@ local function BindRow(panel, row, index, position, compact, done)
   -- "Won", "Expired", "Cancelled", each in its own colour, with the item's
   -- name beside it. "Auction House" carried no information the outcome
   -- does not, and the outcome was the one thing the row did not say.
-  local outcome = OutcomeSender(kind, "row")
+  local outcome = OutcomeSender(kind, T.ROW)
   senderText = outcome or senderText
   -- A player the address book knows the class of, in its colour.
-  RV.PaintSender(row.Sender, not outcome and sender or nil, nil, "row")
+  RV.PaintSender(row.Sender, not outcome and sender or nil, nil, T.ROW)
 
   -- No category on the line: the sender column already says "AH Sold", and
   -- "Other" says nothing at all. Only the two-line row draws this line, the
@@ -8993,9 +8993,9 @@ end
 function HV.HistoryMoney(entry, brief, coins, passing)
   local T = Th()
   if coins then
-    if (entry.m or 0) > 0 then return RV.CoinText(coins, "gain", entry.m, brief, "row") end
-    if (entry.c or 0) > 0 then return RV.CoinText(coins, "loss", entry.c, brief, "row") end
-    if (entry.p or 0) > 0 then return RV.CoinText(coins, "loss", entry.p, brief, "row") end
+    if (entry.m or 0) > 0 then return RV.CoinText(coins, "gain", entry.m, brief, ns.Theme.ROW) end
+    if (entry.c or 0) > 0 then return RV.CoinText(coins, "loss", entry.c, brief, ns.Theme.ROW) end
+    if (entry.p or 0) > 0 then return RV.CoinText(coins, "loss", entry.p, brief, ns.Theme.ROW) end
     return nil
   end
   -- A row's short form: each text made once (HV.LetterText).
@@ -9006,9 +9006,9 @@ function HV.HistoryMoney(entry, brief, coins, passing)
     return nil
   end
   local compactMoney = ns.Core.Formatting.FormatMoneyCompact
-  if (entry.m or 0) > 0 then return T.Colorize("positive", "+" .. compactMoney(entry.m, brief), "row") end
-  if (entry.c or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.c, brief), "row") end
-  if (entry.p or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.p, brief), "row") end
+  if (entry.m or 0) > 0 then return T.Colorize("positive", "+" .. compactMoney(entry.m, brief), T.ROW) end
+  if (entry.c or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.c, brief), T.ROW) end
+  if (entry.p or 0) > 0 then return T.Colorize("negative", "-" .. compactMoney(entry.p, brief), T.ROW) end
   return nil
 end
 
@@ -9062,7 +9062,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   local layout = HV.Layout()
   row.entry = entry
   T.StyleMailRow(row, position, false)
-  T.RowGround(row, position)
+  if T.RowGround then T.RowGround(row, position) end
 
   local icon
   local first = entry.it and entry.it[1]
@@ -9105,7 +9105,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   local el, text = spec.el, spec.text
   el.age, el.icon, el.sender, el.subject, el.money = row.Age, row.Icon, row.Sender, row.Subject, row.Money
   text.age = HV.EntryAge(entry, now, style)
-  local outcome = R.OutcomeSender(entry.k, "row")
+  local outcome = R.OutcomeSender(entry.k, T.ROW)
   text.sender = outcome or (sent and HV.SentWho(entry)) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
   -- On Forever, the first name alone where History's arrangement asks for
   -- it and no other name listed shares it (RV.Firsts); a Sent row's after
@@ -9114,7 +9114,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   if firstName then text.sender = sent and RV.Firsts.SentTo(firstName) or firstName end
   -- Coloured by the class it has on the realm its record is from (`realm`:
   -- nil, this character's own).
-  RV.PaintSender(row.Sender, not outcome and named or nil, realm, "row")
+  RV.PaintSender(row.Sender, not outcome and named or nil, realm, T.ROW)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   local coins = RV.RowCoins(layout, row.Money)
   if returned then
@@ -9419,7 +9419,7 @@ HV.mtext = { t = {}, n = 0, hexP = false, hexN = false }
 function HV.LetterText(class, amount, passing)
   local T = Th()
   local C = HV.mtext
-  local hexP, hexN = T.InkHex("positive", "row"), T.InkHex("negative", "row")
+  local hexP, hexN = T.InkHex("positive", T.ROW), T.InkHex("negative", T.ROW)
   if hexP ~= C.hexP or hexN ~= C.hexN then
     C.t, C.n, C.hexP, C.hexN = {}, 0, hexP, hexN
   end
@@ -9429,11 +9429,11 @@ function HV.LetterText(class, amount, passing)
   if text then return text end
   local figure = Fm.FormatMoneyCompact(amount, true)
   if class == 1 then
-    text = T.Colorize("positive", "+" .. figure, "row")
+    text = T.Colorize("positive", "+" .. figure, T.ROW)
   elseif class == 2 then
-    text = T.Colorize("negative", "-" .. figure, "row")
+    text = T.Colorize("negative", "-" .. figure, T.ROW)
   else
-    text = T.Colorize("negative", L()["LABEL_COD"] .. figure, "row")
+    text = T.Colorize("negative", L()["LABEL_COD"] .. figure, T.ROW)
   end
   if C.n < HV.MONEY_MAX and not passing then
     C.t[key] = text
@@ -10138,13 +10138,13 @@ end
 -- C.O.D. asked as every C.O.D. is written, by the mail rows' own MoneyText.
 function HV.SentMoney(entry, brief, coins, passing)
   if (entry.m or 0) > 0 then
-    if coins then return RV.CoinText(coins, "loss", entry.m, brief, "row") end
+    if coins then return RV.CoinText(coins, "loss", entry.m, brief, ns.Theme.ROW) end
     if brief then return HV.LetterText(2, entry.m, passing) end
-    return Th().Colorize("negative", "-" .. ns.Core.Formatting.FormatMoneyCompact(entry.m, brief), "row")
+    return Th().Colorize("negative", "-" .. ns.Core.Formatting.FormatMoneyCompact(entry.m, brief), ns.Theme.ROW)
   end
   if (entry.c or 0) > 0 then
     if brief and not coins then return HV.LetterText(3, entry.c, passing) end
-    return (MoneyText(true, 0, entry.c, nil, brief, nil, coins, "row"))
+    return (MoneyText(true, 0, entry.c, nil, brief, nil, coins, ns.Theme.ROW))
   end
   return nil
 end
@@ -10174,7 +10174,7 @@ HV.sentWho, HV.sentBare, HV.sentWhoN = {}, {}, 0
 function HV.SentWho(entry, bare)
   local to = entry.s
   if type(to) ~= "string" or to == "" then return nil end
-  local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"], "row")
+  local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"], ns.Theme.ROW)
   if HV.sentPrefix ~= prefix or HV.sentWhoN >= HV.AGE_MAX then
     for k in pairs(HV.sentWho) do HV.sentWho[k] = nil end
     for k in pairs(HV.sentBare) do HV.sentBare[k] = nil end
