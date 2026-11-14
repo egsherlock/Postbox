@@ -6226,18 +6226,20 @@ end
 -- band writes gold -- and, on a foot strip in the head strip's tone, the
 -- total over every one of them ("1 character" over one). On its right, in
 -- the inspector's column, the three ways into the windows the account
--- builds, one lifted tile each, the first level with the list's first line
--- and as much room under the last as over the first: Mail Memory,
+-- builds, one lifted tile each, the three centred in the card's height, as
+-- much room under the last as over the first: Mail Memory,
 -- Character Groups and Manage Recipients, a hairline the card's height
 -- under the strip between them and the list. A click
 -- on a character opens that character's box in Mail Memory
 -- (MailMemory.OpenCharacter).
 --
--- Ruled to the foot, at one height: the list shows five lines, always, so
--- the card is 214 tall whatever the settings under it need, and a setting
+-- Ruled to the foot, at one height: the list shows three lines, always, so
+-- the card is 158 tall whatever the settings under it need, and a setting
 -- added to General later never squeezes it (the page's need counts the
--- card, Rows.PageNeed). Under a short list the stripes run on, empty, to
--- the foot strip. Past five lines the list scrolls under the column
+-- card, Rows.PageNeed). Three is the fewest that hold the three tiles
+-- (150 with their gaps, inside the card's edges). Under a short list the
+-- stripes run on, empty, to the foot strip. Past three lines the list
+-- scrolls under the column
 -- headings, which stay put with the foot strip, on the Mail tab's slim bar
 -- (Theme.SlimScrollBar), which is there only while there is more to see;
 -- the lines then stop short of it, and the columns and the total move left
@@ -6262,22 +6264,31 @@ do
   -- The strip, the columns' headings, the gap between two figures and the
   -- sentence's padding.
   local HEAD_H, COLS_H, GAP, MSG_PAD = GROUP_H, 18, 18, 8
-  -- The 7-day card under this one (Week.Build): its strip, its figures'
-  -- band and the figures' padding from its top; the gap between the
-  -- switch's two words and the underline under the chosen one.
-  local Week = { HEAD = HEAD_H, FIG = 46, FIG_PAD = 7, FIG_GAP = 3, SWITCH_GAP = 14, MARK_GAP = 2, MARK_H = 2,
+  -- The 7-day card under this one (Week.Build), one line: its height; the
+  -- gaps between a figure's label and its value and between two figures
+  -- (the title keeps GAP before the first); the gap before the switch and
+  -- between its words and the underline under the chosen one.
+  local Week = { LINE = ROW_H, LABEL_GAP = 4, FIG_GAP = 16, SWITCH_GAP = 14, MARK_GAP = 2, MARK_H = 2,
     LABELS = { "OPT_WEEK_EARNED", "OPT_WEEK_SPENT", "OPT_WEEK_COLLECTED", "OPT_WEEK_SENT" },
     -- What the figures were last made from; the card's shows, counted.
     made = { writes = false, who = false, off = false, open = false, shown = false, up = false, down = false },
-    shown = 0 }
-  Week.H = 1 + Week.HEAD + Week.FIG + 1
+    shown = 0,
+    -- Each paint's widths: the labels' whole, their room, the values'.
+    -- Four slots each, made once.
+    lw = { 0, 0, 0, 0 }, room = { 0, 0, 0, 0 }, vw = { 0, 0, 0, 0 },
+    -- The line's forms, tried in turn until one fits (Week.Fit): which
+    -- labels each keeps -- Earned, Spent, Collected, Sent. All four; then
+    -- Collected's and Sent's, Earned's and Spent's figures saying what they
+    -- are by their inks and coins (and their tooltips' titles); then none.
+    FORMS = { { true, true, true, true }, { false, false, true, true }, { false, false, false, false } } }
+  Week.H = 1 + Week.LINE + 1
   Dash.Week = Week
-  -- The lines the list shows: five.
-  local LINES = 5
+  -- The lines the list shows: three, the fewest that hold the tiles.
+  local LINES = 3
   -- The card less its lines: its edges, the strip, the headings and the
   -- foot strip.
   local FIXED = 1 + HEAD_H + COLS_H + ROW_H + 1
-  -- The card's one height (214): its five lines.
+  -- The card's one height (158): its three lines.
   Dash.H = FIXED + LINES * ROW_H
   -- The tiles' column, three of the inspector's tiles one over the other,
   -- a block of their own beside the table: no strip over them (the strip
@@ -6963,21 +6974,32 @@ do
   end
 
   -------------------------------------------------------------
-  -- The last 7 days (Dash.Week): a second, smaller card under the
-  -- overview, the same lifted chrome. Its strip's heading is a sentence
-  -- that says whose: "The last 7 days on Cursed" (the name as the lists
-  -- write it, in its class colour) or "The last 7 days on 3
-  -- characters" (those counted, the hidden left out: MailMemory.Week's
-  -- `chars`), cut by the house fit rule with the whole in a tooltip. At the
-  -- strip's right, one quiet link says what a click will do -- Show all
-  -- characters / Show this character -- muted, brightening and underlined
-  -- under the pointer, never cut; a click flips whose, kept on the profile
-  -- every character shares (MailboxUI.GetWeekScope, every character by
-  -- default). With one character counted there is no link, and the heading
-  -- names it. Under the strip, four figures side by side, each
-  -- a quiet label over its value: Earned and Spent written as the Mail
-  -- tab's totals write gold (its largest coin, in the positive and the
-  -- negative ink; none is the dash), Collected and Sent as "41 mails".
+  -- The last 7 days (Dash.Week): a second card under the overview, one
+  -- line tall, the same lifted chrome, the line in the strip's tone. Its
+  -- heading is a sentence that says whose: "The last 7 days on Cursed"
+  -- (the name as the lists write it, in its class colour) or "The last 7
+  -- days on 3 characters" (those counted, the hidden left out:
+  -- MailMemory.Week's `chars`). At the line's right, one quiet link says
+  -- what a click will do -- Show all characters / Show this character --
+  -- muted, brightening and underlined under the pointer, never cut; a
+  -- click flips whose, kept on the profile every character shares
+  -- (MailboxUI.GetWeekScope, every character by default). With one
+  -- character counted there is no link, and the heading names it. Between
+  -- the two, after the heading, four figures, each a quiet label with its
+  -- value after it: Earned and Spent written as the Mail tab's totals
+  -- write gold (its largest coin, in the positive and the negative ink;
+  -- none is the dash), Collected and Sent as the count.
+  --
+  -- Where the line cannot hold it all (a long translation, large figures,
+  -- a large text size), the labels give way first: each is held to one
+  -- width, the widest that fits, never under the shortest label's own, and
+  -- cut there by the house fit rule (Theme.FitText), whole under the
+  -- pointer; where that is not enough, Earned's and Spent's labels are left
+  -- out (their figures in the positive and negative inks with the coin,
+  -- their tooltips titled with them), then Collected's and Sent's too, each
+  -- said under the pointer. Only then is the heading cut, the same way, so
+  -- whose week it is goes last. The figures and the link are never cut
+  -- (Week.Fit, Week.FORMS).
   -- Read from History, Sent and the deposits paid (MailMemory.Week): gold
   -- taken from mail, and gold out for mail and auctions -- auctions bought,
   -- C.O.D. paid, gold sent, deposits paid -- over the last seven days, each
@@ -7079,15 +7101,24 @@ do
     GameTooltip:AddLine(text, m, m, m, true)
   end
 
+  -- Collected's and Sent's (and Earned's and Spent's with nothing added
+  -- up): their label whole, where it was cut (Week.Fit).
   local function FigureEnter(self)
     if Rows.Held(self, FigureEnter) then return end
     local d = Week.d
-    Rows.Hover(d.figs)
-    local w = (not d.off) and d.sums or nil
-    if not w then return end
+    Rows.Hover(d.head)
     local T = ns.Theme
+    local w = (not d.off) and d.sums or nil
+    if self.fig > 2 or not w then
+      if self.__pbOverflowText then
+        T.TipBegin(self, "ANCHOR_TOP")
+        T.TipTitle(self.__pbOverflowText)
+        GameTooltip:Show()
+      end
+      return
+    end
     T.TipBegin(self, "ANCHOR_TOP")
-    if self.spent then
+    if self.fig == 2 then
       T.TipTitle(L["OPT_WEEK_SPENT"])
       TipGold("OPT_WEEK_BOUGHT", w.bought, "negative")
       TipGold("OPT_WEEK_COD", w.cod, "negative")
@@ -7108,7 +7139,7 @@ do
   local function FigureLeave(self)
     if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     if Rows.HeldLeave(self) then return end
-    Rows.Unhover(Week.d.figs)
+    Rows.Unhover(Week.d.head)
   end
 
   function Week.Build(body)
@@ -7128,8 +7159,9 @@ do
     ground:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -1, 1)
     T.FillChrome(ground, LIFT_A)
 
-    -- The strip, across the card: its figures are the whole card's.
-    local head = Spot(card, "Frame", Week.HEAD)
+    -- The line, across the card, in the strip's tone: the heading, the
+    -- figures and the link.
+    local head = Spot(card, "Frame", Week.LINE)
     head.entry = S.weekEntry
     head:SetFrameLevel(level + 2)
     head:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
@@ -7137,21 +7169,16 @@ do
     local shade = head:CreateTexture(nil, "BACKGROUND", nil, -1)
     shade:SetAllPoints()
     T.FillChrome(shade, STRIP_A)
-    local rule = head:CreateTexture(nil, "BORDER")
-    rule:SetHeight(1)
-    rule:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 0, 0)
-    rule:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, 0)
-    T.FillChrome(rule, HAIR_A)
     head.Title = Text(head, "heading")
     head.Title:SetPoint("LEFT", head, "LEFT", NAME_X, 0)
     head.Title:SetText(L["OPT_WEEK_TITLE"])
     head:SetScript("OnEnter", HeadEnter)
     head:SetScript("OnLeave", HeadLeave)
 
-    -- The link, at the strip's right.
+    -- The link, at the line's right.
     local link = CreateFrame("Button", nil, head)
     link:SetFrameLevel(level + 3)
-    link:SetHeight(Week.HEAD)
+    link:SetHeight(Week.LINE)
     link.Text = Text(link, "secondary", "CENTER")
     link.Text:SetPoint("CENTER", link, "CENTER", 0, 0)
     local mark = link:CreateTexture(nil, "ARTWORK")
@@ -7165,37 +7192,113 @@ do
     link:SetScript("OnClick", LinkClick)
     link:SetPoint("RIGHT", head, "RIGHT", -CONTROL_R, 0)
 
-    -- The four figures, a quarter of the card each.
-    local figs = Spot(card, "Frame", Week.FIG)
-    figs.entry = S.weekEntry
-    figs:SetFrameLevel(level + 2)
-    figs:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -(1 + Week.HEAD))
-    figs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -(1 + Week.HEAD))
-    local colW = math.floor((LIST_W + BODY_GAP + INSP_W - 2) / 4)
-    local labels, values = {}, {}
-    for j = 1, 4 do
-      local label = Text(figs, "secondary")
-      label:SetPoint("TOPLEFT", figs, "TOPLEFT", NAME_X + (j - 1) * colW, -Week.FIG_PAD)
-      local value = Text(figs, "value")
-      value:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -Week.FIG_GAP)
-      labels[j], values[j] = label, value
-    end
-    -- Earned's and Spent's quarters: their parts under the pointer. Motion
+    -- The four figures on the line, placed after the heading as each paint
+    -- measures them (Week.Fit), each label with its value after it. Over
+    -- each, from its label to its value, a zone: Earned's and Spent's
+    -- parts under the pointer, and a label cut short said whole. Motion
     -- only: a click passes on, so the panel still drags from here.
-    for j = 1, 2 do
-      local zone = CreateFrame("Frame", nil, figs)
+    local labels, values, zones = {}, {}, {}
+    for j = 1, 4 do
+      labels[j] = Text(head, "secondary")
+      values[j] = Text(head, "value")
+      local zone = CreateFrame("Frame", nil, head)
       zone:SetFrameLevel(level + 3)
-      zone:SetPoint("TOPLEFT", figs, "TOPLEFT", (j - 1) * colW, 0)
-      zone:SetSize(colW, Week.FIG)
+      zone:SetHeight(Week.LINE)
       zone:EnableMouse(true)
       if zone.SetPropagateMouseClicks then zone:SetPropagateMouseClicks(true) end
-      zone.entry, zone.spent = S.weekEntry, j == 2
+      zone.entry, zone.fig = S.weekEntry, j
       zone:SetScript("OnEnter", FigureEnter)
       zone:SetScript("OnLeave", FigureLeave)
+      zones[j] = zone
     end
 
-    Week.d = { card = card, head = head, link = link, figs = figs, labels = labels, values = values,
-      colW = colW, off = false, who = "all" }
+    Week.d = { card = card, head = head, link = link, labels = labels, values = values, zones = zones,
+      off = false, who = "all" }
+  end
+
+  -- The line laid out for what it says now (Week.Paint): the heading, then
+  -- each figure GAP after it, FIG_GAP apart, the link at the right. What
+  -- the room cannot hold is taken from the labels first, in the forms of
+  -- Week.FORMS, the first that fits: in each, the labels it keeps are held
+  -- to one width `cap`, the widest that fits the line, never under the
+  -- shortest kept label's own width; the labels it leaves out are said
+  -- under the pointer. What is still over in the last form is taken from
+  -- the heading. Each cut by Theme.FitText, said whole under the pointer.
+  -- Answers nothing; the widths go in Week's own slots.
+  function Week.Fit(d, heading, linkW)
+    local T = ns.Theme
+    local lw, room, vw = Week.lw, Week.room, Week.vw
+    local labels, values, zones, title = d.labels, d.values, d.zones, d.head.Title
+    title:SetText(heading)
+    local titleW = TextW(title)
+    local labelsW, valuesW = 0, 0
+    for j = 1, 4 do
+      labels[j]:SetText(L[Week.LABELS[j]])
+      lw[j] = TextW(labels[j])
+      vw[j] = TextW(values[j])
+      labelsW, valuesW = labelsW + lw[j], valuesW + vw[j]
+    end
+    local avail = LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - linkW
+    local whole = titleW + GAP + labelsW + 4 * Week.LABEL_GAP + valuesW + 3 * Week.FIG_GAP - avail
+    local FORMS = Week.FORMS
+    local keep, cap, over = FORMS[1], math.huge, whole
+    for f = 1, #FORMS do
+      keep, cap = FORMS[f], math.huge
+      -- What this form's left-out labels give back, and its kept labels'
+      -- room to give: down to the shortest kept one's own.
+      over = whole
+      local kept, keptW, least, most = 0, 0, math.huge, 0
+      for j = 1, 4 do
+        if keep[j] then
+          kept, keptW = kept + 1, keptW + lw[j]
+          if lw[j] < least then least = lw[j] end
+          if lw[j] > most then most = lw[j] end
+        else
+          over = over - lw[j] - Week.LABEL_GAP
+        end
+      end
+      if over <= 0 then break end
+      if kept > 0 and keptW - kept * least >= over then
+        -- The cap c gives up the kept labels' width over it; it gives more
+        -- as c falls, so the widest c that gives up `over` lies between the
+        -- shortest kept label and the widest: found by halving, to a unit.
+        local lo, hi = least, most
+        while hi - lo > 1 do
+          local mid = math.floor((lo + hi) / 2)
+          local given = 0
+          for j = 1, 4 do if keep[j] and lw[j] > mid then given = given + lw[j] - mid end end
+          if given >= over then lo = mid else hi = mid end
+        end
+        cap = lo
+        for j = 1, 4 do if keep[j] and lw[j] > cap then over = over - (lw[j] - cap) end end
+        break
+      end
+    end
+    for j = 1, 4 do room[j] = keep[j] and math.min(lw[j], cap) or 0 end
+    -- The heading: whole, or cut by what is still over.
+    local titleRoom = math.max(1, titleW - math.max(0, over))
+    T.FitText(title, titleRoom, heading, d.head)
+    local x = NAME_X + math.min(titleW, titleRoom) + GAP
+    for j = 1, 4 do
+      local label, value, zone = labels[j], values[j], zones[j]
+      local vx = x
+      label:SetShown(keep[j])
+      if keep[j] then
+        T.FitText(label, room[j], L[Week.LABELS[j]], zone)
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", d.head, "LEFT", x, 0)
+        vx = x + room[j] + Week.LABEL_GAP
+      else
+        zone.__pbOverflowText = L[Week.LABELS[j]]
+      end
+      value:ClearAllPoints()
+      value:SetPoint("LEFT", d.head, "LEFT", vx, 0)
+      value:SetWidth(vw[j])
+      zone:ClearAllPoints()
+      zone:SetPoint("LEFT", d.head, "LEFT", x - Week.FIG_GAP / 2, 0)
+      zone:SetWidth(vx + vw[j] - x + Week.FIG_GAP)
+      x = vx + vw[j] + Week.FIG_GAP
+    end
   end
 
   -- A figure's gold: the largest coin in the ink given, or the dash.
@@ -7235,8 +7338,9 @@ do
       end
     end
 
-    -- The strip: the link at its words' width, never cut, and only where
-    -- there is another character to show; the heading in what is left.
+    -- The link at its words' width, never cut, and only where there is
+    -- another character to show; the heading and the figures in what is
+    -- left (Week.Fit).
     local chars = sums and sums.chars or d.chars or 1
     d.chars = chars
     local link, linkW = d.link, 0
@@ -7261,14 +7365,11 @@ do
       heading = string.format(L["OPT_WEEK_ON"], shown or "")
     end
     T.SetColor(d.head.Title, off and "textDisabled" or "accent")
-    T.FitText(d.head.Title, LIST_W + BODY_GAP + INSP_W - 2 - NAME_X - CONTROL_R - linkW - GAP, heading, d.head)
 
-    -- The figures, each fitted to its quarter.
-    local room = d.colW - 2 * NAME_X
+    -- The figures' words, then the line laid out for them.
     local labels, values = d.labels, d.values
     for j = 1, 4 do
       T.SetColor(labels[j], off and "textDisabled" or "textSecondary")
-      T.FitText(labels[j], room, L[Week.LABELS[j]])
       local v = values[j]
       local words
       if not sums then
@@ -7278,11 +7379,12 @@ do
       elseif j == 2 then
         words = WeekGold(sums.spent, v, "ff" .. down)
       else
-        words = ns.Plural("COUNT_MAILS", j == 3 and sums.collected or sums.sent)
+        words = tostring(j == 3 and sums.collected or sums.sent)
       end
       T.SetColor(v, off and "textDisabled" or "textPrimary")
-      T.FitText(v, room, words)
+      v:SetText(words)
     end
+    Week.Fit(d, heading, linkW)
   end
 
   -- `/postbox debug card <n>` (Postbox.lua): the card filled with n sample
