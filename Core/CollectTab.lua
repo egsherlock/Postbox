@@ -2640,7 +2640,11 @@ do
   -- many. counted: whether this client's widths count inline textures (nil
   -- until probed). tip: the tooltip's marks, at tipSize. clean: whether
   -- the marks are made clean (Theme.InkOnLight), CLEAN their glyphs then.
+  -- On a look's own row ground (Theme.RowGround) the marks are another
+  -- ink: those kept apart (rowH, rowHex, rowClean), so the rows and the
+  -- options' drawings asking in turn do not let each other's go.
   local F = { hex = false, clean = false, byH = {}, sets = 0, marked = {}, plain = {}, n = 0, counted = nil,
+    rowH = {}, rowHex = false, rowClean = false,
     tip = { back = false, gone = false }, tipSize = false,
     CLEAN = { back = "expiry-back-clean", gone = "expiry-bin-clean" } }
   RV.FATE = F
@@ -2677,25 +2681,29 @@ do
   -- Everything made let go: the warning ink moved, or the cap was reached.
   local function Forget()
     for h in pairs(F.byH) do F.byH[h] = nil end
+    for h in pairs(F.rowH) do F.rowH[h] = nil end
     for text in pairs(F.marked) do F.marked[text] = nil end
     for text in pairs(F.plain) do F.plain[text] = nil end
     F.sets, F.n = 0, 0
   end
 
-  -- The marks at height h in the warning ink, made once.
-  local function SetFor(h)
-    local set = F.byH[h]
+  -- The marks at height h in the warning ink of `ground`, made once.
+  local function SetFor(h, ground)
+    local byH = ground and F.rowH or F.byH
+    local set = byH[h]
     if set then return set end
     if F.sets >= 8 then Forget() end
-    local r, g, b = Th().Ink("warning", F.ground)
+    local r, g, b = Th().Ink("warning", ground)
+    local clean = F.clean
+    if ground then clean = F.rowClean end
     set = { esc = {}, w = {}, probe = {}, texts = {} }
     for fate in pairs(GLYPH) do
-      local esc, w = RV.FateEscape(fate, h, r, g, b, F.clean)
+      local esc, w = RV.FateEscape(fate, h, r, g, b, clean)
       set.esc[fate], set.w[fate] = esc or false, w
       set.probe[fate] = esc and (esc .. "0") or false
       set.texts[fate] = {}
     end
-    F.byH[h] = set
+    byH[h] = set
     F.sets = F.sets + 1
     return set
   end
@@ -2710,14 +2718,18 @@ do
     local T = Th()
     local hex = T.InkHex("warning", ground)
     local clean = type(T.InkOnLight) == "function" and T.InkOnLight("warning", ground) or false
-    if hex ~= F.hex or clean ~= F.clean then
+    if ground then
+      if hex ~= F.rowHex or clean ~= F.rowClean then
+        Forget()
+        F.rowHex, F.rowClean = hex, clean
+      end
+    elseif hex ~= F.hex or clean ~= F.clean then
       Forget()
       F.hex, F.clean = hex, clean
     end
-    F.ground = ground
     local size
     if fs and fs.GetFont then size = select(2, fs:GetFont()) end
-    local set = SetFor(RV.MarkHeight(size))
+    local set = SetFor(RV.MarkHeight(size), ground)
     local esc = set.esc[fate]
     if not esc then return nil end
     local texts = set.texts[fate]
@@ -2779,12 +2791,15 @@ do
     local probe
     if not w then
       if not text:find("|T", 1, true) then return 0 end
-      for _, set in pairs(F.byH) do
-        for fate, esc in pairs(set.esc) do
-          if esc and text:find(esc, 1, true) then
-            w, probe = set.w[fate], set.probe[fate]
-            break
+      for pass = 1, 2 do
+        for _, set in pairs(pass == 1 and F.byH or F.rowH) do
+          for fate, esc in pairs(set.esc) do
+            if esc and text:find(esc, 1, true) then
+              w, probe = set.w[fate], set.probe[fate]
+              break
+            end
           end
+          if w then break end
         end
         if w then break end
       end
@@ -2792,9 +2807,12 @@ do
     end
     if F.counted == nil then
       if not probe then
-        for _, set in pairs(F.byH) do
-          for fate in pairs(GLYPH) do
-            if set.w[fate] == w and set.probe[fate] then probe = set.probe[fate] break end
+        for pass = 1, 2 do
+          for _, set in pairs(pass == 1 and F.byH or F.rowH) do
+            for fate in pairs(GLYPH) do
+              if set.w[fate] == w and set.probe[fate] then probe = set.probe[fate] break end
+            end
+            if probe then break end
           end
           if probe then break end
         end
@@ -2971,12 +2989,17 @@ do
   }
   -- texts[set][key]: the text; made[text]: the room its coins take across;
   -- n: how many; hexP / hexN: the inks they were made in; counted: whether
-  -- this client's widths count inline textures (nil until probed).
-  local C = { texts = {}, made = {}, n = 0, hexP = false, hexN = false, counted = nil }
+  -- this client's widths count inline textures (nil until probed). On a
+  -- look's own row ground (Theme.RowGround) the texts are other inks: kept
+  -- apart (rowTexts, rowP / rowN), so the rows and the options' drawings
+  -- asking in turn do not let each other's go; COIN_MAX bounds both.
+  local C = { texts = {}, made = {}, n = 0, hexP = false, hexN = false, counted = nil,
+    rowTexts = {}, rowP = false, rowN = false }
   RV.COIN = C
 
   local function Forget()
     for set in pairs(C.texts) do C.texts[set] = nil end
+    for set in pairs(C.rowTexts) do C.rowTexts[set] = nil end
     for text in pairs(C.made) do C.made[text] = nil end
     C.n = 0
   end
@@ -2999,14 +3022,21 @@ do
     if not (spec and coins) then return nil end
     local T = Th()
     local hexP, hexN = T.InkHex("positive", ground), T.InkHex("negative", ground)
-    if hexP ~= C.hexP or hexN ~= C.hexN then
+    local texts = C.texts
+    if ground then
+      texts = C.rowTexts
+      if hexP ~= C.rowP or hexN ~= C.rowN then
+        Forget()
+        C.rowP, C.rowN = hexP, hexN
+      end
+    elseif hexP ~= C.hexP or hexN ~= C.hexN then
       Forget()
       C.hexP, C.hexN = hexP, hexN
     end
-    local byKey = C.texts[coins]
+    local byKey = texts[coins]
     if not byKey then
       byKey = {}
-      C.texts[coins] = byKey
+      texts[coins] = byKey
     end
     local key = (floor(amount) * 8 + spec[1]) * 2 + (brief and 1 or 0)
     local text = byKey[key]
@@ -3053,14 +3083,17 @@ do
     if not w then
       if not text:find("|TInterface\\MoneyFrame\\UI-", 1, true) then return 0 end
       w = 0
-      for coins in pairs(C.texts) do
-        local n = Count(text, coins.gold) + Count(text, coins.silver) + Count(text, coins.copper)
-        if n > 0 then w, set = w + n * coins.w, coins end
+      for pass = 1, 2 do
+        for coins in pairs(pass == 1 and C.texts or C.rowTexts) do
+          local n = Count(text, coins.gold) + Count(text, coins.silver) + Count(text, coins.copper)
+          if n > 0 then w, set = w + n * coins.w, coins end
+        end
+        if w > 0 then break end
       end
       if w == 0 then return 0 end
     end
     if C.counted == nil then
-      if not set then set = next(C.texts) end
+      if not set then set = next(C.texts) or next(C.rowTexts) end
       if set then
         fs:SetText("0")
         local digit = fs:GetStringWidth() or 0
