@@ -765,8 +765,9 @@ end
 --     game's letter paper, the default), "dark" (the same paper shaded) or
 --     "none" (the dark list);
 --   Buttons (`blizzButtons`): which push buttons wear the game's red
---     button -- "red" (all of them, the default), "mailred" (those that
---     collect or send mail; the rest the small dark button) or "dark" (none).
+--     button -- "mailred" (those that collect or send mail, the rest the
+--     small dark button: the default), "red" (all of them) or "dark"
+--     (none). The two that are not the default are stored by name.
 -- The skin reads them when it dresses and again when one changes; every
 -- other look keeps them and never reads them.
 function UI.GetRowTexture()
@@ -780,12 +781,12 @@ function UI.SetRowTexture(choice)
 end
 function UI.GetButtonLook()
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.blizzButtons")
-  if stored == "mailred" or stored == "dark" then return stored end
-  return "red"
+  if stored == "red" or stored == "dark" then return stored end
+  return "mailred"
 end
 function UI.SetButtonLook(choice)
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.blizzButtons = (choice == "mailred" or choice == "dark") and choice or nil end
+  if profile then profile.blizzButtons = (choice == "red" or choice == "dark") and choice or nil end
 end
 
 -- The gate both host skins consult before claiming. Kept here rather than

@@ -545,7 +545,7 @@ end
 -- gives them the game's dropdown.
 --
 -- Options > Window > Buttons (MailboxUI.GetButtonLook) says which of them
--- wear the red button: "red", all of them (as built); "mailred", the ones
+-- wear the red button: "red", all of them; "mailred" (the default), the ones
 -- that collect or send mail -- All mail with its gold rim and the category
 -- buttons (the grid's, `gridId`), Send mail with its Sent cell, and the
 -- reading view's Take all and Return -- and every other push button the
@@ -578,7 +578,7 @@ do
   local function LookNow()
     if not Parts.ButtonLook then
       local UI = ns.MailboxUI
-      Parts.ButtonLook = UI and type(UI.GetButtonLook) == "function" and UI.GetButtonLook() or "red"
+      Parts.ButtonLook = UI and type(UI.GetButtonLook) == "function" and UI.GetButtonLook() or "mailred"
     end
     return Parts.ButtonLook
   end
