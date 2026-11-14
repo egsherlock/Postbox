@@ -37,13 +37,250 @@ local _, ns = ...
 -- Claimed once, at PLAYER_LOGIN, when the style choice is "postbox"; changing
 -- the style asks for a /reload.
 --
--- BUILT ON DEMAND. Everything from here to the claim at the end of the file
--- is one function's body, BuildSkin, run the first time the skin is asked for
+-- BUILT ON DEMAND. Everything from BuildSkin (after the fonts every style
+-- may share, ns.SkinFonts) to the claim at the end of the file is one
+-- function's body, BuildSkin, run the first time the skin is asked for
 -- (ns.GetPostboxSkin): at login when the Postbox style or a creative style is
 -- the choice. Any other look never makes its palettes, tables and functions:
 -- the Blizzard look and a host UI's look let go of the builder at login. The
 -- body is not indented, so it reads as it always has.
 -- =====================================================================
+
+-------------------------------------------------------------
+-- The fonts a style may set Postbox's text in
+--
+-- Font, Text weight and Text style's choices and the files behind them,
+-- for the Postbox style (and the creative styles that wear it) and the
+-- Blizzard style (Core/Skin_Blizzard.lua), each with its own saved
+-- choices, which it hands in. Outside BuildSkin, which the Blizzard look
+-- never runs: a few tables made at load, and no file asked about until a
+-- font other than the game's is (WEIGHT.Loads). The rules are in the
+-- Fonts section of BuildSkin below.
+-------------------------------------------------------------
+do
+local Fonts = {}
+ns.SkinFonts = Fonts
+
+local FONT_DIR = "Interface\\AddOns\\Postbox\\Media\\Fonts\\"
+
+local SCRIPT
+local function Script()
+  if SCRIPT then return SCRIPT end
+  local locale = type(GetLocale) == "function" and GetLocale() or "enUS"
+  if locale == "ruRU" then SCRIPT = "russian"
+  elseif locale == "zhCN" or locale == "zhTW" or locale == "koKR" then SCRIPT = "cjk"
+  else SCRIPT = "latin" end
+  return SCRIPT
+end
+
+-- key -> the file on each script that has one. Proper names, the same in
+-- every language. An entry:
+--   key = { name = "Proper Name",
+--           latin = <file>, russian = <file>, cjk = <file>,      -- Regular
+--           latinBold = <file>, russianBold = <file>, cjkBold = <file> },
+-- each file where the font has one for that script, and nothing where it
+-- has none. The plain file is the font's Regular weight (for Barlow, the
+-- SemiBold it has always drawn in); `<script>Bold` its Bold, beside it,
+-- where it comes in one (Text weight). A font with two weights is one line
+-- here and nothing else; the order of the Font list is FONT_ORDER's.
+local FONT_FILES = {
+  barlow   = { name = "Barlow Semi Condensed", latin = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf",
+               latinBold = FONT_DIR .. "BarlowSemiCondensed-Bold.ttf" },
+  expressway = { name = "Expressway",
+               latin = FONT_DIR .. "Expressway-Regular.ttf", latinBold = FONT_DIR .. "Expressway-Bold.ttf",
+               russian = FONT_DIR .. "Expressway-Regular.ttf", russianBold = FONT_DIR .. "Expressway-Bold.ttf" },
+  friz    = { name = "Friz Quadrata", latin = "Fonts\\FRIZQT__.TTF", russian = "Fonts\\FRIZQT___CYR.TTF" },
+  arialn   = { name = "Arial Narrow", latin = "Fonts\\ARIALN.TTF", russian = "Fonts\\ARIALN.TTF" },
+  morpheus = { name = "Morpheus", latin = "Fonts\\MORPHEUS.TTF", russian = "Fonts\\MORPHEUS_CYR.TTF" },
+  skurri   = { name = "Skurri", latin = "Fonts\\SKURRI.TTF", russian = "Fonts\\SKURRI_CYR.TTF" },
+  fira     = { name = "Fira Sans Condensed",
+               latin = FONT_DIR .. "FiraSansCondensed-Regular.ttf", latinBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf",
+               russian = FONT_DIR .. "FiraSansCondensed-Regular.ttf", russianBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf" },
+  noto     = { name = "Noto Sans",
+               latin = FONT_DIR .. "NotoSans-Regular.ttf", latinBold = FONT_DIR .. "NotoSans-Bold.ttf",
+               russian = FONT_DIR .. "NotoSans-Regular.ttf", russianBold = FONT_DIR .. "NotoSans-Bold.ttf" },
+  overpass = { name = "Overpass",
+               latin = FONT_DIR .. "Overpass-Regular.ttf", latinBold = FONT_DIR .. "Overpass-Bold.ttf",
+               russian = FONT_DIR .. "Overpass-Regular.ttf", russianBold = FONT_DIR .. "Overpass-Bold.ttf" },
+  roboto   = { name = "Roboto Condensed",
+               latin = FONT_DIR .. "RobotoCondensed-Regular.ttf", latinBold = FONT_DIR .. "RobotoCondensed-Bold.ttf",
+               russian = FONT_DIR .. "RobotoCondensed-Regular.ttf", russianBold = FONT_DIR .. "RobotoCondensed-Bold.ttf" },
+}
+local FONT_ORDER = { "game", "barlow", "expressway", "friz", "arialn", "morpheus", "skurri", "fira", "noto", "overpass", "roboto", "eui" }
+
+local function EUIFontPath()
+  local EUI = _G.EllesmereUI
+  if type(EUI) ~= "table" or type(EUI.GetFontPath) ~= "function" then return nil end
+  local ok, path = pcall(EUI.GetFontPath, "blizzardSkin")
+  if ok and type(path) == "string" and path ~= "" then return path end
+  return nil
+end
+
+-- Text weight's choices, the Bold file's name on each script, and which
+-- files the client was found to load (WEIGHT.Loads), in one table.
+local WEIGHT = {
+  order = { "regular", "bold" },
+  names = { regular = "OPT_WEIGHT_REGULAR", bold = "OPT_WEIGHT_BOLD" },
+  bold = { latin = "latinBold", russian = "russianBold", cjk = "cjkBold" },
+  loads = {},
+}
+
+-- Whether the client loads the font file at `path`, asked once a file, of
+-- a font object of Postbox's own that no text wears (a set of a file the
+-- client cannot open answers false, as RV.Span reads it). A file missing
+-- from the install -- one added to the addon since the client started,
+-- which it sees only after a restart -- is never put on a copy. A client
+-- whose SetFont answers nothing is read by the face the probe holds after:
+-- the file asked for, or another than before, loaded.
+function WEIGHT.Loads(path)
+  local known = WEIGHT.loads[path]
+  if known ~= nil then return known end
+  local probe = WEIGHT.probe
+  if probe == nil then
+    probe = type(CreateFont) == "function" and CreateFont("PostboxWeightProbe") or false
+    WEIGHT.probe = probe
+  end
+  local ok = false
+  if probe and type(probe.SetFont) == "function" then
+    local read = type(probe.GetFont) == "function"
+    local before = read and probe:GetFont() or nil
+    local fine, set = pcall(probe.SetFont, probe, path, 12, "")
+    if fine and set == nil then
+      local now = read and probe:GetFont() or nil
+      set = not read or (now ~= nil and (now == path or now ~= before))
+    end
+    ok = (fine and set) and true or false
+  end
+  WEIGHT.loads[path] = ok
+  return ok
+end
+
+-- The file a font key draws with on this client, or false for the game's
+-- own: also where its file does not load here (WEIGHT.Loads, asked once a
+-- file), as for a font this build does not have. EllesmereUI's is a file
+-- of another addon's, asked the same.
+local function FontPath(key)
+  local path
+  if key == "eui" then
+    path = EUIFontPath()
+  else
+    local spec = FONT_FILES[key]
+    path = spec and spec[Script()]
+  end
+  if not path or not WEIGHT.Loads(path) then return false end
+  return path
+end
+
+-- The chosen font's Bold file on this client, where it has one and the
+-- client loads it; else nil.
+function WEIGHT.BoldOf(key)
+  local spec = FONT_FILES[key]
+  if not (spec and FontPath(key)) then return nil end
+  local bold = spec[WEIGHT.bold[Script()]]
+  if bold and WEIGHT.Loads(bold) then return bold end
+  return nil
+end
+
+-- The file a font key draws with at `weight`: its Bold where that is
+-- "bold" and it has one that loads, else its Regular (FontPath: false
+-- for the game's own). Never nil.
+function WEIGHT.Path(key, weight)
+  local path = FontPath(key)
+  if path and weight == "bold" then
+    return WEIGHT.BoldOf(key) or path
+  end
+  return path
+end
+
+-- The file a choice's name is drawn in on the Font list (`file`), so each
+-- font shows itself: its Regular, where the client loads it. The game's
+-- font in the game's own file (GameFontNormal's, this client's letters);
+-- a shipped font in its file for this client's letters, which has them; and
+-- EllesmereUI's only where its name is plain Latin letters, the one thing
+-- a face the player picked there is sure to have. Else nil: the list's own
+-- face.
+local function ShowFile(key, name)
+  local path
+  if key == "game" then
+    local base = _G.GameFontNormal
+    path = base and type(base.GetFont) == "function" and (base:GetFont()) or nil
+  elseif key == "eui" then
+    path = not (type(name) == "string" and name:find("[\128-\255]")) and EUIFontPath() or nil
+  else
+    path = FontPath(key) or nil
+  end
+  if type(path) ~= "string" or path == "" or not WEIGHT.Loads(path) then return nil end
+  return path
+end
+
+-- One choice list, from a spec table: key -> locale key, in order.
+local function Choices(order, names)
+  local out = {}
+  for i = 1, #order do
+    local key = order[i]
+    out[i] = { key = key, name = ns.L[names[key]] }
+  end
+  return out
+end
+
+local OUTLINE_ORDER = { "shadow", "outline", "none" }
+local OUTLINE_NAME_KEY = { shadow = "OPT_OUTLINE_SHADOW", outline = "OPT_OUTLINE_OUTLINE", none = "OPT_OUTLINE_NONE" }
+
+-- The Font list: the game's font, then each font with a file here that
+-- loads, in FONT_ORDER's order, each with the file its name is drawn in.
+function Fonts.FontChoices()
+  local out = { { key = "game", name = ns.L["OPT_FONT_GAME"] } }
+  for i = 2, #FONT_ORDER do
+    local key = FONT_ORDER[i]
+    if key == "eui" then
+      if FontPath(key) then out[#out + 1] = { key = key, name = ns.L["OPT_FONT_EUI"] } end
+    elseif FontPath(key) then
+      out[#out + 1] = { key = key, name = FONT_FILES[key].name }
+    end
+  end
+  for i = 1, #out do out[i].file = ShowFile(out[i].key, out[i].name) end
+  return out
+end
+
+-- The font drawn for a saved choice: the saved one where it has a file
+-- here that loads (FontPath), else the game's. The saved choice stays as
+-- it is, so a font whose file arrives with the next restart is back
+-- without choosing it again.
+function Fonts.Resolve(saved)
+  if (saved == "eui" or FONT_FILES[saved]) and FontPath(saved) then return saved end
+  return "game"
+end
+
+-- Whether `key` is a font a style may save.
+function Fonts.Valid(key)
+  return key == "game" or key == "eui" or FONT_FILES[key] ~= nil
+end
+
+-- The file the copies wear for font `key` at `weight` (WEIGHT.Path):
+-- false for the game's own.
+function Fonts.Path(key, weight) return WEIGHT.Path(key, weight) end
+
+function Fonts.WeightChoices() return Choices(WEIGHT.order, WEIGHT.names) end
+function Fonts.IsWeight(key) return WEIGHT.names[key] ~= nil end
+
+-- nil where font `key` can be drawn Bold on this client; else why not,
+-- a locale key: the font's Bold file did not load (an install updated
+-- while the game ran), the font comes in one weight while another for
+-- these letters has a Bold, or no font for these letters has one.
+function Fonts.WeightWhy(key)
+  if WEIGHT.BoldOf(key) then return nil end
+  local script = Script()
+  local spec = FONT_FILES[key]
+  if spec and spec[script] and spec[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FILE" end
+  for _, other in pairs(FONT_FILES) do
+    if other[script] and other[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FONT" end
+  end
+  return "OPT_WEIGHT_WHY_SCRIPT"
+end
+
+function Fonts.OutlineChoices() return Choices(OUTLINE_ORDER, OUTLINE_NAME_KEY) end
+function Fonts.IsOutline(key) return OUTLINE_NAME_KEY[key] ~= nil end
+end
 
 local function BuildSkin()
 
@@ -54,7 +291,6 @@ Skin.IsPostboxStyle = true
 ns.PostboxSkin = Skin
 
 local WHITE = "Interface\\AddOns\\Postbox\\Media\\white8x8.tga"
-local FONT_DIR = "Interface\\AddOns\\Postbox\\Media\\Fonts\\"
 
 local floor, max, min = math.floor, math.max, math.min
 
@@ -1018,138 +1254,9 @@ Skin._ResolveLook = ResolveLook
 -- change of font does (Skin.ApplyFonts), live.
 -------------------------------------------------------------
 
-local SCRIPT
-local function Script()
-  if SCRIPT then return SCRIPT end
-  local locale = type(GetLocale) == "function" and GetLocale() or "enUS"
-  if locale == "ruRU" then SCRIPT = "russian"
-  elseif locale == "zhCN" or locale == "zhTW" or locale == "koKR" then SCRIPT = "cjk"
-  else SCRIPT = "latin" end
-  return SCRIPT
-end
+local Fonts = ns.SkinFonts
 
--- key -> the file on each script that has one. Proper names, the same in
--- every language. An entry:
---   key = { name = "Proper Name",
---           latin = <file>, russian = <file>, cjk = <file>,      -- Regular
---           latinBold = <file>, russianBold = <file>, cjkBold = <file> },
--- each file where the font has one for that script, and nothing where it
--- has none. The plain file is the font's Regular weight (for Barlow, the
--- SemiBold it has always drawn in); `<script>Bold` its Bold, beside it,
--- where it comes in one (Text weight). A font with two weights is one line
--- here and nothing else; the order of the Font list is FONT_ORDER's.
-local FONT_FILES = {
-  barlow   = { name = "Barlow Semi Condensed", latin = FONT_DIR .. "BarlowSemiCondensed-SemiBold.ttf",
-               latinBold = FONT_DIR .. "BarlowSemiCondensed-Bold.ttf" },
-  expressway = { name = "Expressway",
-               latin = FONT_DIR .. "Expressway-Regular.ttf", latinBold = FONT_DIR .. "Expressway-Bold.ttf",
-               russian = FONT_DIR .. "Expressway-Regular.ttf", russianBold = FONT_DIR .. "Expressway-Bold.ttf" },
-  friz    = { name = "Friz Quadrata", latin = "Fonts\\FRIZQT__.TTF", russian = "Fonts\\FRIZQT___CYR.TTF" },
-  arialn   = { name = "Arial Narrow", latin = "Fonts\\ARIALN.TTF", russian = "Fonts\\ARIALN.TTF" },
-  morpheus = { name = "Morpheus", latin = "Fonts\\MORPHEUS.TTF", russian = "Fonts\\MORPHEUS_CYR.TTF" },
-  skurri   = { name = "Skurri", latin = "Fonts\\SKURRI.TTF", russian = "Fonts\\SKURRI_CYR.TTF" },
-  fira     = { name = "Fira Sans Condensed",
-               latin = FONT_DIR .. "FiraSansCondensed-Regular.ttf", latinBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf",
-               russian = FONT_DIR .. "FiraSansCondensed-Regular.ttf", russianBold = FONT_DIR .. "FiraSansCondensed-Bold.ttf" },
-  noto     = { name = "Noto Sans",
-               latin = FONT_DIR .. "NotoSans-Regular.ttf", latinBold = FONT_DIR .. "NotoSans-Bold.ttf",
-               russian = FONT_DIR .. "NotoSans-Regular.ttf", russianBold = FONT_DIR .. "NotoSans-Bold.ttf" },
-  overpass = { name = "Overpass",
-               latin = FONT_DIR .. "Overpass-Regular.ttf", latinBold = FONT_DIR .. "Overpass-Bold.ttf",
-               russian = FONT_DIR .. "Overpass-Regular.ttf", russianBold = FONT_DIR .. "Overpass-Bold.ttf" },
-  roboto   = { name = "Roboto Condensed",
-               latin = FONT_DIR .. "RobotoCondensed-Regular.ttf", latinBold = FONT_DIR .. "RobotoCondensed-Bold.ttf",
-               russian = FONT_DIR .. "RobotoCondensed-Regular.ttf", russianBold = FONT_DIR .. "RobotoCondensed-Bold.ttf" },
-}
-local FONT_ORDER = { "game", "barlow", "expressway", "friz", "arialn", "morpheus", "skurri", "fira", "noto", "overpass", "roboto", "eui" }
-local TEXT_SCALES = { 0.90, 1.00, 1.10, 1.20 }
-
-local function EUIFontPath()
-  local EUI = _G.EllesmereUI
-  if type(EUI) ~= "table" or type(EUI.GetFontPath) ~= "function" then return nil end
-  local ok, path = pcall(EUI.GetFontPath, "blizzardSkin")
-  if ok and type(path) == "string" and path ~= "" then return path end
-  return nil
-end
-
--- Text weight's choices, the Bold file's name on each script, and which
--- files the client was found to load (WEIGHT.Loads). One table: BuildSkin's
--- locals are counted.
-local WEIGHT = {
-  order = { "regular", "bold" },
-  names = { regular = "OPT_WEIGHT_REGULAR", bold = "OPT_WEIGHT_BOLD" },
-  bold = { latin = "latinBold", russian = "russianBold", cjk = "cjkBold" },
-  loads = {},
-}
-
--- Whether the client loads the font file at `path`, asked once a file, of
--- a font object of Postbox's own that no text wears (a set of a file the
--- client cannot open answers false, as RV.Span reads it). A file missing
--- from the install -- one added to the addon since the client started,
--- which it sees only after a restart -- is never put on a copy. A client
--- whose SetFont answers nothing is read by the face the probe holds after:
--- the file asked for, or another than before, loaded.
-function WEIGHT.Loads(path)
-  local known = WEIGHT.loads[path]
-  if known ~= nil then return known end
-  local probe = WEIGHT.probe
-  if probe == nil then
-    probe = type(CreateFont) == "function" and CreateFont("PostboxWeightProbe") or false
-    WEIGHT.probe = probe
-  end
-  local ok = false
-  if probe and type(probe.SetFont) == "function" then
-    local read = type(probe.GetFont) == "function"
-    local before = read and probe:GetFont() or nil
-    local fine, set = pcall(probe.SetFont, probe, path, 12, "")
-    if fine and set == nil then
-      local now = read and probe:GetFont() or nil
-      set = not read or (now ~= nil and (now == path or now ~= before))
-    end
-    ok = (fine and set) and true or false
-  end
-  WEIGHT.loads[path] = ok
-  return ok
-end
-
--- The file a font key draws with on this client, or false for the game's
--- own: also where its file does not load here (WEIGHT.Loads, asked once a
--- file), as for a font this build does not have. EllesmereUI's is a file
--- of another addon's, asked the same.
-local function FontPath(key)
-  local path
-  if key == "eui" then
-    path = EUIFontPath()
-  else
-    local spec = FONT_FILES[key]
-    path = spec and spec[Script()]
-  end
-  if not path or not WEIGHT.Loads(path) then return false end
-  return path
-end
-
--- The chosen font's Bold file on this client, where it has one and the
--- client loads it; else nil.
-function WEIGHT.BoldOf(key)
-  local spec = FONT_FILES[key]
-  if not (spec and FontPath(key)) then return nil end
-  local bold = spec[WEIGHT.bold[Script()]]
-  if bold and WEIGHT.Loads(bold) then return bold end
-  return nil
-end
-
--- The file a font key draws with at the chosen weight: its Bold where Bold
--- is chosen and it has one that loads, else its Regular (FontPath: false
--- for the game's own). Never nil.
-function WEIGHT.Path(key)
-  local path = FontPath(key)
-  if path and Skin.GetWeight() == "bold" then
-    return WEIGHT.BoldOf(key) or path
-  end
-  return path
-end
-
-function Skin.GetWeightChoices() return Choices(WEIGHT.order, WEIGHT.names) end
+function Skin.GetWeightChoices() return Fonts.WeightChoices() end
 
 -- The saved choice, whatever the chosen font can draw (nil is Regular).
 function Skin.GetWeight()
@@ -1157,76 +1264,28 @@ function Skin.GetWeight()
 end
 
 function Skin.SetWeight(key)
-  if not WEIGHT.names[key] then return end
+  if not Fonts.IsWeight(key) then return end
   GetProfile().pbWeight = (key == "bold") and "bold" or nil
   Skin.ApplyFonts()
 end
 
--- nil where the chosen font can be drawn Bold on this client; else why not,
--- a locale key: the font's Bold file did not load (an install updated
--- while the game ran), the font comes in one weight while another for
--- these letters has a Bold, or no font for these letters has one.
-function Skin.GetWeightWhy()
-  local key = Skin.GetFont()
-  if WEIGHT.BoldOf(key) then return nil end
-  local script = Script()
-  local spec = FONT_FILES[key]
-  if spec and spec[script] and spec[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FILE" end
-  for _, other in pairs(FONT_FILES) do
-    if other[script] and other[WEIGHT.bold[script]] then return "OPT_WEIGHT_WHY_FONT" end
-  end
-  return "OPT_WEIGHT_WHY_SCRIPT"
-end
+-- nil where the chosen font can be drawn Bold on this client; else why
+-- not, a locale key (ns.SkinFonts.WeightWhy).
+function Skin.GetWeightWhy() return Fonts.WeightWhy(Skin.GetFont()) end
 
--- The file a choice's name is drawn in on the Font list (`file`), so each
--- font shows itself: its Regular, where the client loads it. The game's
--- font in the game's own file (GameFontNormal's, this client's letters);
--- a shipped font in its file for this client's letters, which has them; and
--- EllesmereUI's only where its name is plain Latin letters, the one thing
--- a face the player picked there is sure to have. Else nil: the list's own
--- face.
-local function ShowFile(key, name)
-  local path
-  if key == "game" then
-    local base = _G.GameFontNormal
-    path = base and type(base.GetFont) == "function" and (base:GetFont()) or nil
-  elseif key == "eui" then
-    path = not (type(name) == "string" and name:find("[\128-\255]")) and EUIFontPath() or nil
-  else
-    path = FontPath(key) or nil
-  end
-  if type(path) ~= "string" or path == "" or not WEIGHT.Loads(path) then return nil end
-  return path
-end
+function Skin.GetFontChoices() return Fonts.FontChoices() end
 
-function Skin.GetFontChoices()
-  local out = { { key = "game", name = ns.L["OPT_FONT_GAME"] } }
-  for i = 2, #FONT_ORDER do
-    local key = FONT_ORDER[i]
-    if key == "eui" then
-      if FontPath(key) then out[#out + 1] = { key = key, name = ns.L["OPT_FONT_EUI"] } end
-    elseif FontPath(key) then
-      out[#out + 1] = { key = key, name = FONT_FILES[key].name }
-    end
-  end
-  for i = 1, #out do out[i].file = ShowFile(out[i].key, out[i].name) end
-  return out
-end
-
--- The font drawn: the saved one where it has a file here that loads
--- (FontPath), else the game's. The saved choice stays as it is, so a font
--- whose file arrives with the next restart is back without choosing it again.
-function Skin.GetFont()
-  local saved = GetProfile().pbFont
-  if (saved == "eui" or FONT_FILES[saved]) and FontPath(saved) then return saved end
-  return "game"
-end
+-- The font drawn: the saved one where it has a file here that loads,
+-- else the game's (ns.SkinFonts.Resolve).
+function Skin.GetFont() return Fonts.Resolve(GetProfile().pbFont) end
 
 function Skin.SetFont(key)
-  if key ~= "game" and key ~= "eui" and not FONT_FILES[key] then return end
+  if not Fonts.Valid(key) then return end
   GetProfile().pbFont = (key ~= "game") and key or nil
   Skin.ApplyFonts()
 end
+
+local TEXT_SCALES = { 0.90, 1.00, 1.10, 1.20 }
 
 -- The Text size is every look's (Theme.GetTextScale, the same saved
 -- pbTextScale); these answer it for this style's rows and titles.
@@ -1245,19 +1304,16 @@ function Skin.SetTextScale(value)
   if T and T.SetTextScale then T.SetTextScale(value) end
 end
 
-local OUTLINE_ORDER = { "shadow", "outline", "none" }
-local OUTLINE_NAME_KEY = { shadow = "OPT_OUTLINE_SHADOW", outline = "OPT_OUTLINE_OUTLINE", none = "OPT_OUTLINE_NONE" }
-
-function Skin.GetOutlineChoices() return Choices(OUTLINE_ORDER, OUTLINE_NAME_KEY) end
+function Skin.GetOutlineChoices() return Fonts.OutlineChoices() end
 
 function Skin.GetOutline()
   local saved = GetProfile().pbOutline
-  if OUTLINE_NAME_KEY[saved] then return saved end
+  if Fonts.IsOutline(saved) then return saved end
   return "shadow"
 end
 
 function Skin.SetOutline(key)
-  if not OUTLINE_NAME_KEY[key] then return end
+  if not Fonts.IsOutline(key) then return end
   GetProfile().pbOutline = (key ~= "shadow") and key or nil
   Skin.ApplyFonts()
 end
@@ -1278,7 +1334,7 @@ function Skin.GetFontFace()
   elseif outline == "none" then
     shadow = false
   end
-  return WEIGHT.Path(Skin.GetFont()), flags, shadow, Skin.GetTextScale()
+  return Fonts.Path(Skin.GetFont(), Skin.GetWeight()), flags, shadow, Skin.GetTextScale()
 end
 
 -- Window titles are set at a size of their own (15), so they are re-dressed
@@ -1305,8 +1361,8 @@ local function DressTitle(fs)
   if not base then return end
   -- The game's font: the face of the object it was set in, as it is now (a
   -- host's re-font of the game's fonts reaches the title with the copies).
-  -- At the chosen weight, as the copies (WEIGHT.Path).
-  local path = WEIGHT.Path(Skin.GetFont())
+  -- At the chosen weight, as the copies (ns.SkinFonts.Path).
+  local path = Fonts.Path(Skin.GetFont(), Skin.GetWeight())
   if not path then
     local object = base.object
     local now = object and type(object.GetFont) == "function" and object:GetFont() or nil
