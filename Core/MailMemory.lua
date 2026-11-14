@@ -3923,7 +3923,7 @@ local function Figures(mail, now, fs)
     if R and slots and not R.Shows("slots") then slots = nil end
     local mark = nil
     if mail.returned and not (R and not R.Shows("time")) then
-      mark = (R and R.ReturnedText) and R.ReturnedText(fs) or T.Colorize("textSecondary", L["STATUS_RETURNED"])
+      mark = (R and R.ReturnedText) and R.ReturnedText(fs, ns.Theme.ROW) or T.Colorize("textSecondary", L["STATUS_RETURNED"], ns.Theme.ROW)
     end
     return money, slots, mark, nil, nil, false, moneyKind == "cod" and money ~= nil
   end

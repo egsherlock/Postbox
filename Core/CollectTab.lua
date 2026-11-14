@@ -2878,11 +2878,15 @@ do
   -- marks are sized. Made once per mark height and ink; registered with the
   -- marked texts, so its measured width carries the arrow's (RV.FateExtra),
   -- again whenever those are let go.
-  local RET = { hex = false, clean = false, byH = {}, short = {}, w = {} }
-  function RV.ReturnedText(fs)
+  -- `ground`: "row" on a mail row whose look gives its rows inks of their
+  -- own (Theme.ROW; nil in every other look), kept apart from the list's.
+  local RET0 = { hex = false, clean = false, byH = {}, short = {}, w = {} }
+  local RET_ROW = { hex = false, clean = false, byH = {}, short = {}, w = {} }
+  function RV.ReturnedText(fs, ground)
     local T = Th()
-    local hex = T.InkHex("textSecondary")
-    local clean = type(T.InkOnLight) == "function" and T.InkOnLight("textSecondary") or false
+    local RET = ground and RET_ROW or RET0
+    local hex = T.InkHex("textSecondary", ground)
+    local clean = type(T.InkOnLight) == "function" and T.InkOnLight("textSecondary", ground) or false
     if hex ~= RET.hex or clean ~= RET.clean then
       for k in pairs(RET.byH) do RET.byH[k] = nil end
       for k in pairs(RET.short) do RET.short[k] = nil end
@@ -2894,9 +2898,9 @@ do
     local h = RV.MarkHeight(size)
     local full = RET.byH[h]
     if not full then
-      local r, g, b = T.Ink("textSecondary")
+      local r, g, b = T.Ink("textSecondary", ground)
       local esc, w = RV.FateEscape("back", h, r, g, b, clean)
-      local word = T.Colorize("textSecondary", L()["STATUS_RETURNED"])
+      local word = T.Colorize("textSecondary", L()["STATUS_RETURNED"], ground)
       full = esc and (esc .. word) or word
       RET.byH[h], RET.short[full], RET.w[full] = full, esc or false, w or 0
     end
@@ -9156,7 +9160,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   text.subject = HV.HistoryWhat(entry, RV.SaysCount(firstCount, layout))
   local coins = RV.RowCoins(layout, row.Money)
   if returned then
-    text.money = RV.ReturnedText(row.Money)
+    text.money = RV.ReturnedText(row.Money, T.ROW)
   else
     text.money = MoneyShown(kind, layout)
       and (sent and HV.SentMoney(entry, true, coins) or HV.HistoryMoney(entry, true, coins)) or nil
@@ -9762,7 +9766,7 @@ function HV.BuildHistoryList(panel, query)
       if entry.r then
         -- A mail returned: its mark where the money stands (HV.Returned),
         -- the arrow's width with it (RV.FateExtra, from MeasureWith).
-        local text = RV.ReturnedText(sample.ColMoney)
+        local text = RV.ReturnedText(sample.ColMoney, ns.Theme.ROW)
         local width = mw[text]
         if not width then width = HV.Keep(moneyW, text, MeasureWith(panel, sample.ColMoney, text)) end
         if width > colMoney then colMoney = width end
