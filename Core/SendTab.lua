@@ -3579,11 +3579,21 @@ end
 
 -- The first popup row that can be reached by EXTENDING `typed`, and the text
 -- that extension puts in the box. nil when no row extends what was typed.
+--
+-- nil, too, when what was typed is already a whole name the popup lists: "Bob"
+-- with Bob and Bob-Draenor both listed stays "Bob". Asked the way the list
+-- itself tells two rows apart: its address (a name on the player's own realm
+-- bare, whether or not the realm was typed) in the same lowercase the list
+-- dedups by, so suggestSeen, filled by the same pass, answers it.
 local function FirstInlineCompletion(typed)
   if typed == "" then return nil end
   local CS = Contacts()
   if type(CS) ~= "table" or type(CS.Fold) ~= "function" then return nil end
   local H = Helpers()
+
+  local R = ns.Recipients
+  local address = (type(R) == "table" and type(R.Address) == "function") and R.Address(typed) or ""
+  if suggestSeen[H.Lower(address ~= "" and address or typed)] then return nil end
 
   local folded = CS.Fold(typed)
   local count = H.CharCount(typed)
