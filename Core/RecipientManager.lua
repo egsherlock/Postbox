@@ -170,15 +170,17 @@ local NOTICE_POPUP = "POSTBOX_RM_NOTICE"
 -- A recipient belongs to every source that holds them -- your guildmate who
 -- is also a friend and whom you mailed yesterday is in all three -- so this
 -- order decides the order the row's Category names them in ("Guild,
--- Friends, Recent") and how the Category sort ranks it, by the first.
+-- Friends, Recently mailed") and how the Category sort ranks it, by the first.
 -- "Alt" beats "guild" beats "friend" because that is the order of how much
 -- the fact tells you about the person.
+-- Recent's word here is "Recently mailed", beside "Recently grouped": the
+-- column names the list, while its tile keeps the short "Recent".
 local BUCKETS = { "alts", "guild", "friends", "recent", "grouped" }
 local BUCKET_LABEL = {
   alts    = "CONTACT_ALTS",
   guild   = "CONTACT_GUILD",
   friends = "CONTACT_FRIENDS",
-  recent  = "CONTACT_RECENT",
+  recent  = "CONTACT_RECENTLY_MAILED",
   grouped = "CONTACT_RECENTLY_GROUPED",
 }
 local RANK_MANUAL = #BUCKETS + 1

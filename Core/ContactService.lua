@@ -516,7 +516,33 @@ local function RecentAllyName(entry)
   return JoinRealm(short, data.realmName or entry.realmName)
 end
 
+-- When each person was last grouped with, for the Send tab's All view, which
+-- lists the most recent first (CS.GroupedWhen). C_RecentAllies hands its
+-- rows back presorted by pin, online state, most recent interaction and then
+-- name (Blizzard_RecentAlliesTemplates), so the order alone does not say it:
+-- each row's newest interaction time does. `raw` is by the name as collected,
+-- `at` by address once RebuildSource has resolved it; both kept and reused.
+CS.GROUPED_WHEN = { raw = {}, at = {} }
+
+-- One RecentAllyData row -> its newest interaction's time, or nil.
+function CS.GROUPED_WHEN.Newest(entry)
+  local data = type(entry) == "table" and entry.interactionData
+  local list = type(data) == "table" and data.interactions
+  if type(list) ~= "table" then return nil end
+  local newest = nil
+  for i = 1, #list do
+    local t = type(list[i]) == "table" and list[i].timestamp or nil
+    if type(t) == "number" and not (issecretvalue and issecretvalue(t))
+       and (not newest or t > newest) then
+      newest = t
+    end
+  end
+  return newest
+end
+
 local function CollectRecentAllies(out)
+  local when = CS.GROUPED_WHEN.raw
+  for name in pairs(when) do when[name] = nil end
   local Query = type(C_RecentAllies) == "table" and C_RecentAllies.GetRecentAllies
   if type(Query) ~= "function" then return end
 
@@ -528,8 +554,17 @@ local function CollectRecentAllies(out)
 
   for i = 1, #allies do
     local name = RecentAllyName(allies[i])
-    if type(name) == "string" and name ~= "" then out[#out + 1] = name end
+    if type(name) == "string" and name ~= "" then
+      out[#out + 1] = name
+      when[name] = CS.GROUPED_WHEN.Newest(allies[i])
+    end
   end
+end
+
+-- A recently grouped person's address -> when they were last grouped with
+-- (the newest interaction's time), or nil where the client gave none.
+function CS.GroupedWhen(address)
+  return CS.GROUPED_WHEN.at[address]
 end
 
 -- Blizzard autocomplete -------------------------------------
@@ -727,7 +762,7 @@ local SOURCES = {
   { id = "guild",   collect = CollectGuild },
   -- C_RecentAllies: people the player recently grouped with. A source in its
   -- own right, named for what it is rather than for a faction.
-  { id = "grouped", collect = CollectRecentAllies },
+  { id = "grouped", collect = CollectRecentAllies, when = CS.GROUPED_WHEN },
 }
 
 local sources = {}
@@ -839,12 +874,19 @@ local function RebuildSource(def, state, now, h)
   -- `fold` is the DISPLAY sort key (see Collation, above). Both are computed
   -- here, once per entry, because both used to be computed inside a loop that
   -- ran per comparison or per keystroke.
+  -- A source that keeps a time per name (`when`: grouped) keeps it by address.
+  local when = def.when
+  if when then
+    for address in pairs(when.at) do when.at[address] = nil end
+  end
+
   local list, n = state.list, 0
   for i = 1, #raw do
     if n >= MAX_SOURCE_ENTRIES then break end
     local key, address = Resolve(raw[i], h)
     if key and not seen[key] then
       seen[key] = true
+      if when then when.at[address] = when.raw[raw[i]] end
       n = n + 1
       local entry = list[n]
       if entry then
@@ -1594,8 +1636,10 @@ end
 -- favorite, hidden mark or note is ever touched by a switch.
 --
 -- People recently grouped with (`grouped`) have a switch of their own, though
--- no tile: they are suggested as you type and listed in Manage Recipients
--- under All, and "Offer recent recipients" means only the people you mailed.
+-- no tile: they are suggested as you type, the five most recent are under
+-- Recently grouped in the Send tab's All view, and they are listed in Manage
+-- Recipients under All; "Offer recent recipients" means only the people you
+-- mailed.
 -------------------------------------------------------------
 
 -- bucket -> whether its names are offered. "alts", "guild", "friends",

@@ -2458,45 +2458,98 @@ local PICKER_EDGE_PAD = 6
 local RECENT_PICKER_MAX = 6
 
 -- Section order in the unfiltered view. Hoisted: rebuilding it per populate is
--- six tables and six locale lookups for a list that never changes.
+-- seven tables and seven locale lookups for a list that never changes.
 --
 -- THE ORDER IS THE CATEGORY BAR'S, deliberately: star, Recent, Alts, Friends,
 -- Guild. The bar above the picker and the recipient manager's bar already agree
 -- with each other; this used to agree with neither, and led with a heading
--- ("Recent alliance") that appeared on no bar at all.
+-- ("Recent alliance") that appeared on no bar at all. The one section with no
+-- tile, Recently grouped, stands above Guild, nearer the people you mailed.
+--
+-- The headings say which list each is: the people you mailed are "Recently
+-- mailed" here, beside "Recently grouped", while the tile keeps the short
+-- "Recent" (headings show only when the view holds more than one section).
 --
 --   `ordered`  the source arrives in a meaningful order of its own and must NOT
---              be alphabetised. Mail history is the only one.
+--              be alphabetised. Mail history is one; Recently grouped arrives
+--              most recent first from its own pick.
 --   `max`      a cap applied in the ALL view only (see the populate loop).
+--   `picked`   the section's names come from ST.Grouped.Pick, not straight
+--              from the service's list, and only in the ALL view.
 --
--- Two of the service's eight lists deliberately get no section:
---
---   `grouped`  C_RecentAllies. Kept as a source because those people are
---              mailable and it costs one pcall per mailbox open, and it feeds
---              the type-ahead where a half-remembered name from last night's
---              dungeon is genuinely useful. But it is not a list anybody
---              BROWSES to address a letter, and as a second heading under
---              Recent it was a group reachable no other way.
---   `other`    the client's own autocomplete leftovers, which are always empty
---              for the empty query this picker asks with.
+-- `grouped` is C_RecentAllies: the people you grouped with, offered while
+-- Options > Send tab > Offer recently grouped is on. Not a list anybody
+-- browses whole, so the ALL view shows the five most recently grouped
+-- (ST.Grouped, under Recent's six) and leaves out anyone it already lists
+-- under Favorites, Recently mailed, Alts, Friends or Guild; the full list is
+-- the type-ahead's and Manage Recipients'. The client's own autocomplete
+-- leftovers (`other`) get no section: they are always empty for the empty
+-- query this picker asks with.
 --
 -- `manual` DOES get one: those are recipients added by hand in the manager and
 -- since un-favourited, so no live source knows about them and without a section
 -- here they are reachable only from the other window.
 --
--- Membership across the service's lists is no longer exclusive, so the All view
--- can show a guildmate you mailed yesterday under both Recent and Guild. That
--- is correct and left alone: Recent is a six-name shortcut, Guild is the
--- roster, and a person legitimately answers to both. The cap is what keeps the
--- repetition to at most six names.
+-- Membership across the service's lists is not exclusive, so the All view can
+-- show a guildmate you mailed yesterday under both Recently mailed and Guild,
+-- and a favorite under Favorites and its own list. That is correct and left
+-- alone: Recent is a six-name shortcut, Guild is the roster, and a person
+-- legitimately answers to both. The cap is what keeps the repetition to at
+-- most six names. Recently grouped alone repeats no one: its five are the
+-- people the view does not already offer.
 local PICKER_SECTIONS = {
   { key = "favorites", titleKey = "CONTACT_FAVORITES" },
-  { key = "recent",    titleKey = "CONTACT_RECENT", ordered = true, max = RECENT_PICKER_MAX },
+  { key = "recent",    titleKey = "CONTACT_RECENTLY_MAILED", ordered = true, max = RECENT_PICKER_MAX },
   { key = "alts",      titleKey = "CONTACT_ALTS" },
   { key = "friends",   titleKey = "CONTACT_FRIENDS" },
+  { key = "grouped",   titleKey = "CONTACT_RECENTLY_GROUPED", ordered = true, picked = true },
   { key = "guild",     titleKey = "CONTACT_GUILD" },
   { key = "manual",    titleKey = "CONTACT_MANUAL" },
 }
+
+-- The ALL view's Recently grouped section: at most MAX of the people the
+-- service offers as recently grouped (hidden names and a switched-off source
+-- are already out), the most recently grouped first (CS.GroupedWhen; the
+-- list's own A to Z on a tie, and after them anyone the client gave no time),
+-- leaving out every name the view lists in another section. The two kept
+-- tables are filled in place: a populate builds none. `listed` holds every
+-- name of the other sections, a guild's roster included, and only while
+-- anyone is recently grouped.
+ST.Grouped = { MAX = 5, listed = {}, out = {} }
+
+function ST.Grouped.Pick(results)
+  local G = ST.Grouped
+  local out, listed = G.out, G.listed
+  for i = #out, 1, -1 do out[i] = nil end
+  local grouped = results.grouped
+  if not grouped or #grouped == 0 then return out end
+  for address in pairs(listed) do listed[address] = nil end
+  for i = 1, #PICKER_SECTIONS do
+    local section = PICKER_SECTIONS[i]
+    local list = not section.picked and results[section.key]
+    if list then
+      local n = #list
+      if section.max and section.max < n then n = section.max end
+      for j = 1, n do listed[list[j]] = true end
+    end
+  end
+  local CS = Contacts()
+  local When = type(CS) == "table" and CS.GroupedWhen or nil
+  for _ = 1, G.MAX do
+    local best, bestWhen = nil, nil
+    for j = 1, #grouped do
+      local address = grouped[j]
+      if not listed[address] then
+        local t = When and When(address) or -1
+        if not best or t > bestWhen then best, bestWhen = address, t end
+      end
+    end
+    if not best then break end
+    out[#out + 1] = best
+    listed[best] = true
+  end
+  return out
+end
 
 -- WHICH TILES HAVE NOTHING BEHIND THEM.
 --
@@ -2643,8 +2696,9 @@ end
 
 -- The sections whose hidden names the foot gathers: the picker's own but
 -- Favorites, which holds no hidden name (hiding clears the star) and
--- records none that was one.
-ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "manual" }
+-- records none that was one. Recently grouped has no tile, so its hidden
+-- names join the foot of All (and of Favorites, which gathers All's).
+ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "grouped", "manual" }
 
 -- The typing list's Hidden foot (15c): the one options table its pass asks
 -- with, kept, so a keystroke builds none; and how many hidden names it lists
@@ -3198,7 +3252,12 @@ local function CollectSections(results, filter)
   local count = 0
   for i = 1, #PICKER_SECTIONS do
     local section = PICKER_SECTIONS[i]
-    local entries = (filter == "all" or filter == section.key) and results[section.key] or nil
+    local entries
+    if section.picked then
+      entries = filter == "all" and ST.Grouped.Pick(results) or nil
+    else
+      entries = (filter == "all" or filter == section.key) and results[section.key] or nil
+    end
     if entries and #entries > 0 then
       count = count + 1
       local slot = visibleSections[count]

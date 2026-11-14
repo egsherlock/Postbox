@@ -1236,6 +1236,9 @@ L["SEND_RULE_DELIVERY_HOUR"]   = "Mail with attachments usually arrives in about
 -- under Friends now, the leftovers are not offered as a category at all, and
 -- what is left is named for what it is.
 L["CONTACT_RECENTLY_GROUPED"]  = "Recently grouped"
+-- The people you mailed, where a heading or a column says which list it is
+-- (the strip's All view, Manage Recipients' Category); the tiles say Recent.
+L["CONTACT_RECENTLY_MAILED"]   = "Recently mailed"
 -- Manually added in the recipient manager. Only appears once the player has
 -- un-favourited such a name, since no live source knows about it.
 L["CONTACT_MANUAL"]            = "Added by you"
@@ -1778,6 +1781,7 @@ if GetLocale() == "frFR" then
 
   -- Categories du selecteur de destinataires
   L["CONTACT_RECENTLY_GROUPED"]  = "Groupe récemment"
+  L["CONTACT_RECENTLY_MAILED"]   = "Écrit récemment"
   L["CONTACT_MANUAL"]            = "Ajouté par toi"
   L["CONTACT_GUILD"]             = "Guilde"
   L["CONTACT_ALTS"]              = "Alts"
@@ -3034,6 +3038,7 @@ if GetLocale() == "deDE" then
   L["SEND_RULE_DELIVERY_HOUR"]   = "Post mit Anlagen kommt meist nach etwa einer Stunde an."
 
   L["CONTACT_RECENTLY_GROUPED"]  = "Kürzlich gruppiert"
+  L["CONTACT_RECENTLY_MAILED"]   = "Letzte Empfänger"
   L["CONTACT_MANUAL"]            = "Von dir hinzugefügt"
   L["CONTACT_GUILD"]             = "Gilde"
   L["CONTACT_ALTS"]              = "Alts"
@@ -4291,6 +4296,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["SEND_RULE_DELIVERY_HOUR"]   = "El correo con adjuntos suele llegar en aproximadamente una hora."
 
   L["CONTACT_RECENTLY_GROUPED"]  = "Agrupado hace poco"
+  L["CONTACT_RECENTLY_MAILED"]   = "Escrito hace poco"
   L["CONTACT_MANUAL"]            = "Añadido por ti"
   L["CONTACT_GUILD"]             = "Hermandad"
   L["CONTACT_ALTS"]              = "Alts"
@@ -5582,6 +5588,7 @@ L["SEND_RULE_DELIVERY_HOUR"]   = "Письмо с вложениями обыч�
 
 -- Категории окна получателей
 L["CONTACT_RECENTLY_GROUPED"]  = "Недавно в группе"
+L["CONTACT_RECENTLY_MAILED"]   = "Недавно писали"
 L["CONTACT_MANUAL"]            = "Добавлено вами"
 L["CONTACT_GUILD"]             = "Гильдия"
 L["CONTACT_ALTS"]              = "Альты"
@@ -7613,6 +7620,7 @@ if GetLocale() == "zhCN" then
   L["SEND_RULE_DELIVERY_OWN"]  = "你的其他角色会立即收到邮件。"
   L["SEND_RULE_DELIVERY_HOUR"] = "带附件的邮件通常约一小时后到达。"
   L["CONTACT_RECENTLY_GROUPED"] = "最近组队"
+  L["CONTACT_RECENTLY_MAILED"]  = "最近寄信"
   L["CONTACT_MANUAL"]          = "你添加的"
   L["CONTACT_GUILD"]           = "公会"
   L["CONTACT_ALTS"]            = "小号"
@@ -8847,6 +8855,7 @@ if GetLocale() == "zhTW" then
   L["SEND_RULE_DELIVERY_OWN"]  = "你的其他角色會立即收到郵件。"
   L["SEND_RULE_DELIVERY_HOUR"] = "帶附件的郵件通常約一小時後到達。"
   L["CONTACT_RECENTLY_GROUPED"] = "最近組隊"
+  L["CONTACT_RECENTLY_MAILED"]  = "最近寄信"
   L["CONTACT_MANUAL"]          = "你新增的"
   L["CONTACT_GUILD"]           = "公會"
   L["CONTACT_ALTS"]            = "分身"
