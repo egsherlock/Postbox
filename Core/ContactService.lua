@@ -1709,8 +1709,11 @@ end
 --         `hidden` (each once, in the order the sources give them), so its
 --         foot can offer them again. The one pass that leaves them out
 --         collects them; nothing more is walked.
+--         { ranked = n } -- the Send tab's typing list: the best `n` of every
+--         name that matches, once each, in `ranked`, by the rule in Rank
+--         (below): Favorites, then the people you mail, then everyone else.
 --
--- Returns eight array-valued keys (nine with hiddenMatches). Each one means exactly what it says, and a
+-- Returns eight array-valued keys (more with hiddenMatches and ranked). Each one means exactly what it says, and a
 -- recipient appears in EVERY key that describes them:
 --
 --   favorites  the player's own curated list, from stored state
@@ -1737,6 +1740,104 @@ end
 -- Recipients.Key on an entry always yields that recipient's key.
 CS.INCLUDE_OFF = true
 
+-------------------------------------------------------------
+-- The typing list's order (opts.ranked)
+--
+-- One line: Favorites first; then the people you mail, most mails first and
+-- the most recently mailed first on a tie; then everyone else in the lists'
+-- own order (Alts, Guild, Friends, Recently grouped, Added by you, the game's
+-- leftovers). In each of the three, names that START with what was typed
+-- come before names that only contain it.
+--
+-- "The people you mail": a name in Recent (the last 50 mailed), or one with
+-- Sent records (Mail Memory, 2d) on any character, within History's days. Its
+-- count is those records; a name in Recent with none left counts 0 and keeps
+-- its place in Recent. With History off every count is 0, so the mailed are
+-- simply Recent's order, newest first. With Recent switched off nobody is
+-- ranked as mailed: the counts are not read.
+--
+-- Cost: the counts are built from the records once per change of them
+-- (MM.sentGen, or the record's root replaced), never per keystroke. A
+-- keystroke looks each match up in them and keeps the best `n` in reused
+-- arrays, so it builds no table per name.
+-------------------------------------------------------------
+local Rank = {
+  -- lowercase address -> Sent records within History's days, and the newest
+  -- one's time; `memo` is s -> lowercase address (false: none), kept.
+  count = {}, last = {}, memo = {}, gen = -1, root = false,
+  -- The best `n` so far, best first, as parallel arrays.
+  addr = {}, low = {}, group = {}, start = {}, n = {}, t = {}, pos = {}, bucket = {}, seq = {},
+  size = 0,
+}
+
+-- The bucket's place in the lists' own order (SendTab's SUGGEST_ORDER).
+Rank.BUCKET = { favorites = 1, recent = 2, alts = 3, guild = 4, friends = 5, grouped = 6, manual = 7, other = 8 }
+
+function Rank.AddressOf(s)
+  local a = Address(s)
+  if a == "" then return false end
+  return Helpers().Lower(a)
+end
+
+-- The counts, built again only when the records moved.
+function Rank.Counts()
+  local MM = ns.MailMemory
+  if type(MM) ~= "table" or type(MM.MailedInto) ~= "function" then return nil end
+  local root = ns.Store and ns.Store.Get and ns.Store.Get("mailSent") or false
+  if Rank.gen ~= MM.sentGen or Rank.root ~= root then
+    Rank.gen, Rank.root = MM.sentGen, root
+    MM.MailedInto(Rank.count, Rank.last, Rank.AddressOf, Rank.memo)
+  end
+  return Rank.count, Rank.last
+end
+
+-- Whether kept entry `i` ranks before candidate `c` (the args, as below).
+function Rank.Before(i, group, start, n, t, pos, bucket, seq)
+  local g = Rank.group[i]
+  if g ~= group then return g < group end
+  local s = Rank.start[i]
+  if s ~= start then return s end
+  if group == 2 then
+    if Rank.n[i] ~= n then return Rank.n[i] > n end
+    if Rank.t[i] ~= t then return Rank.t[i] > t end
+    if Rank.pos[i] ~= pos then return Rank.pos[i] < pos end
+  end
+  if Rank.bucket[i] ~= bucket then return Rank.bucket[i] < bucket end
+  return Rank.seq[i] < seq
+end
+
+-- One match: `low` its lowercase address. Kept when it is among the best
+-- `cap`; a name already kept keeps whichever of its two ranks is better.
+function Rank.Consider(cap, address, low, group, start, n, t, pos, bucket, seq)
+  local size = Rank.size
+  -- Worse than the last kept: out, the common case on a long roster. A name
+  -- already kept is kept above it, so there is nothing to merge.
+  if size >= cap and Rank.Before(size, group, start, n, t, pos, bucket, seq) then return end
+  for i = 1, size do
+    if Rank.low[i] == low then
+      if Rank.Before(i, group, start, n, t, pos, bucket, seq) then return end
+      -- Better here: taken out, and placed again below.
+      for j = i, size - 1 do
+        Rank.addr[j], Rank.low[j], Rank.group[j], Rank.start[j] = Rank.addr[j + 1], Rank.low[j + 1], Rank.group[j + 1], Rank.start[j + 1]
+        Rank.n[j], Rank.t[j], Rank.pos[j], Rank.bucket[j], Rank.seq[j] = Rank.n[j + 1], Rank.t[j + 1], Rank.pos[j + 1], Rank.bucket[j + 1], Rank.seq[j + 1]
+      end
+      size = size - 1
+      break
+    end
+  end
+  local at = size + 1
+  while at > 1 and not Rank.Before(at - 1, group, start, n, t, pos, bucket, seq) do at = at - 1 end
+  if at > cap then Rank.size = size return end
+  local last = size < cap and size + 1 or cap
+  for j = last, at + 1, -1 do
+    Rank.addr[j], Rank.low[j], Rank.group[j], Rank.start[j] = Rank.addr[j - 1], Rank.low[j - 1], Rank.group[j - 1], Rank.start[j - 1]
+    Rank.n[j], Rank.t[j], Rank.pos[j], Rank.bucket[j], Rank.seq[j] = Rank.n[j - 1], Rank.t[j - 1], Rank.pos[j - 1], Rank.bucket[j - 1], Rank.seq[j - 1]
+  end
+  Rank.addr[at], Rank.low[at], Rank.group[at], Rank.start[at] = address, low, group, start
+  Rank.n[at], Rank.t[at], Rank.pos[at], Rank.bucket[at], Rank.seq[at] = n, t, pos, bucket, seq
+  Rank.size = last
+end
+
 function CS.BuildSuggestions(text, opts)
   local h = Helpers()
   local clean = h.NormalizeText(text)
@@ -1759,6 +1860,28 @@ function CS.BuildSuggestions(text, opts)
     if hiddenSeen[key] then return end
     hiddenSeen[key] = true
     hiddenOut[#hiddenOut + 1] = address
+  end
+
+  -- The ranked best (opts.ranked, Rank above): every match is offered to it
+  -- as it is found, with its lowercase address, its list (`bucket`), its
+  -- place in that list (`seq`; in Recent, its recency) and whether it starts
+  -- with what was typed.
+  local rankCap = type(opts) == "table" and tonumber(opts.ranked) or nil
+  local rCount, rLast = nil, nil
+  if rankCap then Rank.size = 0 end
+  local function Offer(address, low, bucket, seq, start)
+    local group, n, t, pos = 3, 0, 0, math.huge
+    if bucket == 1 then
+      group = 1
+    else
+      n = rCount and rCount[low] or 0
+      if bucket == 2 then pos = seq end
+      if n > 0 or bucket == 2 then
+        group = 2
+        t = rLast and rLast[low] or 0
+      end
+    end
+    Rank.Consider(rankCap, address, low, group, start and true or false, n, t, pos, bucket, seq)
   end
 
   EnsureSources()
@@ -1823,12 +1946,13 @@ function CS.BuildSuggestions(text, opts)
   -- Prefix matches lead, then substring matches. That is what a player typing a
   -- name expects and what Blizzard's own autocomplete does; a pure substring
   -- match buries the obvious answer behind whoever happens to sort first.
-  local function Emit(dest, source)
+  local function Emit(dest, source, bucket)
     if query == "" then
       for i = 1, #source do
         local e = source[i]
         if not IsHidden(e.key) then
           dest[#dest + 1] = e.address
+          if rankCap then Offer(e.address, e.lower, bucket, i, true) end
         elseif hiddenOut then
           NoteHidden(e.key, e.address)
         end
@@ -1847,9 +1971,11 @@ function CS.BuildSuggestions(text, opts)
           if addressAt or keyAt then NoteHidden(e.key, e.address) end
         elseif addressAt == 1 or keyAt == 1 then
           dest[#dest + 1] = e.address
+          if rankCap then Offer(e.address, e.lower, bucket, i, true) end
         elseif addressAt or keyAt then
           rest = rest or {}
           rest[#rest + 1] = e.address
+          if rankCap then Offer(e.address, e.lower, bucket, i, false) end
         end
       end
     end
@@ -1864,11 +1990,14 @@ function CS.BuildSuggestions(text, opts)
   -- whose source is off is never taken there for a name no list offers.
   ReadOffered()
   local all = (type(opts) == "table" and opts.includeOff) and true or false
-  if all or offered.recent then Emit(results.recent, sources.recent.list) end
-  if all or offered.alts then Emit(results.alts, sources.alts.list) end
-  if all or offered.friends then Emit(results.friends, sources.friends.list) end
-  if all or offered.guild then Emit(results.guild, sources.guild.list) end
-  if all or offered.grouped then Emit(results.grouped, sources.grouped.list) end
+  -- The counts only while Recent is offered (Rank).
+  if rankCap and offered.recent then rCount, rLast = Rank.Counts() end
+  local B = Rank.BUCKET
+  if all or offered.recent then Emit(results.recent, sources.recent.list, B.recent) end
+  if all or offered.alts then Emit(results.alts, sources.alts.list, B.alts) end
+  if all or offered.friends then Emit(results.friends, sources.friends.list, B.friends) end
+  if all or offered.guild then Emit(results.guild, sources.guild.list, B.guild) end
+  if all or offered.grouped then Emit(results.grouped, sources.grouped.list, B.grouped) end
 
   -- Whatever the client itself would complete, for names no cached source
   -- claimed. Only for a typed query: that is this API's documented use, and it
@@ -1951,6 +2080,22 @@ function CS.BuildSuggestions(text, opts)
       if la == lb then return a < b end
       return la < lb
     end)
+  end
+
+  if rankCap then
+    -- Favorites, Added by you and the game's leftovers, in their lists' A to Z
+    -- (the leftovers as the client gave them), offered as the sources' were.
+    for k = 1, 3 do
+      local list = (k == 1 and results.favorites) or (k == 2 and results.manual) or results.other
+      local bucket = (k == 1 and Rank.BUCKET.favorites) or (k == 2 and Rank.BUCKET.manual) or Rank.BUCKET.other
+      for i = 1, #list do
+        local low = h.Lower(list[i])
+        Offer(list[i], low, bucket, i, query == "" or low:find(query, 1, true) == 1)
+      end
+    end
+    local ranked = {}
+    for i = 1, Rank.size do ranked[i] = Rank.addr[i] end
+    results.ranked = ranked
   end
 
   return results

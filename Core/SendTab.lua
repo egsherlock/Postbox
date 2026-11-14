@@ -2649,7 +2649,7 @@ ST.Curate.HIDDEN_FROM = { "recent", "alts", "friends", "guild", "manual" }
 -- The typing list's Hidden foot (15c): the one options table its pass asks
 -- with, kept, so a keystroke builds none; and how many hidden names it lists
 -- under the foot before "See all" hands the rest to Manage Recipients.
-ST.Curate.SUGGEST_OPTS = { hiddenMatches = true }
+ST.Curate.SUGGEST_OPTS = { hiddenMatches = true, ranked = K.MAX_SUGGESTIONS }
 ST.Curate.SUGGEST_HIDDEN_MAX = 3
 
 -- picker, filter -> the hidden names of the sections the filter puts on
@@ -3458,6 +3458,15 @@ local SUGGEST_DEBOUNCE = 0.15
 -- Long enough that a click on a suggestion lands before the popup goes away.
 local SUGGEST_GRACE = 0.15
 
+-- THE ORDER, in one line: Favorites first; then the people you mail, most
+-- mails first and the most recently mailed first on a tie; then everyone
+-- else in the order below. In each of the three, names that start with what
+-- was typed come before names that only contain it. ContactService ranks
+-- every match by it before the cut to eight (BuildSuggestions' `ranked`,
+-- its Rank section, which says where the counts come from); this list is
+-- that rule's last step, the order among everyone else, and the order the
+-- lists fall back to without it.
+--
 -- Favourites lead: they are stored state, so a favourite who has left the guild
 -- (and is in no live source any more) is still completable. Then the live
 -- sources, most-likely first.
@@ -3854,9 +3863,12 @@ local function RefreshSuggestions(panel)
   -- repeat a recipient (favourites, alts) hand back the identical string, so
   -- the only thing left to reconcile is casing. The foundation's fold, not
   -- string.lower: see Lib/Util.lua.
+  -- The ranked best, when the service gave it (the note above SUGGEST_ORDER),
+  -- already one per person and in order; the lists in SUGGEST_ORDER otherwise.
   local lower = H.Lower
-  for i = 1, #SUGGEST_ORDER do
-    local bucket = results[SUGGEST_ORDER[i]]
+  local ranked = results.ranked
+  for i = 1, ranked and 1 or #SUGGEST_ORDER do
+    local bucket = ranked or results[SUGGEST_ORDER[i]]
     if bucket then
       for j = 1, #bucket do
         local name = bucket[j]

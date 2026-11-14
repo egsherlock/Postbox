@@ -1907,6 +1907,48 @@ do
     return into
   end
 
+  -- How often each recipient was mailed, for the order of the Send tab's
+  -- typing list (ContactService, Rank): `count` and `last` emptied, then
+  -- filled with name -> the Sent records any character holds for that
+  -- recipient within History's days, and the newest one's `t`; the name is
+  -- `nameOf(s)` (false: none), turned once per `s` and kept in `memo`. The
+  -- caller builds it once per change of the records (MM.sentGen), never per
+  -- keystroke. Read only. -> count, last; both empty while History is off.
+  function MM.MailedInto(count, last, nameOf, memo)
+    for k in pairs(count) do count[k] = nil end
+    for k in pairs(last) do last[k] = nil end
+    local keep = HistoryKeep()
+    if keep <= 0 then return count, last end
+    local root = ns.Store and ns.Store.Get and ns.Store.Get("mailSent")
+    if type(root) ~= "table" then return count, last end
+    local cutoff = time() - keep
+    for _, byRealm in pairs(root) do
+      if type(byRealm) == "table" then
+        for _, list in pairs(byRealm) do
+          if type(list) == "table" then
+            for i = 1, #list do
+              local e = list[i]
+              local s = type(e) == "table" and e.s
+              local t = type(s) == "string" and tonumber(e.t)
+              if t and t >= cutoff then
+                local name = memo[s]
+                if name == nil then
+                  name = nameOf(s)
+                  memo[s] = name
+                end
+                if name then
+                  count[name] = (count[name] or 0) + 1
+                  if (last[name] or 0) < t then last[name] = t end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    return count, last
+  end
+
   -- Mail sent to the player's own characters, by the character it went
   -- to: what that character's box holds that its last snapshot cannot
   -- know. Read from the records above, every character's (several may
