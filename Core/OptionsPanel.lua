@@ -4998,10 +4998,17 @@ do
       get = src.GetNormalFontObject
     end
     local object = get and named(get(src)) or nil
-    -- A skin that inks a select's value apart from the buttons' words (the
-    -- Blizzard style's white value) keeps the words' own font at rest.
-    if src.__pbCaptionFont and btn:IsEnabled() and not btn.__pbPointed then
-      object = named(src.__pbCaptionFont) or object
+    -- A skin that draws a select's value apart from the buttons' words (the
+    -- Blizzard style's white value, a size smaller) keeps the words' own
+    -- fonts: at rest, and where it names them, pointed at and grayed.
+    if src.__pbCaptionFont then
+      if not btn:IsEnabled() then
+        object = (src.__pbCaptionOff and named(src.__pbCaptionOff)) or object
+      elseif btn.__pbPointed then
+        object = (src.__pbCaptionLit and named(src.__pbCaptionLit)) or object
+      else
+        object = named(src.__pbCaptionFont) or object
+      end
     end
     if not object then object = named(src:GetNormalFontObject()) end
     return object or named((T.FontObject("segment")))

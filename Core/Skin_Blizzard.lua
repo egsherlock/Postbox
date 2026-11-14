@@ -2977,11 +2977,36 @@ do
     local lit = T and T.NamedFont and type(toggle.GetHighlightFontObject) == "function"
       and T.NamedFont(toggle:GetHighlightFontObject()) or nil
     local name = lit and type(lit.GetName) == "function" and lit:GetName() or nil
-    if name and name:find("^PostboxEvenFont") and type(toggle.SetNormalFontObject) == "function" then
-      -- The options' push buttons take their words' font from a select's
-      -- (OptionsPanel's CAPTION.Font): at rest they keep the gold one.
-      toggle.__pbCaptionFont = toggle:GetNormalFontObject()
-      toggle:SetNormalFontObject(lit)
+    -- A select whose items are drawn in their own faces (the Font row)
+    -- wears its chosen face's font (Dropdown's FACE), made from these.
+    local faced = name and name:find("^PostboxFaceFont") ~= nil
+    if name and (faced or name:find("^PostboxEvenFont")) and type(toggle.SetNormalFontObject) == "function" then
+      -- The value a size smaller than the words around it, as the game's
+      -- own dropdowns write theirs: the game's small white font (and its
+      -- gray for a grayed box), in the copies every text wears, so it
+      -- follows the Font, Text weight, Text style and Text size; the size
+      -- the open list's rows already have. The same at rest and under the
+      -- pointer; a faced select's chosen face is made from it in turn.
+      local hostFont, named = T.HostFont, T.NamedFont
+      local small = hostFont and _G.GameFontHighlightSmall and named(hostFont(_G.GameFontHighlightSmall))
+      local off = hostFont and _G.GameFontDisableSmall and named(hostFont(_G.GameFontDisableSmall))
+      local ok = small and type(toggle.SetDisabledFontObject) == "function"
+      if not faced then
+        -- The options' push buttons take their words' fonts from a select's
+        -- (OptionsPanel's CAPTION.Font): they keep the toggle's own three.
+        toggle.__pbCaptionFont = toggle:GetNormalFontObject()
+        if ok then toggle.__pbCaptionLit, toggle.__pbCaptionOff = lit, toggle:GetDisabledFontObject() end
+      end
+      if ok then
+        toggle:SetNormalFontObject(small)
+        toggle:SetHighlightFontObject(small)
+        if off then toggle:SetDisabledFontObject(off) end
+        -- Fitted again in its new size (a value centred keeps its place).
+        if type(toggle.__pbRefit) == "function" then toggle.__pbRefit() end
+      elseif not faced then
+        -- Where the client has no small font: the even copy, white.
+        toggle:SetNormalFontObject(lit)
+      end
     end
     -- Its place: at the box's left (after a swatch where it has one, or the
     -- chosen item's art where it stands where a swatch would: Dropdown's
