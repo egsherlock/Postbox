@@ -532,22 +532,44 @@ local function Sinks(c)
   return true
 end
 
--- The bevel on the panel's own BORDER layer, over its dark ground and its
--- grain, under everything the panel holds; the 1px edge it replaces faded.
+-- The bevel over everything the panel holds, on a frame of its own
+-- BEVEL_LEVEL levels over the panel; the 1px edge it replaces faded.
+--
+-- Postbox's cards and lists were built for that 1px edge: a card's ground,
+-- its title and foot strips, the options rows' lines, the 7-day strip's
+-- shade and the tiles' art start a unit in from the edge, on frames over
+-- the panel. Under them, a bevel laid on the panel itself was covered two
+-- units deep where they run to the edge, and lighter there than elsewhere,
+-- and their square corners filled its cut ones. Over them, the bevel is
+-- whole on every card: its 3 units of rim and the corners' cut are opaque
+-- in the game's art (both clients), so whatever runs under the rim is
+-- hidden by it, and the corners' inner pixels, clear in the art, show the
+-- card as the game's insets do. Nothing on the card moves or changes size.
+--
+-- Ten levels: over the deepest content that reaches a rim (a drawing's
+-- button in the options' preview, six levels over its pane), under the
+-- options' Find mark (twelve over its row's list) and every popup a panel
+-- holds (twenty and more over it), which stand over the rim as they did.
+-- The holder takes no pointer, so every click reaches what is under it.
+local BEVEL_LEVEL = 10
 local function SinkPanel(c)
   if c.__pbBlizzInset then return end
   c.__pbBlizzInset = true
+  local holder = CreateFrame("Frame", nil, c)
+  holder:SetAllPoints(c)
+  holder:SetFrameLevel(c:GetFrameLevel() + BEVEL_LEVEL)
+  c.__pbBlizzBevel = holder
   local corners = {}
   for i = 1, #INSET do
     local spec = INSET[i]
-    local t = c:CreateTexture(nil, "BORDER", nil, 7)
+    local t = holder:CreateTexture(nil, "BORDER", nil, 7)
     if not Atlas(t, spec.atlas, true) then t:Hide() end
     t:SetPoint(spec.point, c, spec.point, 0, 0)
     corners[spec.key] = t
   end
   for i = 1, #INSET_EDGES do
     local spec = INSET_EDGES[i]
-    local t = c:CreateTexture(nil, "BORDER", nil, 7)
+    local t = holder:CreateTexture(nil, "BORDER", nil, 7)
     if Atlas(t, spec.atlas, true) then
       if spec.across then t:SetHorizTile(true) else t:SetVertTile(true) end
       t:SetPoint(spec[1], corners[spec[2]], spec[3], 0, 0)
