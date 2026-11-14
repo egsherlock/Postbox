@@ -3811,6 +3811,7 @@ do
     local T = ns.Theme
     if not T or T.RowGround then return end
     T.RowGround = Skin.RowGround
+    T.ListGround = Skin.ListGround
     -- The game's UI scale or the screen moved: the papered rows laid again
     -- on their new pixels (Skin.ApplyScale does it for the window scale).
     if type(CreateFrame) == "function" then
@@ -3947,12 +3948,127 @@ do
 
   -- Every papered row laid again (a window-scale or UI-scale change, which
   -- binds nothing by itself).
+  local LayBands
+  local lists = {}
   function R.Relay()
     screenH = nil
     for i = 1, #papered do
       local row = papered[i]
       if row.__pbPaperOn then LayPaper(row, row.__pbPaperGap, true) end
     end
+    for i = 1, #lists do LayBands(lists[i], true) end
+  end
+
+  -- The empty part of a list under its last mail wears the paper too, as
+  -- the game's mailbox does: empty rows, each its own band of the page at
+  -- the rows' height and pitch, the band one step further down the page
+  -- than the last row's, with the rows' gap between them (LayPaper's whole
+  -- pixels), down to the list's foot, where the scroll frame's clip cuts
+  -- the last one. Plain textures on the list's scroll child, made the first
+  -- time a list needs that many and reused; laid only when the list's
+  -- count, pitch, view height, scale or the Row texture moved (one compare
+  -- of a few numbers a pass, so a scroll tick costs nothing more). A list
+  -- that scrolls has no empty part. The list's empty-state words stand on
+  -- the paper in its ink.
+  -- `L`: scroll, child, n (rows listed), stride, height (a row's), rise
+  -- (units the rows after the bar over finished mail stand higher), gap,
+  -- empty (the words), bands, shown, and the last pass's key.
+  local function Paint(L, on)
+    local empty = L.empty
+    local key = on and R.mode or false
+    if not empty or L.inked == key then return end
+    L.inked = key
+    local T = ns.Theme
+    local roles = T and T.TextRoles
+    local token = roles and roles.secondary and roles.secondary.color or "textSecondary"
+    T.SetColor(empty, token, on and "row" or nil)
+    Shadow(empty, on and R.light)
+  end
+
+  LayBands = function(L, force)
+    local mode = R.mode
+    local on = (mode == "light" or mode == "dark") and true or false
+    local scroll, child = L.scroll, L.child
+    local viewport = scroll:GetHeight() or 0
+    local s = child:GetEffectiveScale()
+    local h = ScreenH()
+    local top = L.n * L.stride - L.rise
+    if L.n == 0 then top = 0 end
+    -- Nothing to lay where the rows fill the view (or the paper is off and
+    -- nothing is shown); else only when something it is laid from moved.
+    local need = on and top < viewport
+    if not force and L.on == on and L.top == top and L.vp == viewport and L.s == s and L.h == h
+        and L.mode == mode and L.st == L.stride and L.ht == L.height and (need or L.shown == 0) then
+      return
+    end
+    L.on, L.top, L.vp, L.s, L.h, L.mode, L.st, L.ht = on, top, viewport, s, h, mode, L.stride, L.height
+    Paint(L, on)
+    local bands, shown = L.bands, 0
+    if need then
+      local stride, rowH = L.stride, L.height
+      local k = (type(s) == "number" and s > 0) and s * h / 768 or 0
+      local tall = stride
+      local gap = stride - rowH
+      if gap > 0 and k > 0 then
+        local G = floor(gap * k + 1e-6)
+        if G < 1 then G = 1 end
+        tall = stride - G / k
+      end
+      local band = floor(rowH * BAND_K + 0.5)
+      if band < BAND_MIN then band = BAND_MIN end
+      local span = (PY1 - PY0) - band
+      local v = (mode == "dark") and DARK_V or 1
+      local pos = L.n
+      while top < viewport do
+        shown = shown + 1
+        pos = pos + 1
+        local t = bands[shown]
+        if not t then
+          t = child:CreateTexture(nil, "BACKGROUND", nil, -2)
+          t:SetTexture(PAPER)
+          bands[shown] = t
+        end
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -top)
+        t:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -top)
+        t:SetHeight(tall)
+        local at = PY0 + (pos * STEP) % span
+        t:SetTexCoord(PX0 / SIZE, PX1 / SIZE, at / SIZE, (at + band) / SIZE)
+        t:SetVertexColor(v, v, v, 1)
+        t:Show()
+        top = top + stride
+      end
+    end
+    for i = shown + 1, L.shown do bands[i]:Hide() end
+    L.shown = shown
+  end
+
+  -- Theme.ListGround: a list's rows placed (its virtualiser's pass), or its
+  -- view resized. `scroll` the list's scroll frame, `child` its scroll
+  -- child (the rows' parent), `n` the rows the list holds, `stride` their
+  -- pitch, `rise` how much higher the rows after the bar stand, `gap` the
+  -- units between two rows, `empty` the list's empty-state words (or nil).
+  -- The rows' own gap is kept on their parent for a binder that does not
+  -- pass it (Mail Memory's rows, listed in the main window).
+  function Skin.ListGround(scroll, child, n, stride, rise, gap, empty)
+    if not (scroll and child and stride and stride > 0) then return end
+    local L = child.__pbBands
+    if not L then
+      L = { scroll = scroll, child = child, bands = {}, shown = 0, inked = false }
+      child.__pbBands = L
+      lists[#lists + 1] = L
+      scroll:HookScript("OnSizeChanged", function() LayBands(L) end)
+    end
+    gap = gap or 0
+    if child.__pbRowGap ~= gap then
+      child.__pbRowGap = gap
+      for i = 1, #papered do
+        local row = papered[i]
+        if row.__pbPaperOn and row:GetParent() == child then LayPaper(row, gap) end
+      end
+    end
+    L.n, L.stride, L.height, L.rise, L.empty = n or 0, stride, stride - gap, rise or 0, empty
+    LayBands(L)
   end
 
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
@@ -3986,6 +4102,12 @@ do
       row.__pbPaper = paper
       row.__pbRowPaint = Wash
       papered[#papered + 1] = row
+    end
+    -- A binder that does not say its list's gap (Mail Memory's rows, which
+    -- the main window lists too): its list's, kept by Skin.ListGround.
+    if gap == nil then
+      local parent = row:GetParent()
+      gap = parent and parent.__pbRowGap
     end
     LayPaper(row, gap)
     local h = row:GetHeight()

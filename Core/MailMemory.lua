@@ -6456,6 +6456,10 @@ local function BindRows(frame)
   -- An open fan stays only while its row still shows its mail.
   local R = Rules()
   if R and R.FanCheck then R.FanCheck() end
+  -- The ground a look lays under the list's empty part, where it has one
+  -- (Theme.ListGround); nil in every other look.
+  local listGround = ns.Theme.ListGround
+  if listGround then listGround(scroll, frame.ListChild, #rows, ROW_HEIGHT, 0, 0, frame.Empty) end
   -- A row's tooltip follows what the row shows now (Theme.TipFollow).
   ns.Theme.TipFollow(frame.ListChild)
 end

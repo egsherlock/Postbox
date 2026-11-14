@@ -11945,6 +11945,18 @@ local function UpdateVisibleRows(panel)
   -- An open fan follows its row: the same mail, drawn again as it now is;
   -- anything else closes it. One comparison while none is open.
   if RV.fanOpen then RV.FanCheck(panel) end
+  -- The ground a look lays under the list's empty part, where it has one
+  -- (Theme.ListGround); nil in every other look.
+  local listGround = ns.Theme.ListGround
+  if listGround then
+    local n, rise = #filtered, at and lift or 0
+    if historyView then
+      n, rise = #panel._history, 0
+    elseif away then
+      n, rise = panel._avRows and #panel._avRows or 0, 0
+    end
+    listGround(scroll, panel.MailListChild, n, panel._rowStride, rise, ROW_GAP, panel.Empty)
+  end
   -- A tooltip one of the list's rows owns -- the inbox's, another
   -- character's box's or History's, all standing in the list's child --
   -- follows what that row shows now; one test while none shows.
