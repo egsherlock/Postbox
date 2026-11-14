@@ -4178,6 +4178,15 @@ function Theme.TipHint(text)
   for i = 1, #parts do AddHintLine(parts[i]) end
 end
 
+-- A footnote under a tooltip's facts: one muted wrapped line in the hint
+-- font, a step under the facts, with no blank line before it and not cut
+-- at the gestures' separator (the options' 7-day tooltips' "count from
+-- Postbox 1.70" lines).
+function Theme.TipNote(text)
+  if not text or text == "" then return end
+  AddHintLine(text)
+end
+
 -------------------------------------------------------------
 -- 6. Surfaces
 --

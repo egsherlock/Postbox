@@ -537,3 +537,16 @@ function Formatting.FormatMoneyIcons(copper, colorHex, parts, coins)
   end
   return format("%s%d%s%s", open, rest, close, COPPER_ICON)
 end
+
+-- An amount with the coins of `coins` (Formatting.CoinSet), every coin that
+-- is not zero and only those: 482150g, 220112g 10s 35c, 5g 35c (MoneyIn's
+-- rule, no cap). Nothing at all is one zero copper coin, as FormatMoneyIcons
+-- writes it. Exact where FormatMoneyIcons' zeros are not wanted (the
+-- options' 7-day tooltips' titles). One format per amount, no colour: the
+-- caller tints the whole.
+function Formatting.FormatMoneyIconsNonZero(copper, coins)
+  coins = coins or Formatting.DefaultCoins()
+  local text = MoneyIn(copper, 3, coins.gold, coins.silver, coins.copper)
+  if text == "" then return format("%d%s", 0, coins.copper) end
+  return text
+end

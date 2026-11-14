@@ -7055,7 +7055,8 @@ do
   -- title the figure's name, then each part that is not zero, a label and
   -- its gold. Earned's returned deposits are inside its sales, and the
   -- auction house's cut was never in a mail: both muted, the cut stated,
-  -- never taken off. Then at most one short muted line, only while it
+  -- never taken off. Then at most one short muted line in the hint font
+  -- (TipMuted), only while it
   -- matters: under Earned, that deposits and cut count from 1.70, with how
   -- many sales lack them when any do; under Spent, that deposits paid
   -- count from 1.70, while the week reaches back past their record. Built
@@ -7081,16 +7082,18 @@ do
     return true
   end
 
+  -- The note under the parts, in the same gray a step smaller: the hint
+  -- font (Theme.TipNote), with no blank line before it.
   local function TipMuted(text)
-    local m = ns.Theme.TIP_MUTED
-    GameTooltip:AddLine(text, m, m, m, true)
+    ns.Theme.TipNote(text)
   end
 
   -- Earned's or Spent's title: the figure's name, and at the line's right
-  -- the week's whole sum exactly, every coin, in its tone and with coins
-  -- sized for the title's font -- the figure the card may write short
-  -- (Week.Fit) said in full, on the line the tooltip has anyway. With
-  -- nothing to sum, the name alone.
+  -- the week's whole sum exactly, every coin that is not zero
+  -- (Formatting.FormatMoneyIconsNonZero: 482150g, 220112g 10s 35c), in its
+  -- tone and with coins sized for the title's font -- the figure the card
+  -- may write short (Week.Fit) said in full, on the line the tooltip has
+  -- anyway. With nothing to sum, the name alone.
   local function TipHead(label, copper, tone)
     local T = ns.Theme
     local F = ns.Core and ns.Core.Formatting
@@ -7099,8 +7102,8 @@ do
       return
     end
     local amount
-    if F and F.FormatMoneyIcons then
-      amount = F.FormatMoneyIcons(copper, nil, nil, Coins(_G.GameTooltipHeaderText))
+    if F and F.FormatMoneyIconsNonZero then
+      amount = F.FormatMoneyIconsNonZero(copper, Coins(_G.GameTooltipHeaderText))
     else
       amount = ns.Helpers.FormatMoney(copper)
     end
