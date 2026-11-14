@@ -3579,6 +3579,8 @@ do
     if type(T.RefreshHostFonts) == "function" then T.RefreshHostFonts() end
     local R = Parts.Rows
     local outline = Skin.GetOutline() == "outline"
+    -- The rows' texts re-inked on their next bind (RefitScreens binds them).
+    if R then R.gen = (R.gen or 0) + 1 end
     if R and R.outline ~= outline then
       R.outline = outline
       if R.mode and Parts.MessageGrounds then Parts.MessageGrounds() end
@@ -3638,7 +3640,10 @@ do
     accent = { 120, 82, 0 }, accentText = { 120, 82, 0 }, accentBright = { 120, 82, 0 },
   }
 
-  local R = { mode = false, light = false, ground = 0 }
+  -- gen: moves whenever the inks or the faces the rows' texts take moved
+  -- (the Row texture, the Font, Text weight, Text style or Text size), so a
+  -- bind re-inks a row only then (Skin.RowGround).
+  local R = { mode = false, light = false, ground = 0, gen = 0 }
   Parts.Rows = R
 
   local function Lin(c)
@@ -3740,6 +3745,7 @@ do
     local UI = ns.MailboxUI
     local mode = UI and type(UI.GetRowTexture) == "function" and UI.GetRowTexture() or "light"
     R.mode = mode
+    R.gen = R.gen + 1
     R.light = mode == "light"
     R.ground = (mode == "light") and LIGHT_LO or DarkGround()
     local T = ns.Theme
@@ -3909,7 +3915,7 @@ do
     local paper = row.__pbPaper
     if position == nil or mode == "none" then
       if row.__pbGround then
-        row.__pbGround, row.__pbPaperOn = nil, nil
+        row.__pbGround, row.__pbPaperOn, row.__pbInkGen = nil, nil, nil
         if paper then paper:Hide() end
         -- The stripe back on the row's own bounds.
         if row._bg and row.__pbBgOnPaper then
@@ -3940,7 +3946,13 @@ do
     if band < BAND_MIN then band = BAND_MIN end
     local span = (PY1 - PY0) - band
     local top = PY0 + ((tonumber(position) or 0) * STEP) % span
-    paper:SetTexCoord(PX0 / SIZE, PX1 / SIZE, top / SIZE, (top + band) / SIZE)
+    -- The band set only when it is another (a row bound at the same place
+    -- and height keeps its own).
+    if row.__pbBandTop ~= top or row.__pbBand ~= band then
+      row.__pbBandTop, row.__pbBand = top, band
+      paper:SetTexCoord(PX0 / SIZE, PX1 / SIZE, top / SIZE, (top + band) / SIZE)
+    end
+    local washed = row.__pbGround == mode
     if row.__pbGround ~= mode then
       row.__pbGround, row.__pbPaperOn = mode, true
       local v = (mode == "dark") and DARK_V or 1
@@ -3956,9 +3968,19 @@ do
         bg:SetPoint("BOTTOMRIGHT", paper, "BOTTOMRIGHT", 0, 0)
       end
     end
-    -- Each bind: a re-fonted or re-roled string comes back in its ink.
-    Texts(row, "row", R.light)
-    Wash(row, nil, row._hovered)
+    -- A re-fonted or re-roled string comes back in its ink: the texts inked
+    -- again whenever the inks or the faces moved since the row's last bind
+    -- (R.gen, the host face's generation), else left as that bind left
+    -- them, which nothing between binds changes.
+    local T = ns.Theme
+    local face = T and T.FontGeneration and T.FontGeneration() or 0
+    if row.__pbInkGen ~= R.gen or row.__pbInkFace ~= face then
+      row.__pbInkGen, row.__pbInkFace = R.gen, face
+      Texts(row, "row", R.light)
+    end
+    -- The stripe the row's paint just laid is washed already (Theme's
+    -- StyleMailRow hands it to Wash) once the paper was on before this bind.
+    if not washed then Wash(row, nil, row._hovered) end
   end
 
   -------------------------------------------------------------
