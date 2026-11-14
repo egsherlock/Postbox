@@ -3351,12 +3351,41 @@ do
     art.restGround:SetShown(not open)
     art.openGround:SetShown(open)
     if art.glow then art.glow:SetShown(open) end
-    if plate.Text then
-      if open or plate.__pbHover then
-        plate.Text:SetTextColor(Parts.FontRGB("GameFontHighlight", 1, 1, 1))
-      else
-        plate.Text:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
+    -- The caption: the game's white open or pointed at, its gold at rest;
+    -- a tab whose feature is off (`__pbDim`: the Minimap tab while the
+    -- minimap icon is off) the game's disabled gray in every state, its art
+    -- still saying open. White art beside the caption (`__pbInks`: that
+    -- tab's mark) wears the caption's ink, as Theme's own paint gives it.
+    local r, g, b
+    if plate.__pbDim then
+      r, g, b = Parts.FontRGB("GameFontDisable", 0.5, 0.5, 0.5)
+    elseif open or plate.__pbHover then
+      r, g, b = Parts.FontRGB("GameFontHighlight", 1, 1, 1)
+    else
+      r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    end
+    if plate.Text then plate.Text:SetTextColor(r, g, b) end
+    local inks = plate.__pbInks
+    if inks then
+      for i = 1, #inks do
+        local ink = inks[i]
+        if ink.SetVertexColor then ink:SetVertexColor(r, g, b, 1) elseif ink.SetTextColor then ink:SetTextColor(r, g, b) end
       end
+    end
+  end
+
+  -- Theme.RepaintPlate (the options repaint a tab when its mark or its
+  -- gray changes) paints the house's caption ink on the plate; a tab this
+  -- skin dressed takes its own again after it. Put in place once, when the
+  -- first options tab is dressed: no other look has it.
+  local function OwnRepaint()
+    local T = ns.Theme
+    if not T or T.__pbBlizzRepaint or type(T.RepaintPlate) ~= "function" then return end
+    local repaint = T.RepaintPlate
+    T.__pbBlizzRepaint = true
+    T.RepaintPlate = function(plate)
+      repaint(plate)
+      if plate and plate.__pbBlizzOptTab then PaintTab(plate) end
     end
   end
 
@@ -3391,6 +3420,7 @@ do
     plate.__pbBlizzOptTab = art
     plate.__setSelectedOverride = PaintTab
     plate.__pbHoverOverride = PaintTab
+    OwnRepaint()
     local T = ns.Theme
     if T and type(T.SetPlateSelected) == "function" then T.SetPlateSelected(plate, plate.isSelected) else PaintTab(plate) end
     -- The rule under the tabs: from the first tab dressed to the last, the
