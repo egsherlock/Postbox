@@ -1688,8 +1688,10 @@ do
 
   -- The options' title-bar Find box (Core/OptionsPanel.lua, Find.Build:
   -- tagged __pbFindBox): the same art in place of its hairline and its own
-  -- magnifier, which are faded; its words stay where they stand, already
-  -- clear of the magnifier.
+  -- magnifier; its words stay where they stand, already clear of the
+  -- magnifier. One magnifier, the game's: Postbox's own is hidden as well as
+  -- faded (faded alone, it was still drawn beside the game's in the game),
+  -- and nothing of the options shows it again.
   function Parts.Find(wrap)
     if wrap.__pbBlizzFind ~= nil then return end
     wrap.__pbBlizzFind = false
@@ -1699,7 +1701,11 @@ do
     if not pieces then return end
     wrap.__pbBlizzFind = pieces
     Fade(wrap.Line)
-    if pieces[4] then Fade(wrap.Glyph) end
+    local glyph = wrap.Glyph
+    if pieces[4] and glyph then
+      Fade(glyph)
+      glyph:Hide()
+    end
   end
 
   -- The plate joined to the wrap as its last cell (Theme.JoinCell: the
