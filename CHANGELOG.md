@@ -8,7 +8,8 @@
 
 - **Sent mail:** History, the clock on the Mail tab, now has **Received**
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
-  C.O.D. On the Send tab, the clock beside Send opens it.
+  C.O.D. On the Send tab, the clock at the left of Send mail opens it
+  while History is on.
 - **Mail you send your own characters shows in their box:** on the Mail
   tab and in Mail Memory, another of your characters lists what you sent
   or returned to it since its last mailbox visit, under "Sent by you
@@ -32,14 +33,14 @@
 
 ### Mail tab
 
-- **The bar above the list is three controls:** one for whose mail and
-  which list, the History clock with Received and Sent, and one box for
-  search and sort. A second click on the clock returns to the Inbox.
-- **Inbox is one button that always wears your class icon at its left
-  end.** Click Inbox while it's on screen to open the character list (your
-  own character is always its first row, the way back to your inbox), and
-  right-click while another character's mail is on screen to come back to
-  your own. Mail Memory's window names its box the same way.
+- **A new way to switch characters** (Mail tab > Inbox): click Inbox to
+  open your character list and pick a character to see their mail; your
+  own character is always first. Right-click Inbox to come back to your
+  own mail. Inbox wears your class icon, and Mail Memory's window
+  switches characters the same way.
+- **The bar above the mail list is simpler** (Mail tab): Inbox, the
+  History clock, and one box for search and sort. Click the lit History
+  clock again to go back to Inbox.
 - Inbox and Done keep their width while a collect run counts them down,
   and the History clock is underlined while History is on screen, as
   Inbox is.
@@ -98,11 +99,12 @@
   starts every mailbox with it, until you click the pin again. Your other
   characters are left alone, and **Recipient pin** (Options > Send tab)
   turns the pin off.
-- **Send tab: right-click hides a name** in the suggestions under To and
-  in the contact list. The star at the end of a name favorites it. Hidden
-  names wait under Hidden at the foot of both lists, Favorites included,
-  one click from coming back; under To the line shows up to three names
-  that match what you typed, then See all opens Manage Recipients.
+- **Send tab: right-click hides a name** in the names offered under the
+  Recipient box and in the contact list. The star at the end of a name
+  favorites it. Hidden names wait under Hidden at the foot of both lists,
+  Favorites included, one click from coming back; under the Recipient box
+  the line shows up to three names that match what you typed, then See
+  all opens Manage Recipients.
 - **Choose where suggested names come from** (Options > Send tab): your
   alts, your guild, your friends, people you mailed recently, and players
   you grouped with recently. Favorites stay whatever you switch off.
@@ -137,12 +139,11 @@
   people button at its right end switches between them). Point
   at Earned or Spent for its parts, each in coins: auction sales, the auction house's
   cut, deposits, auctions bought, C.O.D. and gold sent. Deposits and the
-  cut are counted from this version on.
+  cut are counted from this version on. When the line is tight, large
+  gold is written short (482k), and the tooltips give the exact sum.
 - **Nothing waiting** (Options > General): when no character has mail
   waiting, the summary shows a quiet mark and when a mailbox was last
   seen, in place of an empty box.
-- **Mail Memory has a new icon,** an envelope with a clock, drawn in the
-  same hand as Character Groups' and Manage Recipients'.
 - **Keep History for** (Options > General > Memory and history) goes up
   to a year: 60, 90 and 180 days and 1 year join the list, with Never at
   its top.
@@ -150,7 +151,7 @@
   many mails History keeps for each character, 1,000 (as before), 2,500 or
   5,000, Received and Sent each. A larger History makes Postbox's saved
   file bigger, about 1.7 MB per character at 5,000.
-- **What's new says Postbox runs on Forever too:** the Forever mark and
+- **What's new on retail says Postbox runs on Forever too:** the Forever mark and
   **Now on Forever** at the left of its title bar. Its headings stand apart
   from the lines under them, with a thin rule after each, and wear
   Postbox's gold when your accent is white or gray. It opens by itself only
@@ -175,7 +176,7 @@
 - **Reset has its own button** at the foot of the sort menus, lit only
   when there is something to reset.
 - **On the game's own UI, Postbox opens in its Postbox style** unless you
-  chose the Blizzard look (Options > Window > Style). If you picked
+  chose the Blizzard look (Options > Window > Window style). If you picked
   EllesmereUI's or ElvUI's look and play without it, Postbox wears the
   Postbox style until that UI is back.
 - **Options: the Arrange, Character Groups and Manage Recipients buttons**
@@ -184,9 +185,6 @@
   opens flush with its box.
 - **Options: a grayed setting says first why it is gray.** The line that
   tells you what to turn on opens its description, in your accent color.
-- **The last 7 days** (Options > General) fits big numbers: when the line
-  is tight, large gold is written short (482k), and the Earned and Spent
-  tooltips give the exact sum, without coins that are zero.
 - **Options: setting names are plain**, white in Dark and dark ink in
   Light, so your accent marks the group headings and the values you have
   chosen. In Light the dropdown arrows and the icons on Arrange, Character
@@ -223,11 +221,16 @@
   leaves it.
 - **Options: every row is always listed.** Text style and Border size are
   grayed with the reason when they don't apply, where they used to be
-  hidden, and the options' search finds them. **Reset this tab** also
-  resets the minimap icon's size and place under EllesmereUI's minimap.
+  hidden, and the options' search finds them.
+- **Reset this tab** (Options > Minimap) also puts back the minimap
+  icon's size and place under EllesmereUI's minimap.
+- **The Minimap tab wears your minimap icon** (Options > Minimap): a small
+  copy of the Icon style you chose after the tab's name, and the name in
+  gray while the icon is off.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
-  them, and on their own windows' title bars.
+  them, and on their own windows' title bars. Mail Memory's is an
+  envelope with a clock.
 - **New small icons on the Mail tab's bar:** the History clock, the
   every-character toggle and the sort button are one set, fitted to whole
   pixels so their lines stay crisp. The Send tab's Sent clock and Manage
@@ -242,23 +245,19 @@
 - **The every-character toggle** (the Search box on the Mail tab and in
   Mail Memory) shows one figure, and two while every character's mail is
   shown.
-- **Send tab: the Manage Recipients button** at the end of the To field
-  is a key like History and the sort button, in the window's neutral gray.
+- **Send tab: the Manage Recipients button** at the end of the Recipient
+  box is a key like History and the sort button, in the window's neutral
+  gray.
 - **A cog of Postbox's own on the title bar,** plain gray, taking your
   accent only while the options are open.
 - **Text outline** is now called **Text style** (Options > Window), and a
   new **Text weight** under it offers Bold for Barlow Semi Condensed and
   the five new fonts.
-- **Four new fonts** in the Postbox style's Font list (Options > Window):
-  Fira Sans Condensed, Noto Sans, Overpass and Roboto Condensed, each in
-  Regular and Bold, with the letters of every language the game's Latin
-  and Russian clients use, so Russian players can pick them too.
-- **Expressway** joins the Postbox style's Font list (Options > Window >
-  Font), in Regular and Bold, shipped in Postbox for everyone with
-  Typodermic's permission, on Latin and Russian clients alike.
-- **The Font list shows each font in itself** (Options > Window): every
-  name is drawn in its own font, and so is your choice when the list is
-  closed.
+- **Five new fonts** (Options > Window > Font): Expressway (with
+  Typodermic's permission), Fira Sans Condensed, Noto Sans, Overpass and
+  Roboto Condensed, each in Regular and Bold, on Latin and Russian clients
+  alike. The Font list draws each name in its own font, and your choice
+  too when the list is closed.
 
 ### WoW Forever
 
@@ -270,22 +269,6 @@
   holds.** Where the game's subject stays "Retrieving data", the row, its
   tooltip and the opened mail name the item inside, and History and Mail
   Memory keep it under that name.
-- **Options: Reset settings and General's Reset this tab keep History
-  holds,** as they keep Keep History for, so History goes on holding the
-  mail it held before the reset.
-- **Character Groups: Other players finds guildmates, friends and the
-  people you mail whatever the Send tab's Offer switches say.** Those
-  switches (Options > Send tab) choose names for the Send tab and Manage
-  Recipients only.
-- **Options > General > Character order: Warnings first follows Warn
-  about expiring mail.** With Warn about set to Deleted, the characters
-  whose mail is about to be deleted come first.
-- Send tab: the names offered as you type follow a change to Keep History
-  for at once, and take less work to order on a large guild.
-- After Reset settings, an open Send tab and Manage Recipients show the
-  lists the reset switched back on.
-- Minimap icon: a mail you send one of your own characters is counted at
-  once (Count on icon > All characters).
 - **Send tab: the Recipient box keeps a name you typed in full.** With
   "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
 - **Send tab: your own character is no longer suggested to itself** when

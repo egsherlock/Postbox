@@ -155,8 +155,8 @@ first: when, from whom, what came out and what it was worth, with the
 letter's text kept after the mail is gone. **Received** and **Sent** switch
 between that and the mail you sent: who each went to, exactly as you
 addressed it, what it carried, its gold and any C.O.D. After a send, the line
-above Send says who it went to (click it, or the clock beside Send, to open
-Sent). Pick another character to see their History and Sent.
+above Send mail says who it went to (click it, or the clock at the left of
+Send mail, to open Sent). Pick another character to see their History and Sent.
 **Keep History for** 7 days up to a year, or **Never** (asks, then clears
 every character's). **History holds** 1,000, 2,500 or 5,000 mails of each
 per character (Options > General > Memory and history). History has its own
