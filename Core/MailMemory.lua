@@ -5023,8 +5023,9 @@ end
 -- tooltip both ask here: the tooltip used to read the stored mark alone, and
 -- told a character back after days away "nothing waiting" over mail that had
 -- landed while it was logged out.
-local function ArrivedSince(snapshot)
-  if not snapshot then return false, nil end
+-- The answer alone, with no list of senders made (Arrived); ArrivedSince
+-- adds who from.
+local function Arrived(snapshot)
   EnsureBaseline(snapshot)
   local state = MailboxState()
   local away = not (state and state.mailboxOpen)
@@ -5033,9 +5034,29 @@ local function ArrivedSince(snapshot)
   local arrived = snapshot.newSince == true
     or (flagNow and snapshot.baseNew == false)
     or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
+  return arrived and true or false
+end
+
+local function ArrivedSince(snapshot)
+  if not snapshot then return false, nil end
+  local arrived = Arrived(snapshot)
   local from = snapshot.newFrom
   if arrived and not from then from = SendersList() end
-  return arrived and true or false, from
+  return arrived, from
+end
+
+-- Whether mail has come to the character being played since its mailbox
+-- was last opened, by the same three detectors (Arrived): the minimap
+-- icon's New since last visit. False at a mailbox, where that visit is
+-- under way; nil where it cannot be said -- Mail Memory off, or no visit
+-- recorded for this character yet. Makes nothing.
+function MM.NewSinceVisit()
+  if not MemoryEnabled() then return nil end
+  local state = MailboxState()
+  if state and state.mailboxOpen then return false end
+  local snapshot = StoredSnapshot()
+  if not snapshot then return nil end
+  return Arrived(snapshot)
 end
 
 -- realm, name, opts -> rows, info. `realm`/`name` nil for the character

@@ -63,7 +63,8 @@ local DEFAULTS = {
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
   -- When the icon is on the map: "new" while the game says there is unread
   -- mail (the default indicator's own rule, and the only one there was),
-  -- "any" while Mail Memory knows mail waiting on any character, "always".
+  -- "any" while Mail Memory knows mail waiting on any character, "always";
+  -- or "since", only while mail has come since the mailbox was last opened.
   show     = "new",
   -- The number on the icon: "off", "me" (this character's box) or "all"
   -- (every character's, the hidden ones aside).
@@ -350,8 +351,12 @@ end
 -- when the icon is on the map, and means exactly what it says.
 -------------------------------------------------------------
 
-local SHOW_MODES = { new = true, any = true, always = true }
-MB.SHOW_MODES = { "new", "any", "always" }
+-- "since" (New since last visit): only while mail is known to have come to
+-- this character since its mailbox was last opened (Mail Memory's arrival
+-- watch, MailMemory.NewSinceVisit); listed first, as it shows the icon in
+-- the fewest cases. Saved by id, so the order moves no saved choice.
+local SHOW_MODES = { since = true, new = true, any = true, always = true }
+MB.SHOW_MODES = { "since", "new", "any", "always" }
 
 local function ShowMode(prefs)
   local mode = (prefs or Settings()).show
@@ -616,6 +621,13 @@ local function Evaluate()
     up = true
   elseif mode == "any" then
     up = lit or all > 0 or uncounted
+  elseif mode == "since" then
+    -- Mail come since this character's mailbox was last opened; none at a
+    -- mailbox. Where that cannot be said -- Mail Memory off, or no visit
+    -- recorded yet -- the game's unread flag, as New mail.
+    local new = nil
+    if MemoryOn() and Memory and type(Memory.NewSinceVisit) == "function" then new = Memory.NewSinceVisit() end
+    if new == nil then up = lit else up = new end
   else
     up = lit
   end
@@ -2349,7 +2361,8 @@ local runtimeActive = false
 -- which moves when Mail Memory writes and, for its expiry warnings, with the
 -- clock.
 local function ReadsMemory(prefs)
-  return ShowMode(prefs) == "any" or CountMode(prefs) ~= "off" or ExpiryMode(prefs) ~= "off"
+  local show = ShowMode(prefs)
+  return show == "any" or show == "since" or CountMode(prefs) ~= "off" or ExpiryMode(prefs) ~= "off"
 end
 
 -- Mail Memory wrote something its character list reads (MailMemory,
@@ -2401,6 +2414,21 @@ local function SetTimeWatch(on)
   end
 end
 
+-- New since last visit (`since`) is down the moment a mailbox opens: the
+-- icon asks again then, registered only while that is the choice.
+local openWatch = false
+
+local function SetOpenWatch(on)
+  on = on == true
+  if openWatch == on then return end
+  openWatch = on
+  if on then
+    ns.Events.Register("MAIL_SHOW", OnTimeEvent)
+  else
+    ns.Events.Unregister("MAIL_SHOW", OnTimeEvent)
+  end
+end
+
 local function SetRuntimeActive(on)
   on = on == true
   if runtimeActive == on then return end
@@ -2424,6 +2452,7 @@ local function SetRuntimeActive(on)
   ns.Events.Unregister("UPDATE_PENDING_MAIL", OnMailEvent)
   ns.Events.Unregister("PLAYER_ENTERING_WORLD", OnEnterWorld)
   SetTimeWatch(false)
+  SetOpenWatch(false)
 end
 
 Refresh = function()
@@ -2444,6 +2473,7 @@ Refresh = function()
 
   SetRuntimeActive(true)
   SetTimeWatch(ReadsMemory(prefs))
+  SetOpenWatch(ShowMode(prefs) == "since")
   Evaluate()
 
   -- One invariant while enabled: the default indicator is silenced, in BOTH

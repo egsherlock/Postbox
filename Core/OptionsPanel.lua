@@ -7776,6 +7776,7 @@ function State.MinimapRows()
   if rows.count then Rows.SetEnabled(rows.count, memory, "OPT_MINIMAP_WHY_MEMORY") end
   if rows.show then
     if S.mmShowAny then S.mmShowAny.off = not memory end
+    if S.mmShowSince then S.mmShowSince.off = not memory end
     Rows.Say(rows.show, memory)
   end
   if rows.pulse then Rows.SetEnabled(rows.pulse, glow) end
@@ -9476,14 +9477,16 @@ function Pages.minimap(col)
   -- long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
   Rows.Group(block, L["OPT_MINIMAP_GROUP_SHOWS"])
   local showNames = {
-    new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"], always = L["OPT_MINIMAP_SHOW_ALWAYS"],
+    since = L["OPT_MINIMAP_SHOW_SINCE"], new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"],
+    always = L["OPT_MINIMAP_SHOW_ALWAYS"],
   }
   local showItems = {}
   for _, mode in ipairs((Icon and Icon.SHOW_MODES) or { "new" }) do
     showItems[#showItems + 1] = { id = mode, name = showNames[mode] }
-    -- Mail on any character is made from Mail Memory: set aside while it
-    -- is off (State.MinimapRows).
+    -- New since last visit and Mail on any character are made from Mail
+    -- Memory: set aside while it is off (State.MinimapRows).
     if mode == "any" then S.mmShowAny = showItems[#showItems] end
+    if mode == "since" then S.mmShowSince = showItems[#showItems] end
   end
   local showRow = Rows.Dropdown(block, {
     title = L["OPT_MINIMAP_SHOW_TITLE"], text = L["OPT_MINIMAP_SHOW_DESC"], items = showItems,
