@@ -496,6 +496,38 @@ function H.SubjectLooksLike(subject, globalPattern, folded)
   return source:find(literal, 1, true) ~= nil
 end
 
+-- sender, name -> whether the sender is three words or more and its last
+-- words are `name` ("Horde Auction House", "Auction House"), or its first
+-- ones, as the other languages put a house's faction after it
+-- ("Auktionshaus der Horde", "Hôtel des ventes de la Horde").
+function H.EndsWithWord(sender, name)
+  if type(name) ~= "string" or name == "" or #sender <= #name + 1 then return false end
+  if sender:sub(-(#name + 1)) ~= " " .. name and sender:sub(1, #name + 1) ~= name .. " " then
+    return false
+  end
+  local _, spaces = sender:gsub(" ", " ")
+  return spaces >= 2
+end
+
+-- sender -> whether a mail's sender is the auction house: Postbox's own
+-- word for it or the client's (AUCTION_HOUSE). On World of Warcraft:
+-- Forever the auction house signs its mail with its faction (a beta dump
+-- of a canceled auction: "Horde Auction House"; the client's houses are
+-- Alliance, Horde and Blackwater). A character's name there is two words of
+-- letters with one space between, so a sender of three words or more that
+-- ends or begins with the auction house's name is the auction house, never
+-- a player. One rule for Mail Memory's arrivals and the Mail tab's
+-- placeholder subjects (MailService's Mail.SubjectPending).
+function H.IsAuctionHouse(sender)
+  if type(sender) ~= "string" or sender == "" then return false end
+  local L = ns.L
+  local ah = L and L["MEMORY_FROM_AH"]
+  local hostAH = type(_G.AUCTION_HOUSE) == "string" and _G.AUCTION_HOUSE or nil
+  if sender == ah or sender == hostAH then return true end
+  if not ns.IsForever then return false end
+  return H.EndsWithWord(sender, ah) or H.EndsWithWord(sender, hostAH)
+end
+
 -------------------------------------------------------------
 -- Mail search: one rule for every list
 --

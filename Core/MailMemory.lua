@@ -233,11 +233,23 @@ local function CaptureNow()
       end
       -- What kind of mail it is, so the row can say "AH Sold" in its tone as
       -- the mail list does; and what a won auction cost, which only its
-      -- invoice knows. "other" is not stored: it is what a missing kind means.
+      -- invoice knows. "other" is not stored: it is what a missing kind means;
+      -- nor is "auction", the auction house's mail whose subject never
+      -- arrived (MailService's Mail.SubjectPending), which reads as other.
       local kind, paid
       if service and type(service.ClassifyMail) == "function" then
         local ok, k = pcall(service.ClassifyMail, index)
-        if ok and k ~= "other" then kind = k end
+        if ok and k ~= "other" and k ~= "auction" then kind = k end
+      end
+      -- Such a mail is kept under what the Mail tab shows in the
+      -- placeholder's place: the item it holds (CollectTab's
+      -- RV.PendingShown). One comparison for every other mail.
+      if subject == RETRIEVING_DATA and service and type(service.SubjectPending) == "function"
+          and service.SubjectPending(sender, subject) then
+        local R = ns.CollectTab and ns.CollectTab.RowRules
+        local ok, shown = false, nil
+        if R and type(R.PendingShown) == "function" then ok, shown = pcall(R.PendingShown, index) end
+        if ok and type(shown) == "string" and shown ~= "" then subject = shown end
       end
       if kind == "bought" and type(GetInboxInvoiceInfo) == "function" then
         local ok, invoiceType, _, _, bid = pcall(GetInboxInvoiceInfo, index)
@@ -2327,8 +2339,57 @@ function MM.HistoryBegin(index)
     sender = tostring(sender or ""), subject = tostring(subject or ""),
     kind = kind, cod = tonumber(cod) or 0,
   }
+  -- The auction house's mail whose subject never arrived (MailService's
+  -- Mail.SubjectPending) is recorded under what the Mail tab shows in the
+  -- placeholder's place (MM.HistoryShown); `raw` keeps the game's subject,
+  -- which the mail is still known by.
+  if subject == RETRIEVING_DATA and service and type(service.SubjectPending) == "function"
+      and service.SubjectPending(sender, subject) then
+    ctx.raw = ctx.subject
+    MM.HistoryShown(ctx, index)
+  end
   MM.HistoryInvoice(ctx, index)
   return ctx
+end
+
+-- ctx, index -> the placeholder's record (`raw`, MM.HistoryBegin) takes the
+-- Mail tab's words for it where it still has the placeholder: the item the
+-- mail holds, or the item its invoice names once the body's fetch brought
+-- one (CollectTab's RV.PendingShown); on its entry too, once there is one.
+-- Left as it is where neither is known.
+function MM.HistoryShown(ctx, index)
+  if ctx.subject ~= ctx.raw then return end
+  local R = ns.CollectTab and ns.CollectTab.RowRules
+  if not (R and type(R.PendingShown) == "function") then return end
+  local ok, shown = pcall(R.PendingShown, index)
+  if not (ok and type(shown) == "string" and shown ~= "") then return end
+  ctx.subject = shown
+  if ctx.entry then ctx.entry.sub = shown end
+end
+
+-- kind -> what an entry keeps of it (`k`): nothing for "other", what a
+-- missing kind means, nor for "auction", an auction mail whose outcome
+-- nothing has told, which is kept as "other" is.
+function MM.HistoryKind(kind)
+  if kind == "other" or kind == "auction" then return nil end
+  return kind
+end
+
+-- ctx, index -> a record that began as "other" or "auction" is classified
+-- again where the collect has fetched the body: the invoice the fetch
+-- brings can say sold or won, and the record and its entry, once there is
+-- one, take the outcome (and the invoice's figures, MM.HistoryInvoice). Only
+-- while the index still reads as the mail the record began for.
+function MM.HistoryReclassify(ctx, index)
+  local service = ns.MailService
+  if not (service and type(service.ClassifyMail) == "function") then return end
+  local _, _, sender, subject = GetInboxHeaderInfo(index)
+  if tostring(sender or "") ~= ctx.sender or tostring(subject or "") ~= (ctx.raw or ctx.subject) then return end
+  if ctx.raw then MM.HistoryShown(ctx, index) end
+  local kind = service.ClassifyMail(index)
+  if kind == ctx.kind then return end
+  ctx.kind = kind
+  if ctx.entry then ctx.entry.k = MM.HistoryKind(kind) end
 end
 
 -- What an auction mail's invoice says, onto the record `ctx` of the mail at
@@ -2340,8 +2401,11 @@ end
 -- unread has its price from the second. Amounts as the invoice gives them,
 -- no rate assumed. Only a settled sale ("seller") is read: a pending one
 -- holds no gold yet.
+-- A record that began as "other" or "auction" is first classified again
+-- (MM.HistoryReclassify): its invoice may have come with the fetch.
 function MM.HistoryInvoice(ctx, index)
   if type(ctx) ~= "table" or ctx.invoiced or type(GetInboxInvoiceInfo) ~= "function" then return end
+  if ctx.kind == "other" or ctx.kind == "auction" then MM.HistoryReclassify(ctx, index) end
   if ctx.kind ~= "bought" and ctx.kind ~= "sold" then return end
   local ok, invoiceType, _, _, bid, _, deposit, consignment = pcall(GetInboxInvoiceInfo, index)
   if not ok then return end
@@ -2369,7 +2433,7 @@ function MM.HistoryTook(ctx, what, value, count)
     entry = {
       t = time(),
       s = ctx.sender,
-      k = (ctx.kind ~= "other") and ctx.kind or nil,
+      k = MM.HistoryKind(ctx.kind),
       sub = ctx.subject,
     }
     list[#list + 1] = entry
@@ -4253,19 +4317,6 @@ end
 -- newest first. The client's latest-senders line names every UNREAD sender,
 -- not only new ones, so a sender with unread mail already in the snapshot is
 -- that mail, not an arrival.
--- sender, name -> whether the sender is three words or more and its last
--- words are `name` ("Horde Auction House", "Auction House"), or its first
--- ones, as the other languages put a house's faction after it
--- ("Auktionshaus der Horde", "Hôtel des ventes de la Horde").
-function MM.EndsWithWord(sender, name)
-  if type(name) ~= "string" or name == "" or #sender <= #name + 1 then return false end
-  if sender:sub(-(#name + 1)) ~= " " .. name and sender:sub(1, #name + 1) ~= name .. " " then
-    return false
-  end
-  local _, spaces = sender:gsub(" ", " ")
-  return spaces >= 2
-end
-
 local function PendingRows(watch, arrived, from, snap)
   local out = {}
   local pending = LivePending(watch)
@@ -4282,21 +4333,12 @@ local function PendingRows(watch, arrived, from, snap)
       count = tonumber(p.n) }
   end
   if arrived then
-    local ah = L["MEMORY_FROM_AH"]
-    local hostAH = type(_G.AUCTION_HOUSE) == "string" and _G.AUCTION_HOUSE or nil
     if type(from) == "table" then
       for i = 1, #from do
         local sender = from[i]
-        local isAH = (sender == ah or sender == hostAH)
-        -- On World of Warcraft: Forever the auction house signs its mail with
-        -- its faction (a beta dump of a canceled auction: "Horde Auction
-        -- House"; the client's houses are Alliance, Horde and Blackwater). A
-        -- character's name there is two words of letters with one space
-        -- between, so a sender of three words or more that ends or begins
-        -- with the auction house's name is the auction house, never a player.
-        if not isAH and ns.IsForever and type(sender) == "string" then
-          isAH = MM.EndsWithWord(sender, ah) or MM.EndsWithWord(sender, hostAH)
-        end
+        -- The auction house, by its own name or, on Forever, its faction's
+        -- (Helpers.IsAuctionHouse).
+        local isAH = ns.Helpers.IsAuctionHouse(sender)
         -- The auction house's arrivals are already rows, by item.
         if not (isAH and #pending > 0) and not known[sender] then
           out[#out + 1] = { pending = true, sender = sender, subject = L["MEMORY_NEW_UNOPENED"],

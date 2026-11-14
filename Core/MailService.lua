@@ -58,8 +58,9 @@ local stranger = {
   declined = {},
 }
 
--- The category vocabulary, and the only place it is written down. Five of the
--- seven are outcomes ClassifyMail can return; "all" is a filter the collect
+-- The category vocabulary, and the only place it is written down. Six of the
+-- eight are outcomes ClassifyMail can return ("auction" has no button and
+-- borrows Other's word); "all" is a filter the collect
 -- tab offers and is never a classification result, and "alts" is a sweep by
 -- SENDER -- mail from the player's own characters -- whatever its kind. Core/CollectTab.lua filters on
 -- these tokens and Core/Locales.lua has to carry a label for each, so a new
@@ -72,6 +73,10 @@ local CATEGORY_LOCALE_KEY = {
   other    = "CAT_OTHER",
   all      = "CAT_ALL",
   alts     = "CAT_ALTS",
+  -- An auction mail whose subject never arrived (Mail.SubjectPending): a kind
+  -- of its own, so no category button claims it, but no category the player
+  -- is shown -- it reads as Other wherever a kind is named.
+  auction  = "CAT_OTHER",
 }
 -- One more family of tokens has no entry here because it has no fixed label:
 -- "group:<id>", a sweep by the senders in one of the player's character
@@ -113,7 +118,7 @@ ns.CATEGORY_LABELS = setmetatable({}, {
 local function ReadHeader(index)
   local _, _, sender, subject, money, cod = GetInboxHeaderInfo(index)
   local arrived = sender ~= nil or subject ~= nil or money ~= nil or cod ~= nil
-  return arrived, subject, cod
+  return arrived, subject, cod, sender
 end
 
 -- index -> boolean, for callers that only want to know whether the row is
@@ -212,11 +217,33 @@ end
 -- button. BuildQueue counts those separately rather than letting them vanish
 -- into a run that then reports success.
 function Mail.ClassifyMail(index)
-  local arrived, subject, cod = ReadHeader(index)
+  local arrived, subject, cod, sender = ReadHeader(index)
   if not arrived then return "other", true end
 
-  local category = InvoiceCategory(index) or SubjectCategory(subject) or "other"
+  local category = InvoiceCategory(index) or SubjectCategory(subject)
+  if not category then
+    -- The third tier: the auction house's mail whose subject the game never
+    -- filled in (Mail.SubjectPending). One comparison for every other mail.
+    category = (subject == RETRIEVING_DATA and Mail.SubjectPending(sender, subject)) and "auction" or "other"
+  end
   return category, (tonumber(cod) or 0) > 0
+end
+
+-- sender, subject -> whether this is the auction house's mail whose subject
+-- the game has not filled in: the subject is exactly the client's own
+-- placeholder (RETRIEVING_DATA, "Retrieving data") and the sender is the
+-- auction house (Helpers.IsAuctionHouse). Seen on Forever: the game never
+-- fills it in, across reopens and a /reload, and its own inbox prints the
+-- placeholder too. A player's letter titled "Retrieving data" is not one.
+-- Such a mail is classified "auction" (an auction mail, outcome unknown)
+-- until its invoice says sold or won; the Mail tab shows the item it holds
+-- where the placeholder stood. Its fingerprint, identity and the queue keep
+-- the game's subject. Any other subject costs one comparison.
+function Mail.SubjectPending(sender, subject)
+  local placeholder = RETRIEVING_DATA
+  if type(placeholder) ~= "string" or placeholder == "" or subject ~= placeholder then return false end
+  local H = ns.Helpers
+  return H ~= nil and type(H.IsAuctionHouse) == "function" and H.IsAuctionHouse(sender) == true
 end
 
 -------------------------------------------------------------
@@ -2278,6 +2305,11 @@ local function NoteStuck(fingerprint, reason)
   if not fingerprint then return false end
   local text = (type(reason) == "string" and reason ~= "") and reason or nil
   if text and (IsBagsWords(text) or IsPassingWords(text)) then return false end
+  -- Nor is a refusal of an auction mail whose subject never arrived
+  -- (Mail.SubjectPending): every such mail from the house shares its
+  -- fingerprint whatever it holds, so an entry would hold back mail that
+  -- was never refused. It is tried again, as any mail is, next time.
+  if Mail.SubjectPending(MarkOf(fingerprint)) then return false end
 
   local prior = stuck[fingerprint]
   if prior == nil then
@@ -2652,6 +2684,7 @@ function Mail.SeedStuck(entries, lists)
   if type(lists) ~= "table" then lists = nil end
   for fingerprint, entry in pairs(entries) do
     if type(fingerprint) == "string" and stuck[fingerprint] == nil
+      and not Mail.SubjectPending(MarkOf(fingerprint))
       and ((entry == true and lists ~= nil and type(lists[fingerprint]) == "table")
         or (type(entry) == "string" and not IsBagsWords(entry)
           and not IsPassingWords(entry))) then

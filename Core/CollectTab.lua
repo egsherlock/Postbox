@@ -957,12 +957,41 @@ end
 -- for every other mail, and where the client has no name for the item yet
 -- (the next refresh, once it has one, says it). The mail itself keeps its
 -- subject: its kind, fingerprint, search, History and Mail Memory read that.
+-- An auction mail whose subject never arrived ("auction": MailService's
+-- Mail.SubjectPending) has no subject to name anything, so it is always
+-- shown under the item, a caged pet's as its cage.
 function RV.HeldSubject(subject, kind, name, itemID, quantity)
-  if type(name) ~= "string" or name == "" or type(subject) ~= "string" or not AUCTION_OUTCOME[kind] then
-    return nil
-  end
+  if type(name) ~= "string" or name == "" or type(subject) ~= "string" then return nil end
+  if kind == "auction" then return RV.ItemSubject(name, quantity) end
+  if not AUCTION_OUTCOME[kind] then return nil end
   if itemID == RV.PET_CAGE or RV.SubjectNames(subject, name) then return nil end
   return RV.ItemSubject(name, quantity)
+end
+
+-- index, subject, name, itemID, quantity -> what the auction house's mail
+-- whose subject is the game's placeholder (Mail.SubjectPending: "Retrieving
+-- data", never filled in) is shown under in its subject's place: the one
+-- kind of item it holds (`name` and the rest as RV.HeldSubject has them),
+-- else the item its invoice names, else nil, and the game's subject stands
+-- (money alone with no invoice). The row, its tooltip's title and the
+-- reading view's title say it; Mail Memory and History save it (RV.PendingShown).
+function RV.PendingSubject(index, subject, name, itemID, quantity)
+  local held = name and RV.HeldSubject(subject, "auction", name, itemID, quantity)
+  if held then return held end
+  if type(GetInboxInvoiceInfo) ~= "function" then return nil end
+  local _, itemName = GetInboxInvoiceInfo(index)
+  if type(itemName) == "string" and itemName ~= "" then return itemName end
+  return nil
+end
+
+-- index -> RV.PendingSubject from the inbox alone, for the callers that have
+-- not scanned the mail's attachments: the row's tooltip, Mail Memory's
+-- capture and History (CT.RowRules.PendingShown). Only asked of a mail
+-- Mail.SubjectPending names.
+function RV.PendingShown(index)
+  local _, _, _, subject, _, _, _, itemCount = GetInboxHeaderInfo(index)
+  local _, quantity, _, _, _, name, itemID = RV.LIVE.Attachments(index, itemCount)
+  return RV.PendingSubject(index, subject, name, itemID, quantity)
 end
 
 -- text, mark -> the text with the mark after the item's name and before a
@@ -4347,7 +4376,10 @@ do
     local lineCut = (not compact) and row.Detail.__pbOverflowText ~= nil
 
     T.TipBegin(row)
-    local title = RV.TipSubject(subject, row.tipQuantity)
+    -- The auction house's mail whose subject never arrived: the item it
+    -- holds in the placeholder's place, as its row says (RV.PendingSubject).
+    local pending = subject == RETRIEVING_DATA and Mail().SubjectPending(sender, subject)
+    local title = pending and RV.PendingShown(index) or RV.TipSubject(subject, row.tipQuantity)
     if not title or title == "" then title = sender or L0["SENDER_UNKNOWN"] end
     T.TipTitle(title)
 
@@ -4369,6 +4401,12 @@ do
     if stacks == 1 and row.iconSlot and subject and AUCTION_OUTCOME[row.tipKind] then
       local name = GetInboxItem(index, row.iconSlot)
       named = RV.SubjectNames(subject, name)
+    end
+    -- A placeholder's title names the one stack whenever the client has its
+    -- name (RV.PendingSubject's first source).
+    if pending and stacks == 1 and row.iconSlot then
+      local name = GetInboxItem(index, row.iconSlot)
+      named = type(name) == "string" and name ~= ""
     end
     if stacks > 0 and not named then
       local listed = 0
@@ -4465,6 +4503,9 @@ do
   R.ReturnedText, R.ReturnedTip = RV.ReturnedText, RV.ReturnedTip
   -- kind -> whether it is an auction's mail (its row says the outcome).
   function R.IsAuction(kind) return AUCTION_OUTCOME[kind] ~= nil end
+  -- index -> what the Mail tab shows of a placeholder subject, for Mail
+  -- Memory's capture and History (RV.PendingShown).
+  R.PendingShown = RV.PendingShown
 end
 
 -------------------------------------------------------------
@@ -8477,9 +8518,18 @@ local function BindRow(panel, row, index, position, compact, done)
   -- An auction mail holding one kind of item its subject does not name
   -- says the item it holds, as its own subject would (RV.HeldSubject); the
   -- tooltip's title keeps the subject, and its Holds line names the item.
+  -- The auction house's mail whose subject never arrived says the item in
+  -- the placeholder's place (RV.PendingSubject), and so does its tooltip.
   local shownFrom = subject or ""
-  if heldName and AUCTION_OUTCOME[kind] then
-    shownFrom = RV.HeldSubject(subject, kind, heldName, heldID, quantity) or shownFrom
+  if kind == "auction" then
+    shownFrom = RV.PendingSubject(index, subject, heldName, heldID, quantity) or shownFrom
+  elseif AUCTION_OUTCOME[kind] then
+    if heldName then
+      shownFrom = RV.HeldSubject(subject, kind, heldName, heldID, quantity) or shownFrom
+    elseif subject == RETRIEVING_DATA and S == RV.LIVE and Mail().SubjectPending(sender, subject) then
+      -- Settled by its invoice, its subject still the placeholder.
+      shownFrom = RV.PendingSubject(index, subject, nil, nil, quantity) or shownFrom
+    end
   end
   local displaySubject = RV.ShownSubject(shownFrom, quantity,
     quantity > 0 and stacks == 1 and RV.SaysCount(iconCount, layout))
@@ -14051,8 +14101,12 @@ function CloseDetailIfStale(panel)
   -- (PaintDetailContent), so Collect showing or not is what the bar was
   -- painted for, and the repaint gives the bar reopening the mail would
   -- show (Return giving way to Delete). Once per change, never per refresh.
+  -- So is it when the mail's kind moved since it was painted (`_kind`): an
+  -- invoice the body's fetch brought, which settles an auction's outcome
+  -- and its figures, lands after the view was painted.
   if Mail().StuckReason(index) ~= detail._stuck
-    or RV.HeldSomething(index) ~= (detail.Collect:IsShown() and true or false) then
+    or RV.HeldSomething(index) ~= (detail.Collect:IsShown() and true or false)
+    or Mail().ClassifyMail(index) ~= detail._kind then
     PaintDetailContent(detail, index)
     LayoutDetail(detail)
   end
@@ -14527,8 +14581,18 @@ function PaintDetailContent(detail, index)
   -- The item an auction mail holds, where its subject names another, as
   -- the mail's row says it (RV.HeldSubject).
   local _, quantity, _, _, _, heldName, heldID = RV.LIVE.Attachments(index, itemCount)
-  detail.Subject:SetText((heldName and RV.HeldSubject(subject, kind, heldName, heldID, quantity))
-    or Helpers().ShortSubject(subject or ""))
+  -- The auction house's mail whose subject never arrived, the item it holds
+  -- in the placeholder's place, as its row says (RV.PendingSubject).
+  local shown
+  if Mail().SubjectPending(sender, subject) then
+    shown = RV.PendingSubject(index, subject, heldName, heldID, quantity)
+  elseif heldName then
+    shown = RV.HeldSubject(subject, kind, heldName, heldID, quantity)
+  end
+  detail.Subject:SetText(shown or Helpers().ShortSubject(subject or ""))
+  -- The kind the view is painted for, for the refresh that repaints it when
+  -- the kind moves under it (CloseDetailIfStale).
+  detail._kind = kind
   detail.Info:SetText(DetailInfoText(detail, index, kind, hasCOD))
 
   -- Reply exists to hand a C.O.D. mail back. Return is offered wherever the
