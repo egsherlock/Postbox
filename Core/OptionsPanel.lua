@@ -8666,11 +8666,21 @@ function Pages.mail(col)
   -- Pages.general.)
 end
 
--- The Send tab: the settings about composing, the form's own first, then
--- the one that reaches it from the Mail tab. The address book they draw on
--- is the tile at the top of the inspector; /postbox recipients is the other
--- way in.
+-- The Send tab: the way into the address book first, then the settings
+-- about composing, the form's own first, then the one that reaches it from
+-- the Mail tab, then where the names it offers come from. The address book
+-- is also the tile at the top of the inspector; /postbox recipients is the
+-- other way in.
 function Pages.send(col)
+  -- The address book the form draws on, first on the tab: its button opens
+  -- Manage Recipients (a second click closes it, as General's tile does)
+  -- and says how many recipients there are (State.Lists); as wide as the
+  -- dropdowns in its column, with the tiles' chevron, since it opens a
+  -- window. Above the first group, as the form's rows under it are.
+  S.recipientsCell = Rows.Button(col, {
+    title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
+    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients-10",
+  })
   -- What a sent mail leaves in the form: nothing, the recipient, or the
   -- recipient and the subject. Nothing to refresh: it is read at the moment
   -- a send succeeds.
@@ -8715,13 +8725,9 @@ function Pages.send(col)
       if ns.MailboxUI.RefreshMailTabAttach then ns.MailboxUI.RefreshMailTabAttach() end
     end,
   })
-  -- The address book the form draws on: its button opens Manage Recipients
-  -- (a second click closes it, as General's tile does) and says how many
-  -- recipients there are (State.Lists); as wide as the dropdowns in its
-  -- column, with the tiles' chevron, since it opens a window.
   Rows.Group(col, L["OPT_RECIPIENTS_HEADING"])
   -- Where the names the form offers come from, one switch per source
-  -- (ContactService.SourceOn), above the window that lists them. A source
+  -- (ContactService.SourceOn). A source
   -- that cannot apply is listed grey with its reason, never left out:
   -- State.Sources.
   S.offerCells = {}
@@ -8748,10 +8754,6 @@ function Pages.send(col)
   -- Not in a guild: Offer your guild has nothing to offer, and says so.
   Rows.Why(S.offerCells.guild, "CONTACT_EMPTY_GUILD")
   S.refresh[#S.refresh + 1] = State.Sources
-  S.recipientsCell = Rows.Button(col, {
-    title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
-    onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients-10",
-  })
 end
 
 -- The Send tab's source switches: Offer your guild grey, saying why, while the
