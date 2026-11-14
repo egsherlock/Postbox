@@ -5653,16 +5653,123 @@ do
   end
 
   -- A quiet line across the row, centred: something to know, not a setting.
-  function Rows.Note(col, text, title, desc)
+  -- `link`, optional, makes it a line that leads somewhere else in the
+  -- options (Options > Alerts' line to the minimap marker, Pages.alerts):
+  -- { word, glyph, onClick(row) }. `text` then holds one %s where `word`
+  -- stands (a tab's name, as the tab bar says it), painted in the accent
+  -- as a heading's words are (Rows.PaintGroup); `glyph` (Theme.GLYPHS)
+  -- after the words in the accent, as a mark; the line and the glyph
+  -- centred as one (Rows.FitLink). A click on the words or the glyph runs
+  -- `onClick`: a faceless Button over them, the row's height, from the
+  -- first letter to the glyph's last column; the rest of the row passes
+  -- clicks on as every row does, so the panel still drags from there. The
+  -- Button lights the row and fills the inspector as a row's control does
+  -- (Wire). A note is never greyed (Rows.SetEnabled) and says no "turn
+  -- on" words in a grey block (Rows.EndBlock), so the line stays live
+  -- whatever greys round it. A line with a link is in the options search
+  -- (Find.Index), a plain note is not.
+  function Rows.Note(col, text, title, desc, link)
     local row = Rows.New(col, ROW_H)
     Rows.Cell(col, row, ROW_W, title, desc, "secondary")
     row.Name:ClearAllPoints()
-    row.Name:SetPoint("CENTER", row, "CENTER", 0, 0)
-    row.Name:SetJustifyH("CENTER")
-    row.Name:SetText(text)
-    row.nameText = text
     row.kind = "note"
+    if not link then
+      row.Name:SetPoint("CENTER", row, "CENTER", 0, 0)
+      row.Name:SetJustifyH("CENTER")
+      row.Name:SetText(text)
+      row.nameText = text
+      return row
+    end
+    local T = ns.Theme
+    local word = link.word or ""
+    local lead, tail = text:match("^(.-)%%s(.*)$")
+    if not lead then lead, tail, word = text, "", "" end
+    -- The line as it reads whole, and up to the word's end: what the word's
+    -- and the tail's places are measured from (Rows.FitLink).
+    link.lead, link.tail, link.full, link.upTo = lead, tail, lead .. word .. tail, lead .. word
+    row.Name:SetPoint("LEFT", row, "LEFT", NAME_X, 0)
+    row.Name:SetJustifyH("LEFT")
+    row.Name:SetText(lead)
+    row.nameText = link.full
+    local w = T.CreateText(row, "secondary")
+    w:SetWordWrap(false)
+    w:SetText(word)
+    T.SetColor(w, "accent")
+    local rest = T.CreateText(row, "secondary")
+    rest:SetWordWrap(false)
+    rest:SetText(tail)
+    link.Word, link.Tail = w, rest
+    link.Icon = link.glyph and T.Glyph and T.Glyph(row, link.glyph, nil, "ARTWORK") or nil
+    if link.Icon then T.SetColor(link.Icon, "accent") end
+    local hit = CreateFrame("Button", nil, row)
+    hit:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    hit:SetSize(1, ROW_H)
+    Wire(hit, row)
+    hit:SetScript("OnClick", Rows.NoteClick)
+    link.Hit = hit
+    row.link, row.onClick = link, link.onClick
     return row
+  end
+
+  function Rows.NoteClick(self)
+    local cell = self.__pbCell
+    if cell and cell.onClick then cell.onClick(cell) end
+  end
+
+  -- Between a link line's last letter and its glyph's ink, in units.
+  Rows.LINK_GAP = 5
+
+  -- A string's width as the client lays it out, not rounded (TextW rounds
+  -- up, for room).
+  function Rows.RawW(fs)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+    return tonumber(w) or 0
+  end
+
+  -- A link line laid out (Rows.Fit, each open): the word and the tail
+  -- where the line read whole puts them (its spaces and kerning kept), the
+  -- glyph LINK_GAP after the last letter, all centred in the row as one,
+  -- the Button over them. The glyph's middle stands on the middle of the
+  -- words' capitals (Rows.IconTop, as the option buttons' icons stand).
+  -- Where it cannot fit the row (a long translation, a large text size)
+  -- the words before the tab's name are cut short; the inspector says the
+  -- line whole. Words and glyph painted again in the accent, as the
+  -- headings' rules are here.
+  function Rows.FitLink(cell)
+    local T = ns.Theme
+    local link = cell.link
+    local name, word, tail, icon = cell.Name, link.Word, link.Tail, link.Icon
+    -- Unrounded, so each part starts where the whole line would put it.
+    local W = Rows.RawW
+    name:SetText(link.full)
+    local whole = W(name)
+    name:SetText(link.upTo)
+    local wordX = W(name) - W(word)
+    local tailX = whole - W(tail)
+    local inkX, inkW = 0, 0
+    if icon then inkX, inkW = Rows.IconInk(icon) end
+    local total = whole + (icon and (Rows.LINK_GAP + inkW) or 0)
+    local room = ROW_W - 2 * NAME_X
+    local over = math.max(0, total - room)
+    T.FitText(name, wordX - over + 1, link.lead, cell)
+    wordX, tailX, total = wordX - over, tailX - over, total - over
+    local x = NAME_X + math.floor((room - total) / 2 + 0.5)
+    name:ClearAllPoints()
+    name:SetPoint("LEFT", cell, "LEFT", x, 0)
+    word:ClearAllPoints()
+    word:SetPoint("LEFT", cell, "LEFT", x + wordX, 0)
+    tail:ClearAllPoints()
+    tail:SetPoint("LEFT", cell, "LEFT", x + tailX, 0)
+    T.SetColor(word, "accent")
+    if icon then
+      icon:ClearAllPoints()
+      icon:SetPoint("TOPLEFT", cell, "TOPLEFT", x + whole - over + Rows.LINK_GAP - inkX, -Rows.IconTop(cell, name, icon))
+      T.SetColor(icon, "accent")
+    end
+    local hit = link.Hit
+    hit:ClearAllPoints()
+    hit:SetPoint("TOPLEFT", cell, "TOPLEFT", x, 0)
+    hit:SetSize(math.max(1, total), ROW_H)
   end
 
   -- A group's heading: its name and a rule in the accent to the row's end.
@@ -6069,7 +6176,9 @@ do
       if cell.side then cell.playW = Rows.FitSide(cell) end
       -- Less the button that stands before a dropdown (Rows.Play).
       local inner = cell.w - NAME_X - CONTROL_R - (cell.playW or 0)
-      if kind == "note" then
+      if cell.link then
+        Rows.FitLink(cell)
+      elseif kind == "note" then
         T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
       else
         local controlW = cell.controlW or 0
@@ -9372,7 +9481,9 @@ end
 -- have none, and the drawing shows the marker moving with the slider.
 function Pages.MinimapMarker(block, modes, rows)
   local Icon = ns.MinimapButton
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_MARKER"])
+  -- The group's heading and last row, for the lines that lead here
+  -- (Pages.OpenMarker).
+  S.markerHead = Rows.Group(block, L["OPT_MINIMAP_GROUP_MARKER"])
   local expiryNames = {
     off = L["OPT_MINIMAP_EXPIRY_OFF"], icon = L["OPT_MINIMAP_EXPIRY_ICON"], always = L["OPT_MINIMAP_EXPIRY_ALWAYS"],
   }
@@ -9457,6 +9568,7 @@ function Pages.MinimapMarker(block, modes, rows)
     after = Ctx.Repaint,
   })
   Rows.Why(rows.large, "OPT_MINIMAP_WHY_ALONE")
+  S.markerLast = rows.large
   modes[rows.marker.entry], modes[rows.color.entry] = "marker", "color"
   modes[rows.corner.entry], modes[rows.large.entry] = "corner", "large"
   for _, key in ipairs({ "marker", "color", "corner", "offx", "offy", "large" }) do
@@ -9467,6 +9579,16 @@ function Pages.MinimapMarker(block, modes, rows)
     Rows.Why(cell, "OPT_MINIMAP_WHY_SWITCH")
     cell.entry.stage = "minimap"
   end
+end
+
+-- A line's way to the marker (Rows.Note's onClick, wherever the line
+-- stands): the Minimap tab, and the group marked from its heading to its
+-- last row as the options search marks what it found (Find.Mark), on grey
+-- rows too.
+function Pages.OpenMarker()
+  Panel.SelectTab("minimap")
+  local head = S.markerHead
+  if head then Find.Mark(head, S.markerLast) end
 end
 
 -- The minimap drawing's two tables, shared by the tabs that draw it: the
@@ -9596,7 +9718,7 @@ end
 -- one rule for both warnings, and the line in chat at login that follows
 -- it (MailMemory.lua, MM.Warns), made from Mail Memory and grey with it;
 -- the minimap marker, which follows it too, is the Minimap tab's
--- (Pages.MinimapMarker). Then New mail, the sound and the flash. The
+-- (Pages.MinimapMarker), and a line under them opens it there. Then New mail, the sound and the flash. The
 -- inspector draws the minimap icon (Ctx.alerts).
 function Pages.alerts(col)
   -- The rest Mail Memory's switch governs: the expiring-mail warnings.
@@ -9640,6 +9762,12 @@ function Pages.alerts(col)
   })
   Rows.Why(chat, "OPT_WARN_WHY")
   S.warnCells = { chat = chat }
+  -- Where the marker that follows Warn about is set: a line that opens the
+  -- Minimap tab at its group (Pages.OpenMarker), live whatever greys here.
+  local tab = L["OPT_MINIMAP_HEADING"]
+  local group = L["OPT_MINIMAP_GROUP_MARKER"]
+  Rows.Note(block, L["OPT_MARKER_POINTER"], group, string.format(L["OPT_MARKER_POINTER_DESC"], tab, group),
+    { word = tab, glyph = "link-10", onClick = Pages.OpenMarker })
   Rows.EndBlock(block)
 
   -- New mail: the sound when mail arrives while you are out in the world,
@@ -10518,7 +10646,7 @@ do
         -- Every row is built and listed, a grey one too. A row hidden for
         -- now would be listed only where it names the row that brings it
         -- back (`findVia`), and a pick would lead there (Find.Pick).
-        if kind ~= "note" and (Offered(cell, page) or (cell.findVia and Offered(cell.findVia, page))) then
+        if (kind ~= "note" or cell.onClick) and (Offered(cell, page) or (cell.findVia and Offered(cell.findVia, page))) then
           -- Made again where the row's name or its list of choices has
           -- changed: a select whose list is swapped (State.Postbox's
           -- background colours by Mode, State.Tone's sounds) is handed a
