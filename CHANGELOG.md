@@ -242,9 +242,8 @@
   hidden, and the options' search finds them.
 - **Reset this tab** (Options > Minimap) also puts back the minimap
   icon's size and place under EllesmereUI's minimap.
-- **The Minimap tab wears your minimap icon** (Options > Minimap): a small
-  copy of the Icon style you chose after the tab's name, and the name in
-  gray while the icon is off.
+- **The Minimap tab's name is gray while the minimap icon is off**
+  (Options > Minimap).
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars. Mail Memory's is an
