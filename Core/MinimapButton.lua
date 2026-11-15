@@ -2901,14 +2901,22 @@ end
 --
 -- Every one plays on the channel PlaySound uses by default, "SFX", so the
 -- player's Sound Effects volume and switch govern them all alike.
-local ALERT_TONES = { "off", "soft", "envelope", "bell", "tock", "chime", "page", "ping", "auction", "clock" }
+local ALERT_TONES = {
+  "off", "soft", "bell", "tock", "rise", "marimba", "bubble", "glass", "notes", "bump",
+  "chime", "page", "ping", "auction", "clock",
+}
 MB.ALERT_TONES = ALERT_TONES
 local SOUND_DIR = "Interface\\AddOns\\Postbox\\Media\\Sounds\\"
 local TONE_FILE = {
-  soft     = SOUND_DIR .. "soft-chime.ogg",
-  envelope = SOUND_DIR .. "envelope.ogg",
-  bell     = SOUND_DIR .. "small-bell.ogg",
-  tock     = SOUND_DIR .. "wood-tock.ogg",
+  soft    = SOUND_DIR .. "soft-chime.ogg",
+  bell    = SOUND_DIR .. "small-bell.ogg",
+  tock    = SOUND_DIR .. "wood-tock.ogg",
+  rise    = SOUND_DIR .. "soft-rise.ogg",
+  marimba = SOUND_DIR .. "marimba.ogg",
+  bubble  = SOUND_DIR .. "bubble.ogg",
+  glass   = SOUND_DIR .. "glass-tick.ogg",
+  notes   = SOUND_DIR .. "three-notes.ogg",
+  bump    = SOUND_DIR .. "low-bump.ogg",
 }
 local TONE_KIT = {
   chime   = { "UI_MAIL_ARRIVED", "TELL_MESSAGE", 3081 },
@@ -2918,7 +2926,8 @@ local TONE_KIT = {
   clock   = { "ALARM_CLOCK_WARNING_3", nil, 12889 },
 }
 MB.TONE_GROUP = {
-  soft = "postbox", envelope = "postbox", bell = "postbox", tock = "postbox",
+  soft = "postbox", bell = "postbox", tock = "postbox", rise = "postbox", marimba = "postbox",
+  bubble = "postbox", glass = "postbox", notes = "postbox", bump = "postbox",
   chime = "game", page = "game", ping = "game", auction = "game", clock = "game",
 }
 MB.TONE_CHANNEL = "SFX"
@@ -3040,8 +3049,9 @@ end
 
 -- The sound chosen: `alertTone`, or, where none has been chosen, what the
 -- old switch said (on: the chime). A sound no longer offered (the group
--- invite, friend online, ready check and coins of 1.60's first builds)
--- reads as the chime: whoever chose one wanted to hear something.
+-- invite, friend online, ready check and coins of 1.60's first builds, and
+-- Postbox's own Envelope, offered up to 1.60) reads as the chime: whoever
+-- chose one wanted to hear something.
 local function AlertTone(prefs)
   local tone = prefs.alertTone
   if TONE_FILE[tone] or TONE_KIT[tone] then return tone end

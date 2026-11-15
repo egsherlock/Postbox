@@ -8002,7 +8002,9 @@ end
 local Tones = {
   key = false, items = false,
   NAMES = {
-    soft = "OPT_SOUND_SOFT", envelope = "OPT_SOUND_ENVELOPE", bell = "OPT_SOUND_BELL", tock = "OPT_SOUND_TOCK",
+    soft = "OPT_SOUND_SOFT", bell = "OPT_SOUND_BELL", tock = "OPT_SOUND_TOCK",
+    rise = "OPT_SOUND_RISE", marimba = "OPT_SOUND_MARIMBA", bubble = "OPT_SOUND_BUBBLE",
+    glass = "OPT_SOUND_GLASS", notes = "OPT_SOUND_NOTES", bump = "OPT_SOUND_BUMP",
     chime = "OPT_SOUND_CHIME", page = "OPT_SOUND_PAGE", ping = "OPT_SOUND_PING",
     auction = "OPT_SOUND_AUCTION", clock = "OPT_SOUND_CLOCK",
   },
@@ -10147,9 +10149,10 @@ function Pages.Alerts(col)
   local sound = Rows.Dropdown(col, {
     title = L["OPT_ALERT_SOUND_TITLE"], text = L["OPT_ALERT_SOUND_DESC"] .. "\n\n" .. L["OPT_SOUND_MORE"],
     items = State.ToneItems(),
-    -- Off, Postbox's and the game's whole without a scroll; EllesmereUI's
-    -- and other addons' sounds, as many as they have, scroll.
-    maxListHeight = 16 * 20 + 8,
+    -- Off, Postbox's and the game's whole without a scroll (17 rows, the
+    -- two headings counted), and room for four more; EllesmereUI's and
+    -- other addons' sounds, as many as they have, scroll.
+    maxListHeight = 21 * 20 + 8,
     get = function() return ns.MinimapButton and ns.MinimapButton.GetAlertTone() or "off" end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetAlertTone(id) end

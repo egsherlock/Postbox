@@ -98,6 +98,11 @@ def partials(t, f0, spec, start=0.0, attack=0.004):
     return y
 
 
+def lp2(y, cutoff):
+    """Two one-pole lowpasses in a row: a gentler, darker top than one."""
+    return one_pole_lowpass(one_pole_lowpass(y, cutoff), cutoff)
+
+
 # ------------------------------------------------------------- the sounds
 
 def soft_chime(rng):
@@ -108,24 +113,6 @@ def soft_chime(rng):
     y = partials(t, 659.26, spec, 0.0, 0.006)
     y += 0.9 * partials(t, 880.0, spec, 0.13, 0.006)
     return fade_out(one_pole_lowpass(y, 5000), 0.08)
-
-
-def envelope(rng):
-    """Paper: a slide of band-limited noise, grainy (the fibres catching),
-    then the flap settling with a softer, lower whisper and a faint
-    cardboard-like thump under it."""
-    t = timeline(0.42)
-    noise = rng.standard_normal(len(t))
-    slide = bandpass(noise, 1800, 0.9) * env_ad(t, 0.035, 0.05, 0.0)
-    grain = 0.6 + 0.4 * np.abs(one_pole_lowpass(rng.standard_normal(len(t)), 90)) * 6
-    slide *= np.clip(grain, 0, 1.6)
-    flap = 0.55 * bandpass(noise[::-1].copy(), 1100, 1.1) * env_ad(t, 0.012, 0.045, 0.16)
-    thump = 0.35 * np.sin(2 * np.pi * 150 * np.maximum(t - 0.16, 0)) * env_ad(t, 0.003, 0.03, 0.16)
-    y = slide + flap + thump
-    # Noise is all peaks: a gentle saturation evens them out, so the sound
-    # is not left far quieter than the others at the same peak.
-    y = np.tanh(2.5 * y / np.max(np.abs(y)))
-    return fade_out(one_pole_lowpass(one_pole_lowpass(y, 4000), 4000), 0.06)
 
 
 def small_bell(rng):
@@ -164,11 +151,81 @@ def wood_tock(rng):
     return fade_out(one_pole_lowpass(y, 5000), 0.05)
 
 
+def soft_rise(rng):
+    """Two short, round notes a fifth apart, C5 then G5, each plucked and
+    gone in a tenth of a second: a quick 'bip-bip' upward, where Soft chime
+    rings."""
+    t = timeline(0.42)
+    spec = [(1.0, 1.0, 0.075), (2.0, 0.12, 0.04)]
+    y = partials(t, 523.25, spec, 0.0, 0.006)
+    y += 0.85 * partials(t, 783.99, spec, 0.095, 0.006)
+    return fade_out(lp2(y, 3500), 0.06)
+
+
+def marimba(rng):
+    """One warm wooden-bar note, C5: the fundamental with the bar's own
+    fourth-partial (ratio 3.93) dying fast, and a soft felt-mallet thump."""
+    t = timeline(0.55)
+    y = partials(t, 523.25, [(1.0, 1.0, 0.16), (3.93, 0.16, 0.025), (9.2, 0.02, 0.008)], 0.0, 0.004)
+    thump = np.sin(2 * np.pi * 261.6 * t) * env_ad(t, 0.003, 0.02)
+    y += 0.25 * thump
+    return fade_out(lp2(y, 4000), 0.08)
+
+
+def bubble(rng):
+    """A rounded pop: a sine that sweeps up an octave in 40 ms and is gone,
+    like a drop or a bubble breaking."""
+    t = timeline(0.26)
+    f = 380 + 420 * (1 - np.exp(-t / 0.018))
+    phase = 2 * np.pi * np.cumsum(f) / SR
+    y = np.sin(phase) * env_ad(t, 0.004, 0.045)
+    y += 0.1 * np.sin(2 * phase) * env_ad(t, 0.004, 0.02)
+    return fade_out(lp2(y, 3000), 0.05)
+
+
+def glass_tick(rng):
+    """A small glassy tick with a short tail: a high sine and a quieter
+    inharmonic one above it, struck softly, ringing for a fifth of a second."""
+    t = timeline(0.4)
+    y = partials(t, 1046.5, [(1.0, 1.0, 0.09), (2.76, 0.15, 0.025)], 0.0, 0.002)
+    y += 0.35 * partials(t, 523.25, [(1.0, 1.0, 0.06)], 0.0, 0.003)
+    return fade_out(lp2(y, 4500), 0.08)
+
+
+def three_notes(rng):
+    """A gentle rising A-major figure, A4 C#5 E5, soft sines 80 ms apart,
+    the last let ring a little longer."""
+    t = timeline(0.7)
+    spec = [(1.0, 1.0, 0.12), (2.0, 0.1, 0.05)]
+    y = partials(t, 440.0, spec, 0.0, 0.008)
+    y += 0.9 * partials(t, 554.37, spec, 0.08, 0.008)
+    y += 0.85 * partials(t, 659.26, [(1.0, 1.0, 0.2), (2.0, 0.1, 0.06)], 0.16, 0.008)
+    return fade_out(lp2(y, 3500), 0.1)
+
+
+def low_bump(rng):
+    """A low, soft bump: a round tone at about G3 that sags a little as it
+    dies, with a quiet second and third harmonic so small speakers hear it."""
+    t = timeline(0.3)
+    f = 196 * (1 + 0.12 * np.exp(-t / 0.03))
+    phase = 2 * np.pi * np.cumsum(f) / SR
+    e = env_ad(t, 0.006, 0.06)
+    y = (np.sin(phase) + 0.35 * np.sin(2 * phase) + 0.12 * np.sin(3 * phase)) * e
+    return fade_out(lp2(y, 2500), 0.06)
+
+
+# In the options' order (Core/MinimapButton.lua, ALERT_TONES). Each one's
+# noise, where it has any, is seeded by its own name.
 SOUNDS = [
     ("soft-chime", soft_chime),
-    ("envelope", envelope),
     ("small-bell", small_bell),
     ("wood-tock", wood_tock),
+    ("soft-rise", soft_rise),
+    ("marimba", marimba),
+    ("bubble", bubble),
+    ("glass-tick", glass_tick),
+    ("three-notes", three_notes),
+    ("low-bump", low_bump),
 ]
 
 
