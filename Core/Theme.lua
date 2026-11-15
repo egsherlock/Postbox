@@ -4750,12 +4750,6 @@ local function PaintPlate(plate)
     elseif Theme.EmptyTile(plate) then token = "textDisabled"
     elseif hovered and T.captionHoverToken then token = T.captionHoverToken end
     Theme.SetColor(plate.Text, token, ground)
-    -- White art beside the caption (`__pbInks`: the Minimap tab's mark)
-    -- wears the caption's ink.
-    local inks = plate.__pbInks
-    if inks then
-      for i = 1, #inks do Theme.SetColor(inks[i], token, ground) end
-    end
   end
 
   -- Its glyph's halo, after the caption's font is settled above.

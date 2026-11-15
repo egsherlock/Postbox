@@ -772,7 +772,7 @@ local TABS = {
   { key = "window",  caption = "OPT_WINDOW_HEADING" },
   { key = "mail",    caption = "OPT_MAILTAB_HEADING" },
   { key = "send",    caption = "OPT_SENDTAB_HEADING" },
-  { key = "minimap", caption = "OPT_MINIMAP_HEADING", mark = true },
+  { key = "minimap", caption = "OPT_MINIMAP_HEADING" },
 }
 
 -- Everything the panel keeps between calls, on one table.
@@ -892,19 +892,19 @@ end
 --
 -- A card beside the list, in two zones. The top is the tab's own drawing
 -- (Ctx, below): what the tab builds or opens, or what its settings look
--- like. The foot is text: the tab's own description at rest, and while the
--- pointer is on a setting that setting's description -- on a raised card
--- over the foot, which grows up over the drawing only for a description
--- that needs the room.
+-- like. The foot is text: the tab's own description at rest, and once the
+-- pointer has been on a setting that setting's description -- on a raised
+-- card over the foot where it needs more room than the foot has, always
+-- under the drawing, never over it (Insp.Under).
 --
 -- Calm, by one rule: the text follows the pointer from setting to setting,
--- and stays on the last one while the pointer is anywhere over the list or
--- the inspector -- a group's heading, the hairline between two rows, on its
--- way across to read a long description. It goes back to the tab's own
--- when the pointer leaves them both, or the tab changes. Crossing the list
--- never flashes the tab's text between two rows. While a dropdown's list is
--- open the text stays on that dropdown's row, wherever the pointer goes
--- (Rows.Hold).
+-- and stays on the last one, and the drawing as that setting left it,
+-- wherever the pointer goes next -- a group's heading, the hairline between
+-- two rows, out of the window. Only the ring on what the setting changes
+-- (MW.PaintRing) is the pointer's, and goes out as it leaves the row
+-- (Insp.Unlit). The tab's own text comes back when the tab changes or the
+-- panel opens again. While a dropdown's list is open the text and the ring
+-- stay on that dropdown's row, wherever the pointer goes (Rows.Hold).
 --
 -- A hover allocates nothing: every text is a string its entry already
 -- holds and every region exists, so a hover sets text, a height and what
@@ -996,10 +996,19 @@ do
     S.measure = measure
   end
 
-  -- entry, or nil for the tab's own text.
-  function Insp.Show(entry)
-    if entry == S.shown then return end
-    S.shown = entry
+  -- entry, or nil for the tab's own text. `lit`: the pointer is on the
+  -- entry's row, and the drawing rings what it changes (S.lit); the same
+  -- entry said again (Insp.Repaint) keeps its ring as it was.
+  function Insp.Show(entry, lit)
+    lit = (lit or S.lit == entry) and entry or nil
+    if entry == S.shown then
+      if lit ~= S.lit then
+        S.lit = lit
+        Ctx.Follow()
+      end
+      return
+    end
+    S.shown, S.lit = entry, lit
     -- A drawing that answers the setting pointed at follows it.
     Ctx.Follow()
     local say, idle = S.say, S.idleBlock
@@ -1037,13 +1046,23 @@ do
     -- between, and the text lays out on a shown card.
     say:Show()
     idle:Hide()
-    local h = Lay(say, entry.title, entry.text, extra and extra.height or 0)
+    local extraH = extra and extra.height or 0
+    local h = Lay(say, entry.title, entry.text, extraH)
     if extra then extra:Show() end
+    local room = Insp.Under()
+    if room > 0 and h > room then h = Insp.Cut(say, entry, room, extraH) end
     local least = Insp.Least(S.tab)
     if h < least then h = least end
-    local room = Insp.Room(entry)
-    if room > 0 and h > room then h = Insp.Cut(say, entry, room, extra and extra.height or 0) end
+    if room > 0 and h > room then h = room end
     say:SetHeight(h)
+  end
+
+  -- The pointer left the row the text is on: the text and the drawing stay
+  -- as that row left them, the ring on what it changes goes out.
+  function Insp.Unlit()
+    if not S.lit then return end
+    S.lit = nil
+    Ctx.Follow()
   end
 
   -- The inspector's height: the body's, less General's two cards over it
@@ -1053,26 +1072,23 @@ do
   -- under both, and the window is as tall as General's tallest text needs
   -- there (Layout): measured, so only a language and Text size that need
   -- it make the window taller.
-  --
-  -- A setting its tab's drawing answers (entry.stage), and the Mail tab's
-  -- own text where the room under its window cut it (entry.rise), stand
-  -- under the drawing while they fit there; a longer one rises over the
-  -- drawing's lower part, inside the inspector, while it is pointed at, up
-  -- to what of the drawing stays in sight (Ctx.Keep: the Preview's heading
-  -- and its Test mail switch, the minimap icon's ground), so no description
-  -- makes the window taller than its list (Layout).
-  function Insp.Room(entry)
-    local room = S.inspH or S.bodyH
-    local stage = entry and (entry.stage or entry.rise)
-    if stage and room then return room - Ctx.Keep(stage) end
-    return room
+  function Insp.Room()
+    return S.inspH or S.bodyH
   end
 
-  -- A text with no room left for all of it, even risen (a translation or a
-  -- text size past any the layout was measured for): cut to the lines that
-  -- fit `room` by the house rule for fitted text -- the client's own
-  -- ellipsis at the end of the last line -- and the whole of it a pointer's
-  -- rest away (Insp.CutMouse). Answers the room.
+  -- The room every text stands in: the inspector's under the tab's drawing
+  -- (Ctx.Height; none on General and the Send tab), so no description ever
+  -- covers the drawing, and none makes the window taller than its list
+  -- (Layout): a longer one is cut to it (Insp.Cut).
+  function Insp.Under()
+    return Insp.Room() - Ctx.Height(S.tab)
+  end
+
+  -- A text with no room left for all of it under the drawing (a long text,
+  -- a translation, a large text size): cut to the lines that fit `room` by
+  -- the house rule for fitted text -- the client's own ellipsis at the end
+  -- of the last line -- and the whole of it in a tooltip beside the panel a
+  -- pointer's rest away (Insp.CutMouse). Answers the room.
   function Insp.Cut(block, entry, room, extraH)
     local d = block.Text
     if not (d.SetMaxLines and entry and entry.text and entry.text ~= "") then return room end
@@ -1085,27 +1101,20 @@ do
     return room
   end
 
-  -- The pointer on a text cut short brings the whole of it: the tab's own,
-  -- cut under its window, rises as a setting's does (Insp.Show); a
-  -- setting's that is cut even risen says itself whole in a tooltip beside
-  -- the panel. Motion only, and only while the text is cut.
+  -- The pointer on a text cut short brings the whole of it, the tab's own
+  -- or a setting's: in a tooltip beside the panel. Motion only, and only
+  -- while the text is cut.
   local function CutEnter(self)
     if Rows.Held(self, CutEnter) then return end
     local entry = self.cutEntry
     if not entry then return end
-    if self == S.idleBlock then
-      Insp.Show(entry)
-      return
-    end
     Tip.Begin(self, entry.title, entry.text)
     Tip.Show(self)
   end
 
   local function CutLeave(self)
     if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
-    if Rows.HeldLeave(self) then return end
-    local body = S.body
-    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+    Rows.HeldLeave(self)
   end
 
   function Insp.CutMouse(block, entry)
@@ -1141,14 +1150,14 @@ do
       idle.Rule:Hide()
       local room = Insp.Room() - 2
       -- General's own text where the room under its two cards is shorter
-      -- than it: cut to that room, whole under the pointer (Insp.Room).
+      -- than it: cut to that room, whole in a tooltip (Insp.Cut).
       if key == "general" and h > room and room > 0 then h = Insp.Cut(idle, entry, room, 0) end
       h = math.max(h, room)
     else
       idle.Rule:Show()
       local least = Insp.Least(key)
       -- The Mail tab's own text where the room under its window is shorter
-      -- than it (Layout): cut to that room, whole under the pointer.
+      -- than it (Layout): cut to that room, whole in a tooltip.
       if key == "mail" and h > least then h = Insp.Cut(idle, entry, least, 0) end
       if h < least then h = least end
     end
@@ -1296,7 +1305,7 @@ do
   -- the new one at once (Rows.WhyFresh).
   function Ctx.Repaint()
     Ctx.Paint(S.tab)
-    if Rows.WhyFresh() and S.shown then Insp.Repaint() end
+    if Rows.WhyFresh() and S.shown then Insp.Repaint() else Ctx.Readout() end
   end
 
   -- The mark for the way into arranging: the art the title bar wears for it
@@ -1825,18 +1834,6 @@ do
   Ctx.PREVIEW_GAP = 4
   function Ctx.PreviewRoom()
     return math.max(MW.Line("secondary"), BUTTON_H) + Ctx.PREVIEW_GAP
-  end
-
-  -- What of `key`'s drawing a description rising over it leaves in sight,
-  -- from the inspector's top (Insp.Room): the Preview's heading with Test
-  -- mail's switch (the host notice under the Window tab's drawing may be
-  -- covered), and on the
-  -- Minimap tab the icon's ground, the stage that answers what is pointed at.
-  function Ctx.Keep(key)
-    if key == "mail" then return CTX_TOP + Ctx.PreviewRoom() end
-    if key == "window" then return CTX_TOP + Ctx.PreviewRoom() end
-    if key == "minimap" then return CTX_TOP + 4 + Ctx.MinimapStage() end
-    return 0
   end
 
   local function TestMailOn()
@@ -3444,7 +3441,8 @@ do
   function MW.PaintRing(win, st)
     local ring = win.Ring
     if not ring then return end
-    local entry = S.shown
+    -- Only while the pointer is on the setting's row (Insp.Unlit).
+    local entry = S.lit
     local t = MW.RingTarget(win, entry and entry.part or nil, st or MW.st)
     if not t.a then
       ring:Hide()
@@ -3790,12 +3788,14 @@ do
     return shown and S.mmModes and S.mmModes[shown] or "set"
   end
 
-  -- The inspector moved to another setting (Insp.Show): the stage follows
-  -- where that changes what it draws.
+  -- The inspector moved to another setting (Insp.Show), or the pointer
+  -- left its row (Insp.Unlit): the stage follows the setting shown where
+  -- that changes what it draws, and stays when the pointer leaves.
   function Ctx.Follow()
     local f = S.ctx.minimap
     if f and f.mode and f.mode ~= Ctx.MinimapMode() and f:IsVisible() then f.Paint() end
-    -- The Mail tab's window rings what the setting pointed at changes.
+    -- The Mail tab's window rings what the setting under the pointer
+    -- changes (S.lit).
     local sw = S.mailMini
     if sw and sw:IsVisible() then MW.PaintRing(sw.Mini) end
   end
@@ -4180,6 +4180,13 @@ do
     return h
   end
 
+  -- The accent moved while the accent row's reading stays on show, the
+  -- pointer on its row or gone (Ctx.Repaint, Panel.RepaintLook): read again.
+  function Ctx.Readout()
+    local extra = S.accentReadout
+    if extra and S.extraShown == extra and extra:IsVisible() then extra.Line:SetText(Ctx.AccentReadout()) end
+  end
+
   function Ctx.Extra(kind)
     if kind == "pbAccent" then
       local extra = S.accentReadout
@@ -4294,19 +4301,19 @@ do
       if cell.Wash then cell.Wash:Show() end
     end
     if cell.onHover then cell.onHover(cell) end
-    Insp.Show(entry or cell.entry)
+    Insp.Show(entry or cell.entry, true)
   end
 
-  -- The pointer left a cell. Its wash goes unless the pointer only moved
-  -- onto the cell's own control; the inspector keeps its text while the
-  -- pointer is anywhere over the list or the inspector (see above).
+  -- The pointer left a cell. Its wash and the drawing's ring go unless the
+  -- pointer only moved onto the cell's own control; the inspector keeps
+  -- its text and the drawing its stage (see above).
   function Rows.Unhover(cell)
-    if S.washed == cell and not cell:IsMouseOver() then
+    if cell:IsMouseOver() then return end
+    if S.washed == cell then
       if cell.Wash then cell.Wash:Hide() end
       S.washed = nil
     end
-    local body = S.body
-    if not (body and body:IsMouseOver()) then Insp.Show(nil) end
+    Insp.Unlit()
   end
 
   -- While a dropdown's list is open, its row holds the panel: its wash and
@@ -7649,13 +7656,12 @@ end
 --
 -- Six house plates, like the window's own segments, each as wide as its
 -- caption (Tabs.Fit): the selected one in the accent, the others neutral. The tab a feature's switch leads,
--- Minimap, says whether the feature is on: while the minimap icon is on,
--- after its name a small copy of the icon as chosen (Icon style), as tall
--- as the name's capitals; while it is off, no mark and the name in the
--- disabled grey (the plate's `__pbDim`, Theme's PaintPlate), the tab
--- opening as any tab. The others have none: no one switch is what such a
--- tab is about (whose look the window wears is the dot on Window's
--- inspector's host badge; Mail Memory's switch is one row of General's).
+-- Minimap, says whether the feature is on: while the minimap icon is off,
+-- its name in the disabled grey (the plate's `__pbDim`, Theme's
+-- PaintPlate), the tab opening as any tab. The others have none: no one
+-- switch is what such a tab is about (whose look the window wears is the
+-- dot on Window's inspector's host badge; Mail Memory's switch is one row
+-- of General's).
 -------------------------------------------------------------
 do
   local function TabClick(self)
@@ -7676,35 +7682,6 @@ do
     if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
   end
 
-  -- The mark: on a holder of its own (a host skin restyles the plate's own
-  -- textures), three ways of drawing it, one shown. `Art`, a painted style
-  -- in its own colours, as the map draws it (white vertex, never tinted);
-  -- `Plain`, Postbox's white envelope; `Check`, the house check (8 units,
-  -- its own size, sharp) for a style too fine to read this small. The two
-  -- white ones wear the name's ink, painted with the plate (Theme's
-  -- PaintPlate, `__pbInks`), so they follow its hover, selection,
-  -- accent and palette.
-  local function AddMark(plate)
-    local T = ns.Theme
-    local mark = CreateFrame("Frame", nil, plate)
-    mark:SetSize(8, 8)
-    mark.Art = mark:CreateTexture(nil, "OVERLAY")
-    mark.Plain = mark:CreateTexture(nil, "OVERLAY")
-    mark.Check = T.Glyph(mark, "check", 8, "OVERLAY") or mark:CreateTexture(nil, "OVERLAY")
-    for _, tex in ipairs({ mark.Art, mark.Plain }) do
-      tex:SetPoint("TOPLEFT", mark, "TOPLEFT", 0, 0)
-      if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(true) end
-      if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
-      tex:Hide()
-    end
-    mark.Check:SetPoint("TOPLEFT", mark, "TOPLEFT", 0, 0)
-    mark.Check:Hide()
-    mark.on, mark.inkL, mark.inkW = false, 0, 0
-    mark:Hide()
-    plate.Mark = mark
-    plate.__pbInks = { mark.Plain, mark.Check }
-  end
-
   function Tabs.Build(frame)
     local T = ns.Theme
     local edges = T.ColumnEdges(PANEL_W - 2 * EDGE, #TABS, TAB_GAP)
@@ -7719,7 +7696,6 @@ do
       plate:SetScript("OnClick", TabClick)
       plate:HookScript("OnEnter", TabEnter)
       plate:HookScript("OnLeave", TabLeave)
-      if spec.mark then AddMark(plate) end
       -- Under the Postbox style, the window tabs' plates (the options
       -- mockup's tabs): dark idle, a lit plate selected, a ring each.
       local skin = ns.Skin
@@ -7731,91 +7707,22 @@ do
   -- The least room each side of a tab's caption (Tabs.Fit).
   local TAB_PAD = 6
 
-  -- The mark's room after the name: the gap to its ink, then its ink.
-  local MARK_GAP = 5
-  -- Styles whose art cannot be read at a capital's height (looked at drawn
-  -- 9 to 11 units: a thin strip, or a busy or dark picture that turns to a
-  -- smudge): the check in their place.
-  local MARK_CHECK = { scroll = true, bundle = true, bundleclean = true, mailbag = true, satchel = true,
-    quill = true, wood = true, woodclean = true }
-
-  -- The mark drawn for the icon as chosen, its art's visible box (the
-  -- style's `box`, as the map's marker stands on it) as tall as the name's
-  -- capitals, in whole units; its ink's left inset and width kept for the
-  -- layout (`inkL`, `inkW`), and the room it takes in the tab (`plate.markW`,
-  -- 0 while it is off). Run where the tab is measured (Tabs.Fit) and where
-  -- the icon or its switch moved (Tabs.SetMark).
-  local function SizeMark(plate)
-    local mark = plate.Mark
-    if not (mark and mark.on) then
-      plate.markW = 0
-      return
-    end
-    local Icon = ns.MinimapButton
-    local id = Icon and Icon.GetIcon and Icon.GetIcon()
-    local spec = Icon and Icon.GetIconSpec and Icon.GetIconSpec(id)
-    local art, plain, check = mark.Art, mark.Plain, mark.Check
-    if not spec or MARK_CHECK[id] then
-      art:Hide()
-      plain:Hide()
-      check:Show()
-      mark:SetSize(8, 8)
-      mark.inkL, mark.inkW = 0, 8
-    else
-      -- The capitals' height: the face's cap share of its size, as the
-      -- options' button icons stand on them (Rows.IconTop).
-      local cap = 9
-      local BP = ns.CollectTab and ns.CollectTab.BarParts
-      if BP and BP.FaceOf then
-        local face, size = BP.FaceOf(plate.Text)
-        if face and size then cap = math.max(6, math.floor(face[3] * size + 0.5)) end
-      end
-      local box = spec.box or false
-      local aspect = spec.aspect or 1
-      local bl, br, bt, bb = 0, 0, 0, 0
-      if box then bl, br, bt, bb = box.l or 0, box.r or 0, box.t or 0, box.b or 0 end
-      local side = math.max(1, math.floor(cap / (aspect * (1 - bt - bb)) + 0.5))
-      -- Postbox's own envelope is white art: it wears the name's ink.
-      local tex, other = art, plain
-      if id == "postbox" then tex, other = plain, art end
-      check:Hide()
-      other:Hide()
-      if spec.atlas then tex:SetAtlas(spec.atlas) else tex:SetTexture(spec.texture) end
-      if tex == art then tex:SetVertexColor(1, 1, 1, 1) end
-      tex:SetSize(side, side * aspect)
-      tex:Show()
-      mark:SetSize(side, side * aspect)
-      mark.inkL = math.floor(bl * side + 0.5)
-      mark.inkW = side - mark.inkL - math.floor(br * side + 0.5)
-    end
-    plate.markW = MARK_GAP + mark.inkW
-  end
-
   -- The caption, cut to its plate where a translation will not fit, and
-  -- centred with its mark as one. A unit's leeway: the plate's width is
-  -- rounded to whole units. The mark stands MARK_GAP after the words' end
-  -- to its ink, its middle on their capitals (Rows.IconTop).
+  -- centred. A unit's leeway: the plate's width is rounded to whole units.
   local function FitOne(plate)
     local T = ns.Theme
-    local markW = plate.markW or 0
     local W = plate:GetWidth() or 0
-    local room = W - 2 * TAB_PAD - markW + 1
+    local room = W - 2 * TAB_PAD + 1
     local text = plate.Text
     T.FitText(text, room, plate.caption, plate)
     local shown = math.min(TextW(text), room)
     text:SetWidth(shown)
     text:ClearAllPoints()
-    text:SetPoint("CENTER", plate, "CENTER", -markW / 2, 0)
-    local mark = plate.Mark
-    if mark and markW > 0 then
-      local x = math.floor(W / 2 - markW / 2 + shown / 2 + MARK_GAP - mark.inkL + 0.5)
-      mark:ClearAllPoints()
-      mark:SetPoint("TOPLEFT", plate, "TOPLEFT", x, -Rows.IconTop(plate, text, mark))
-    end
+    text:SetPoint("CENTER", plate, "CENTER", 0, 0)
   end
 
   -- Measured on every open, and after a font change. Each tab is as wide
-  -- as its caption and its square need, and the room left over is shared
+  -- as its caption, and the room left over is shared
   -- evenly between them as padding, the same each side of every caption;
   -- never less than TAB_PAD a side. Where even that leaves too little (a
   -- long translation at a large text size), only the longest captions are
@@ -7834,9 +7741,7 @@ do
       local plate = S.plates[TABS[i].key]
       local text = plate.Text
       text:SetText(plate.caption)
-      -- The mark after the caption, where it shows (SizeMark).
-      SizeMark(plate)
-      need[i] = TextW(text) + (plate.markW or 0)
+      need[i] = TextW(text)
       fixed[i] = need[i]
       sum = sum + need[i]
     end
@@ -7880,23 +7785,15 @@ do
     end
   end
 
-  -- The tab's feature on or off: the mark for the icon as chosen, or none
-  -- and the name grey. Run when the switch or Icon style moves; the bar is
-  -- shared out again only where the mark's room changed.
-  function Tabs.SetMark(key, on)
+  -- The tab's feature on or off: its name grey while it is off. Run when
+  -- the switch moves.
+  function Tabs.SetDim(key, on)
     local plate = S.plates[key]
-    local mark = plate and plate.Mark
-    if not mark then return end
-    on = on and true or false
-    local was = plate.markW
-    mark.on = on
-    mark:SetShown(on)
-    SizeMark(plate)
+    if not plate then return end
     if plate.__pbDim ~= not on then
       plate.__pbDim = not on
       ns.Theme.RepaintPlate(plate)
     end
-    if plate.markW ~= was then Tabs.Fit() else FitOne(plate) end
   end
 
   function Tabs.Select(key)
@@ -7912,7 +7809,7 @@ end
 -- What a switch or a window changes elsewhere on the panel
 -------------------------------------------------------------
 
--- The minimap icon's switch: its rows grey with it, its tab's mark, the
+-- The minimap icon's switch: its rows grey with it, its tab's name, the
 -- icon on its stage.
 function State.Minimap()
   local Icon = ns.MinimapButton
@@ -7924,7 +7821,7 @@ function State.Minimap()
   if S.flashCell then Rows.SetEnabled(S.flashCell, on) end
   State.MinimapRows()
   State.Warnings()
-  Tabs.SetMark("minimap", on)
+  Tabs.SetDim("minimap", on)
   Ctx.Paint("minimap")
 end
 
@@ -9834,8 +9731,6 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetIcon() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetIcon(id) end
-      -- The tab's mark wears the icon as chosen.
-      Tabs.SetMark("minimap", ns.MinimapButton and ns.MinimapButton.GetEnabled())
       Ctx.Repaint()
     end,
   })
@@ -12268,10 +12163,9 @@ end
 -- the tallest description the inspector can be asked for -- measured in
 -- the client's language and the host's font, with the drawing it must
 -- leave room for where it sits under one. A description longer than the
--- room under its drawing rises over the drawing's lower part (Insp.Room),
--- inside the inspector, so in every language the pages set it unless a
--- text would not fit even risen. General's texts stand under its two cards
--- and never over them: their tallest, under the cards, is a need of its own.
+-- room under its drawing is cut to it (Insp.Under), never laid over the
+-- drawing. General's texts stand under its two cards and never over them:
+-- their tallest, under the cards, is a need of its own.
 local function Layout()
   local text = S.textNeed
   if not (MeasuredAlready() and text) then
@@ -12283,12 +12177,10 @@ local function Layout()
     -- texts, its cards' and its settings', stand under both cards: the
     -- tallest of them, with the cards over it (Dash).
     --
-    -- A setting's text is shown on the raised card, which rises as far as
-    -- its room (Insp.Room), never out of the inspector: over another tab's
-    -- drawing, over the lower part of a drawing that answers it. None of
-    -- them makes the window taller; the drawings ask only for their least
-    -- text zone under them, and a text that would not fit even risen is cut
-    -- to its room, whole under the pointer (Insp.Cut).
+    -- A setting's text is shown under its tab's drawing (Insp.Under). None
+    -- of them makes the window taller; the drawings ask only for their
+    -- least text zone under them, and a text that does not fit there is cut
+    -- to it, whole in a tooltip (Insp.Cut).
     local mailText, generalText = SAY_MIN, SAY_MIN
     -- One line of the secondary role, and the room between two, for a text
     -- cut to the lines that fit (Insp.Cut).
@@ -12334,9 +12226,9 @@ local function Layout()
   local need = math.ceil(math.max(S.listNeed or 0, text, Ctx.MailNeed(SAY_MIN)))
   -- The Mail tab: its window at its least over its text zone, the zone as
   -- tall as its tallest text where the window still fits over it, else the
-  -- room the window at its least leaves -- a longer text rises over the
-  -- window's lower part while it is pointed at (Insp.Room), and the tab's
-  -- own is cut to the zone (Insp.Idle). The window then takes whatever room
+  -- room the window at its least leaves -- a longer text, the tab's own or
+  -- a setting's, is cut to the zone (Insp.Idle, Insp.Show). The window then
+  -- takes whatever room
   -- the panel has between the two (Ctx.MailFill), so it never makes the
   -- panel taller than its list.
   S.mailText = math.max(SAY_MIN, math.min(S.mailMost or SAY_MIN, need - Ctx.MailNeed(0)))
@@ -12355,13 +12247,15 @@ local function Layout()
 end
 
 -- The pointer left the list and the inspector from somewhere no row is --
--- held, like any leave, while a dropdown's list is open (Rows.Hold).
+-- held, like any leave, while a dropdown's list is open (Rows.Hold). The
+-- text and the drawing stay as the last setting left them; its wash and
+-- ring go.
 local function BodyLeave(self)
   if self:IsMouseOver() or S.held then return end
   local washed = S.washed
   if washed and washed.Wash then washed.Wash:Hide() end
   S.washed = nil
-  Insp.Show(nil)
+  Insp.Unlit()
 end
 
 -- What only a close does, never a step aside (Panel.StepAside): Forever's
@@ -12459,9 +12353,6 @@ local function Build()
   S.weekEntry.tab = "general"
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
     .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
-  -- Cut to the room under the window where that is shorter, it rises whole
-  -- over the window's lower part under the pointer (Insp.Room, Insp.Idle).
-  S.idle.mail.rise = "mail"
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
@@ -12720,7 +12611,7 @@ end
 function Panel.RepaintLook()
   local frame = S.frame
   if not (frame and frame:IsShown()) then return end
-  if Rows.WhyFresh() and S.shown then Insp.Repaint() end
+  if Rows.WhyFresh() and S.shown then Insp.Repaint() else Ctx.Readout() end
 end
 
 -- Arrange columns and buttons: the arrange mode on the Postbox window, the
