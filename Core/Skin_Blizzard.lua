@@ -4362,10 +4362,64 @@ do
   -- `L`: scroll, child, n (rows listed), stride, height (a row's), rise
   -- (units the rows after the bar over finished mail stand higher), gap,
   -- empty (the words), bands, shown, and the last pass's key.
+  -- The words on the first paper (his pick on b24): at the house's place,
+  -- 16 units under the list's top, their feet lay on the dark gap between
+  -- the first two papers. On a parchment they stand in the middle of the
+  -- first paper's height, between the same left and right ends the house
+  -- gave them, so a line the house centres (Mail Memory's) is still
+  -- centred; with the paper off, at the house's own points again. `h`: a
+  -- row's height, or false for the house's place. The house's points are
+  -- read once per list; the first paper's top is the scroll frame's, read
+  -- from its own anchor on the words' frame (where a list is built another
+  -- way, the words keep the house's place).
+  local function Place(L, empty, h)
+    local pts = L.pts
+    if not pts then
+      pts = {}
+      for i = 1, empty:GetNumPoints() do pts[i] = { empty:GetPoint(i) } end
+      L.pts = pts
+    end
+    local home = L.home
+    local point, rel, relPoint, _, top = L.scroll:GetPoint(1)
+    local left, right
+    if h and home and point == "TOPLEFT" and rel == home and relPoint == "TOPLEFT" then
+      for i = 1, #pts do
+        local p = pts[i]
+        if p[2] == home or p[2] == nil then
+          if p[1] == "TOPLEFT" or p[1] == "LEFT" or p[1] == "BOTTOMLEFT" then
+            left = p[4] or 0
+          elseif p[1] == "TOPRIGHT" or p[1] == "RIGHT" or p[1] == "BOTTOMRIGHT" then
+            right = p[4] or 0
+          end
+        end
+      end
+    end
+    empty:ClearAllPoints()
+    if left and right then
+      local y = (top or 0) - h / 2
+      empty:SetPoint("LEFT", home, "TOPLEFT", left, y)
+      empty:SetPoint("RIGHT", home, "TOPRIGHT", right, y)
+    else
+      for i = 1, #pts do
+        local p = pts[i]
+        empty:SetPoint(p[1], p[2], p[3], p[4], p[5])
+      end
+    end
+  end
+
   local function Paint(L, on)
     local empty = L.empty
+    if not empty then return end
     local key = on and R.mode or false
-    if not empty or L.inked == key then return end
+    local at = on and L.height or false
+    if L.inked == key then
+      -- Only the rows' height moved (or nothing): the words placed again.
+      if L.at ~= at and (at or L.pts) then
+        L.at = at
+        Place(L, empty, at)
+      end
+      return
+    end
     L.inked = key
     local T = ns.Theme
     local roles = T and T.TextRoles
@@ -4392,6 +4446,10 @@ do
       empty:SetParent(L.over)
     elseif home then
       empty:SetParent(home)
+    end
+    if L.at ~= at and (at or L.pts) then
+      L.at = at
+      Place(L, empty, at)
     end
   end
 
