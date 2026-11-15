@@ -5418,12 +5418,14 @@ do
     return btn
   end
 
-  -- A square button before a dropdown's toggle that plays what the
-  -- dropdown chose: Sound on new mail's. The arrow on a holder of its own,
-  -- as the arrange mark is (a skin's button repaint fades the button's own
-  -- textures), in the caption's ink, grey while there is nothing to play
-  -- (State.Tone). The row's name leaves it room (Rows.Fit, `playW`). The
-  -- pointer on it shows the row's own entry.
+  -- A square button after a dropdown's toggle that plays what the
+  -- dropdown chose: Sound on new mail's. It stands at the row's right end,
+  -- and the box before it is narrower by it and its gap (Rows.Fit,
+  -- `playKeyW`), so the box starts where every dropdown of the column does.
+  -- The arrow on a holder of its own, as the arrange mark is (a skin's
+  -- button repaint fades the button's own textures), in the caption's ink,
+  -- grey while there is nothing to play (State.Tone). The pointer on it
+  -- shows the row's own entry.
   local PLAY_W = 22
   local function PlayClick()
     local Icon = ns.MinimapButton
@@ -5434,14 +5436,19 @@ do
     local T = ns.Theme
     local btn = T.CreateButton(nil, row)
     btn:SetSize(PLAY_W, BUTTON_H)
-    btn:SetPoint("RIGHT", row.dd, "LEFT", -LEAD_GAP, 0)
+    btn:SetPoint("RIGHT", row, "RIGHT", -CONTROL_R, 0)
+    local dd, keyW = row.dd, PLAY_W + LEAD_GAP
+    dd:ClearAllPoints()
+    dd:SetPoint("RIGHT", btn, "LEFT", -LEAD_GAP, 0)
+    dd:SetWidth(row.controlW - keyW)
+    row.control:SetWidth(row.controlW - keyW)
     btn:SetText("")
     btn:SetScript("OnClick", PlayClick)
     Wire(btn, row, true)
     local mark = T.Glyph and T.Glyph(ArtHolder(btn), "arrow-right", 8, "OVERLAY") or nil
     if mark then mark:SetPoint("CENTER", btn, "CENTER", 1, 0) end
     btn.Mark = mark
-    row.play, row.playW = btn, PLAY_W + LEAD_GAP
+    row.play, row.playKeyW = btn, keyW
     return btn
   end
 
@@ -6184,8 +6191,9 @@ do
   -- column whatever their values: a value too long for the box is cut
   -- short in it (the select's own fitter) and said whole on hover, and its
   -- list opens as wide as its widest value (the select's list fits its
-  -- items); Sound on new mail's play button stands outside its box, before
-  -- it, taking room from the name, never from the box. A name that would
+  -- items); Sound on new mail's play button stands after its box, in the
+  -- column's room, so the box starts with the others and is narrower by
+  -- the button (Rows.Play). A name that would
   -- reach the dropdown beside it narrows that toggle, down to DD_MIN_W
   -- (a long translation), and only past that is the name cut short -- the
   -- inspector's title still carries it whole.
@@ -6198,7 +6206,6 @@ do
       local kind = cell.kind
       -- A switch of its own before the dropdown (Rows.Side): where it stands.
       if cell.side then cell.playW = Rows.FitSide(cell) end
-      -- Less the button that stands before a dropdown (Rows.Play).
       local inner = cell.w - NAME_X - CONTROL_R - (cell.playW or 0)
       if kind == "note" then
         T.FitText(cell.Name, inner - NAME_X, cell.nameText, cell)
@@ -6212,8 +6219,10 @@ do
           end
           if cell.controlW ~= want then
             cell.controlW = want
-            cell.dd:SetWidth(want)
-            cell.control:SetWidth(want)
+            -- The play key after the box takes its room from it (Rows.Play).
+            local box = want - (cell.playKeyW or 0)
+            cell.dd:SetWidth(box)
+            cell.control:SetWidth(box)
           end
           if cell.layBox then cell.layBox(cell) end
           controlW = want
