@@ -36,6 +36,10 @@ local MAX_MAILS = 100
 
 -- The Mail tab's compact row height, so a row reads the same in both windows.
 local ROW_HEIGHT = 26
+-- The plain divider under the mail sent a box since its last visit, in the
+-- window whose foot says when the box was seen (SentBlock): a band this
+-- tall holding a one-unit line, so the rows under it stand higher.
+local RULE_H = 9
 -- Narrowest and widest: the grip stretches it between the two.
 local WINDOW_WIDTH = 400
 local WINDOW_MAX_WIDTH = 640
@@ -2320,7 +2324,8 @@ do
   -- kept on its target, so a refresh makes neither. The heading is a
   -- heading of the box it stands in (header, its realm and name), drawn as
   -- words alone (`note`); the line's words are set by the list that shows
-  -- it.
+  -- it. Third, the plain divider that stands in the line's place where the
+  -- list's foot says those words (`rule`: no words, no mail).
   function MM.SentNotes(realm, name)
     local target = TargetFor(realm, name)
     if not target then return nil end
@@ -2329,8 +2334,9 @@ do
       head = { header = true, note = true, realm = realm, name = name, label = L["MEMORY_SENT_SINCE"] }
       target.head = head
       target.line = { note = true, line = true, label = "" }
+      target.rule = { note = true, rule = true, label = "" }
     end
-    return head, target.line
+    return head, target.line, target.rule
   end
 end
 
@@ -4108,6 +4114,53 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
   -- A line of words is not a row of the list: no band of its own.
   if row._bg then row._bg:SetShown(not mail.note) end
   row.onHeader = onHeader
+  if row.Divider then row.Divider:SetShown(mail.rule == true) end
+  if mail.rule then
+    -- The plain divider under the mail sent a box since its last visit
+    -- (MM.SentNotes), where the window's foot says when the box was seen:
+    -- a line in the list's edge ink across the row (BindRows makes the row
+    -- RULE_H tall), no words, nothing under the pointer.
+    row.itemLink, row.itemID = nil, nil
+    row.expiryTip, row.stuck = nil, nil
+    row.mail, row.itemList, row.iconItems, row.fanSource = nil, nil, 0, nil
+    row.headerRealm, row.headerName = nil, nil
+    if row.HeaderWash then
+      row.HeaderWash:Hide()
+      row.HeaderRule:Hide()
+    end
+    row.HeaderHit:Hide()
+    MM.Icons.Release(row.Icon)
+    row.Icon:Hide()
+    if row.IconHit then row.IconHit:Hide() end
+    row.Indicator:Hide()
+    if row.Indicator.__pbShade then row.Indicator.__pbShade:Hide() end
+    row.Warning:Hide()
+    row.ColTime:Hide()
+    row.ColMoney:Hide()
+    row.ColSlots:Hide()
+    if R and R.Wash then R.Wash(row, nil) end
+    if R and R.PaintSender then R.PaintSender(row.Sender, nil) end
+    T.FitText(row.Sender, 1, "", nil)
+    T.FitText(row.Subject, 1, "", nil)
+    if R and R.PaintQuality then R.PaintQuality(row, nil) end
+    if R and R.PaintNameMark then R.PaintNameMark(row, nil) end
+    if R and R.PaintCount then R.PaintCount(row, nil, nil) end
+    local line = row.Divider
+    if not line then
+      -- Made the first time this row is the divider; the palette's repaint
+      -- paints it again (Theme.FillColor keeps its token).
+      line = row:CreateTexture(nil, "ARTWORK")
+      line:SetHeight(1)
+      line:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -math.floor((RULE_H - 1) / 2))
+      line:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, -math.floor((RULE_H - 1) / 2))
+      T.FillColor(line, "surfaceBorder")
+      row.Divider = line
+    end
+    line:Show()
+    row:SetAlpha(1)
+    row:Show()
+    return
+  end
   if mail.note then
     -- Words of the list's own (MM.SentNotes): the heading over the mail
     -- sent a box since its last visit, and the box's own line under it.
@@ -5251,9 +5304,10 @@ local sentScratch = {}
 -- ("oldest": the other way round); they have no expiry to sort by. `rows`
 -- is the list RowsFor made for this call, moved down in place.
 -- `footSeen`: the list's own foot says when the box was seen (the Mail
--- Memory window's, MM.SeenText), so where the box held nothing and nothing
--- stands under the line, the line is left out: it would say the foot's
--- words twice. The Mail tab's view of the box has no such foot.
+-- Memory window's, MM.SeenText), so while no search is on (the foot then
+-- says what the search found) the line says nothing: a plain divider
+-- stands in its place over the rest of the box, and with nothing under the
+-- sent mail, nothing does. The Mail tab's view of the box has no such foot.
 local function SentBlock(rows, realm, name, snapshot, now, query, order, footSeen)
   local sc = sentScratch
   local n = MM.SentRowsInto(sc, realm, name, snapshot and snapshot.seenAt or nil, now, order == "oldest")
@@ -5267,10 +5321,13 @@ local function SentBlock(rows, realm, name, snapshot, now, query, order, footSee
     end
   end
   if k == 0 then return rows, 0 end
-  local head, line = MM.SentNotes(realm, name)
-  line.label = MM.SeenText(snapshot, true)
+  local head, line, rule = MM.SentNotes(realm, name)
   local m = #rows
-  if footSeen and query == "" and m == 0 and not (snapshot and snapshot.mails and #snapshot.mails > 0) then line = nil end
+  if footSeen and query == "" then
+    line = (m > 0) and rule or nil
+  else
+    line.label = MM.SeenText(snapshot, true)
+  end
   local shift = line and k + 2 or k + 1
   for i = m, 1, -1 do rows[i + shift] = rows[i] end
   rows[1] = head
@@ -6348,8 +6405,15 @@ local function BindRows(frame)
   local viewport = scroll:GetHeight() or 0
   if viewport <= 0 then viewport = DEFAULT_ROWS * ROW_HEIGHT end
   local offset = scroll:GetVerticalScroll() or 0
-  local first = math.max(1, math.floor(offset / ROW_HEIGHT) + 1)
-  local last = math.min(#rows, math.ceil((offset + viewport) / ROW_HEIGHT))
+  -- One row may be the plain divider (frame._rule), RULE_H tall: the rows
+  -- under it stand `cut` higher than a row's pitch would put them, so a
+  -- place below its foot is found as if it were a whole row.
+  local rule = frame._rule
+  local cut = rule and (ROW_HEIGHT - RULE_H) or 0
+  local foot = rule and rule * ROW_HEIGHT - cut
+  local bottom = offset + viewport
+  local first = math.max(1, math.floor(((rule and offset >= foot) and offset + cut or offset) / ROW_HEIGHT) + 1)
+  local last = math.min(#rows, math.ceil(((rule and bottom > foot) and bottom + cut or bottom) / ROW_HEIGHT))
   local now = frame._now or time()
   local onHeader = frame._onHeader
   -- While the arrange mode is open over this window its column header stands
@@ -6368,9 +6432,17 @@ local function BindRows(frame)
       frame.Rows[used] = row
     end
     local y = -(i - 1) * ROW_HEIGHT
+    if rule and i > rule then y = y + cut end
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", frame.ListChild, "TOPLEFT", 0, y)
     row:SetPoint("TOPRIGHT", frame.ListChild, "TOPRIGHT", 0, y)
+    -- The divider's row its own height, and a row that was it a row's
+    -- again, before it is filled (a look reads the height as it lays it).
+    local short = (i == rule)
+    if (row._short == true) ~= short then
+      row._short = short
+      row:SetHeight(short and RULE_H or ROW_HEIGHT)
+    end
     MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader, realm, name)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
@@ -6454,27 +6526,35 @@ function Refresh(frame)
   frame._list = rows
   frame._info = info
   frame._now = now
+  -- The plain divider in this list, if it has one: under the sent mail and
+  -- its heading (SentBlock). The list is that much shorter than its rows
+  -- at a row's pitch (BindRows).
+  local under = (not frame._preview) and (info.sent or 0) > 0 and rows[info.sent + 2] or nil
+  frame._rule = (under and under.rule) and info.sent + 2 or nil
+  local cutH = frame._rule and (ROW_HEIGHT - RULE_H) or 0
+  local listH = count * ROW_HEIGHT - cutH
   frame._cols = (count > 0) and MM.MeasureRows(frame, rows, now, frame.Rows[1]) or nil
-  frame.ListChild:SetHeight(math.max(1, count * ROW_HEIGHT))
+  frame.ListChild:SetHeight(math.max(1, listH))
   -- The scroll frame re-reads its child the moment the child's height is
   -- set, as the Mail tab's list does, and the offset stays inside the list.
   local scroll = frame.Scroll
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
-  local most = math.max(0, count * ROW_HEIGHT - (scroll:GetHeight() or 0))
+  local most = math.max(0, listH - (scroll:GetHeight() or 0))
   if (scroll:GetVerticalScroll() or 0) > most then scroll:SetVerticalScroll(most) end
   BindRows(frame)
 
   -- Height: six rows by default, the user's own height once they have
   -- dragged the grip, and never taller than the content or shorter than six
   -- rows. Width: the user's, between the window's narrowest and widest.
+  -- Rows as the list holds them, the divider at its own height.
   local contentRows = math.max(count, 1)
-  local minH = RowsHeight(math.min(MIN_ROWS, contentRows))
-  local maxH = RowsHeight(contentRows)
+  local maxH = RowsHeight(contentRows) - cutH
+  local minH = math.min(RowsHeight(MIN_ROWS), maxH)
   frame:SetResizeBounds(WINDOW_WIDTH, minH, WINDOW_MAX_WIDTH, math.max(maxH, minH))
   -- Mid-drag the grip owns the size: a refresh the drag itself caused (the
   -- rows re-fill as the width changes) must not pull the window back.
   if frame.sizing then return end
-  local wanted = frame.userHeight or RowsHeight(math.min(DEFAULT_ROWS, contentRows))
+  local wanted = frame.userHeight or math.min(RowsHeight(DEFAULT_ROWS), maxH)
   if wanted < minH then wanted = minH end
   if wanted > maxH then wanted = maxH end
   local width = math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, frame:GetWidth() or WINDOW_WIDTH))
@@ -6583,7 +6663,7 @@ function MM.ArrangeHost(frame)
     local CT = ns.CollectTab
     if CT and CT.PreviewRelease then CT.PreviewRelease() end
     Refresh(frame)
-    local most = math.max(0, #(frame._list or {}) * ROW_HEIGHT - (scroll:GetHeight() or 0))
+    local most = math.max(0, (frame.ListChild:GetHeight() or 0) - (scroll:GetHeight() or 0))
     scroll:SetVerticalScroll(math.min(frame._previewOffset or 0, most))
     BindRows(frame)
   end
