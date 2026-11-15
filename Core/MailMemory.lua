@@ -2829,11 +2829,37 @@ do
     return nil
   end
 
+  -- MM.PostedItem's answer for a name, held for the rows of mail on its way
+  -- (3b, PendingIcon), which ask on every refresh: the walk over the
+  -- account's notes is made once per name, not per row per refresh. One
+  -- entry per name asked (its id, or false), at most MEMO_MAX, all dropped
+  -- when a note is written or pruned (postsGen) or the bound is reached.
+  local MEMO_MAX = 64
+  local memo = { id = {}, icon = {}, n = 0, gen = -1 }
+  function MM.PostedItemHeld(itemName)
+    if type(itemName) ~= "string" or itemName == "" then return nil end
+    local ids, icons = memo.id, memo.icon
+    if memo.gen ~= postsGen or (memo.n >= MEMO_MAX and ids[itemName] == nil) then
+      for key in pairs(ids) do ids[key] = nil end
+      for key in pairs(icons) do icons[key] = nil end
+      memo.n, memo.gen = 0, postsGen
+    end
+    local id = ids[itemName]
+    if id == nil then
+      local got, icon = MM.PostedItem(itemName)
+      id = got or false
+      ids[itemName], icons[itemName] = id, icon or false
+      memo.n = memo.n + 1
+    end
+    return id or nil, icons[itemName] or nil
+  end
+
   -- Every character's notes pruned (at login, with History), a character
   -- left with none dropped.
   function MM.PrunePosts()
     local root = ns.Store and ns.Store.Get and ns.Store.Get("auctionPosts")
     if type(root) ~= "table" then return end
+    postsGen = postsGen + 1
     local now = time()
     for realm, byRealm in pairs(root) do
       if type(byRealm) == "table" then
@@ -4317,13 +4343,63 @@ end
 -- visit clears it.
 -------------------------------------------------------------
 
-local function PendingIcon(entry)
-  if C_Item and type(C_Item.GetItemIconByID) == "function" and entry.item then
-    local ok, icon = pcall(C_Item.GetItemIconByID, entry.item)
-    if ok and icon then return icon end
+-- entry -> its row's icon: the item's, found the way a sold row in the inbox
+-- finds it (CollectTab's IconFor), else the coin for a sale, the letter for
+-- the rest. First the auction's note (2e): its id and icon kept on the entry
+-- when the notice came (NotePending), else asked by the name, once per name
+-- (MM.PostedItemHeld), and the icon taken by the NUMBER id. Then the client
+-- by exact name, for an item seen in the bags or bank this session. Asked by
+-- a name it has not loaded, the client answers with its question mark, not
+-- nil: never asked so, and the question mark counts as not known wherever it
+-- comes back. What is found is held for its entry (a saved table, the same
+-- one every refresh, weakly keyed) until a note is written or pruned
+-- (MM.PostsGen): the icon, or that the note gave none, so a refresh asks
+-- the note nothing again and the client only for an item it did not know.
+local PendingIcon
+do
+  local held = setmetatable({}, { __mode = "k" })
+  local heldGen = nil
+
+  -- gen: MM.PostsGen(), read once for the list.
+  function PendingIcon(entry, gen)
+    if gen ~= heldGen then
+      for key in pairs(held) do held[key] = nil end
+      heldGen = gen
+    end
+    local known = held[entry]
+    if known then return known end
+    local api = type(C_Item) == "table" and C_Item or nil
+    local item = type(entry.item) == "string" and entry.item ~= "" and entry.item or nil
+    -- false: the note was asked and gave nothing.
+    if known == nil then
+      local id, noted = tonumber(entry.i), tonumber(entry.c)
+      if not id and item and MM.PostedItemHeld then id, noted = MM.PostedItemHeld(item) end
+      if noted and noted ~= 134400 then
+        held[entry] = noted
+        return noted
+      end
+      -- By a number id the client answers from its own data, as IconFor asks it.
+      if id and api and type(api.GetItemIconByID) == "function" then
+        local icon = api.GetItemIconByID(id)
+        if icon and icon ~= 134400 and icon ~= "Interface\\Icons\\INV_Misc_QuestionMark" then
+          held[entry] = icon
+          return icon
+        end
+      end
+      held[entry] = false
+    end
+    -- Asked again on each refresh until the client knows it: an item it
+    -- loads later is found then.
+    if item and api and type(api.GetItemInfo) == "function" then
+      local ok, got, _, _, _, _, _, _, _, _, icon = pcall(api.GetItemInfo, item)
+      if ok and got == item and icon and icon ~= 134400 and icon ~= "Interface\\Icons\\INV_Misc_QuestionMark" then
+        held[entry] = icon
+        return icon
+      end
+    end
+    if entry.k == "sold" then return "Interface\\Icons\\INV_Misc_Coin_01" end
+    return "Interface\\Icons\\INV_Letter_02"
   end
-  if entry.k == "sold" then return "Interface\\Icons\\INV_Misc_Coin_01" end
-  return "Interface\\Icons\\INV_Letter_02"
 end
 
 -- watch, arrived, from, snap -> the rows for mail known to have arrived,
@@ -4338,11 +4414,12 @@ local function PendingRows(watch, arrived, from, snap)
   for i = 1, #mails do
     if not mails[i].read and mails[i].sender then known[mails[i].sender] = true end
   end
+  local gen = MM.PostsGen and MM.PostsGen() or 0
   for i = #pending, 1, -1 do
     local p = pending[i]
     local subject = p.item or ""
     if (tonumber(p.n) or 1) > 1 then subject = subject .. " (" .. p.n .. ")" end
-    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p),
+    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p, gen),
       count = tonumber(p.n) }
   end
   if arrived then
@@ -7163,7 +7240,13 @@ if bus then
     if not watch then return end
     watch.pending = type(watch.pending) == "table" and watch.pending or {}
     if #watch.pending >= 30 then table.remove(watch.pending, 1) end
-    watch.pending[#watch.pending + 1] = { k = kind, item = item, n = tonumber(count), t = time() }
+    local entry = { k = kind, item = item, n = tonumber(count), t = time() }
+    -- The item's id, and its own icon where one was noted, where this
+    -- account put it up for auction (2e): its row's icon (PendingIcon) then
+    -- needs no asking by name.
+    local id, icon = MM.PostedItem(item)
+    if id then entry.i, entry.c = id, icon end
+    watch.pending[#watch.pending + 1] = entry
     CharactersChanged()
     NoteArrival(realm, name)
     local snap = StoredSnapshot()
