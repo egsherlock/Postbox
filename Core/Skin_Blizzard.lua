@@ -979,7 +979,9 @@ do
     if type(w) ~= "number" or type(h) ~= "number" or w <= 0 or h <= 0 then return end
     local set = art.names.up
     local lw, lh = Parts.Size(set[1])
-    local rw = Parts.Size(set[3])
+    -- Held on, the right end is the left end's art turned round (Paint).
+    local even = art.state == "held"
+    local rw = even and lw or Parts.Size(set[3])
     if not (lw and lh and rw) then return end
     local artH = h / (1 - 2 * RIM)
     local m = artH * RIM
@@ -1005,7 +1007,11 @@ do
     local L, R = art[1], art[3]
     L:SetTexCoord(0, newL / leftW, 0, 1)
     L:SetSize(newL, artH)
-    R:SetTexCoord(1 - newR / rightW, 1, 0, 1)
+    if even then
+      R:SetTexCoord(newR / rightW, 0, 0, 1)
+    else
+      R:SetTexCoord(1 - newR / rightW, 1, 0, 1)
+    end
     R:SetSize(newR, artH)
     -- A cell standing on the button's left end (the Send tab's Sent clock,
     -- Parts.SentCell, which the window joins to the button) while it is
@@ -1072,12 +1078,19 @@ do
       if art.onKind then art.onKind(button) end
     end
     if kind == "dark" then return PaintDark(button) end
+    -- A switch held on (Test mail) is the pressed button pushed straight
+    -- in (his pick on b23). The game's pressed art draws its face down and
+    -- to the right inside the rim, a dark gap at the left and none at the
+    -- right, which reads as a push for the moment of a click and as
+    -- off-centre when held. Held, the right end is the left end's pressed
+    -- art turned round (Fit), so the gap is the same at both ends; a click
+    -- on any red button keeps the game's own pressed art.
     local state = "up"
-    if not button:IsEnabled() then state = "off" elseif art.down or art.held then state = "down" end
+    if not button:IsEnabled() then state = "off" elseif art.held then state = "held" elseif art.down then state = "down" end
     if art.state == state then return end
     art.state = state
-    local set = art.names[state]
-    for i = 1, 3 do Atlas(art[i], set[i], false) end
+    local set = art.names[state == "held" and "down" or state]
+    for i = 1, 3 do Atlas(art[i], set[(i == 3 and state == "held") and 1 or i], false) end
     -- The middle tiles across, as the template's does; SetAtlas sets the
     -- whole piece again, its crop and tiling with it.
     art[2]:SetHorizTile(true)
