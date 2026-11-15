@@ -4275,20 +4275,32 @@ do
     end
   end
 
-  -- The gap between two papered rows, a whole number of screen pixels. The
-  -- client puts each edge of a texture on the nearest pixel, so a gap of 2
-  -- units at 1.2 pixels a unit (2.4 pixels) came out 2 or 3 pixels from one
-  -- row to the next, by where each edge fell. The paper is laid from its row's
-  -- top to the next row's top less a whole `G` pixels (the thinner: `gap`
-  -- units' pixels rounded down, at least 1), and an edge and that edge moved
-  -- a whole number of pixels land on pixels a whole number apart: every gap
-  -- is G. The row itself (its height, pitch and texts) is where it was; the
+  -- The gap between two papered rows, a whole number of screen pixels. A
+  -- gap of 2 units at 1.2 pixels a unit (2.4 pixels) came out 2 or 3 pixels
+  -- from one row to the next. The paper is laid from its row's top to the
+  -- next row's top less a whole `G` pixels (the thinner: `gap` units'
+  -- pixels rounded down, at least 1), and drawn off the client's pixel grid
+  -- (OffGrid): the client then fills the pixels whose middle the paper
+  -- covers, and between two edges a whole G pixels apart there are G rows
+  -- of them wherever the list stands or is scrolled to. On the grid, as a
+  -- texture is by default, that did not hold: measured in game where the
+  -- rows' pitch was 33.5 pixels, the papers stood 31, 31, 32 and 31 pixels
+  -- tall and one gap was 3 pixels where the others were 2 (the snapped
+  -- paper's foot went either way, as Theme's glyphs found theirs do).
+  -- The row itself (its height, pitch and texts) is where it was; the
   -- paper reaches under a pixel past its foot, and the pointer's wash
-  -- (row._bg) with it. Laid again only when the row's scale, the screen or
-  -- the gap moved (one scale read a bind), and for every papered row on a
-  -- window-scale or UI-scale change (Skin.ApplyScale, the client's events).
+  -- (row._bg) with it, off the grid while it lies on the paper. Laid again
+  -- only when the row's scale, the screen or the gap moved (one scale read
+  -- a bind), and for every papered row on a window-scale or UI-scale change
+  -- (Skin.ApplyScale, the client's events).
   local screenH
   local papered = {}
+  local function OffGrid(tex)
+    if tex.SetSnapToPixelGrid then
+      tex:SetSnapToPixelGrid(false)
+      tex:SetTexelSnappingBias(0)
+    end
+  end
   local function ScreenH()
     if not screenH then
       screenH = 768
@@ -4398,6 +4410,7 @@ do
         if not t then
           t = child:CreateTexture(nil, "BACKGROUND", nil, -2)
           t:SetTexture(PAPER)
+          OffGrid(t)
           bands[shown] = t
         end
         t:ClearAllPoints()
@@ -4537,11 +4550,12 @@ do
       if row.__pbGround then
         row.__pbGround, row.__pbPaperOn, row.__pbInkGen = nil, nil, nil
         if paper then paper:Hide() end
-        -- The stripe back on the row's own bounds.
+        -- The stripe back on the row's own bounds, and on the grid.
         if row._bg and row.__pbBgOnPaper then
           row.__pbBgOnPaper = nil
           row._bg:ClearAllPoints()
           row._bg:SetAllPoints(row)
+          if row._bg.SetSnapToPixelGrid then row._bg:SetSnapToPixelGrid(true) end
         end
         Texts(row, nil, false)
         -- The sender's colour is painted again by the binder.
@@ -4555,6 +4569,7 @@ do
     if not paper then
       paper = row:CreateTexture(nil, "BACKGROUND", nil, -2)
       paper:SetTexture(PAPER)
+      OffGrid(paper)
       row.__pbPaper = paper
       row.__pbRowPaint = Wash
       papered[#papered + 1] = row
@@ -4585,13 +4600,15 @@ do
       paper:SetVertexColor(v, v, v, 1)
       paper:Show()
       if row.Sender then row.Sender.__pbClass = nil end
-      -- The pointer's wash covers the paper, foot included.
+      -- The pointer's wash covers the paper, foot included, on the paper's
+      -- own pixels.
       local bg = row._bg
       if bg and not row.__pbBgOnPaper then
         row.__pbBgOnPaper = true
         bg:ClearAllPoints()
         bg:SetPoint("TOPLEFT", paper, "TOPLEFT", 0, 0)
         bg:SetPoint("BOTTOMRIGHT", paper, "BOTTOMRIGHT", 0, 0)
+        if bg.SetSnapToPixelGrid then bg:SetSnapToPixelGrid(false) end
       end
     end
     -- A re-fonted or re-roled string comes back in its ink: the texts inked
