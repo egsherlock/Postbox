@@ -223,6 +223,11 @@
 - **Test mail** has its own switch over the options' Preview, and reads
   **Testing** while it is on, with a ring and tint of your accent so it is
   easy to spot.
+- **Options: the description under the Preview stays** on the last setting
+  you pointed at, and the Preview keeps showing that setting, when the
+  pointer moves away; only the ring on the Preview goes out. A description
+  never covers the Preview: a long one ends in "..." and shows whole in a
+  tooltip when you rest the pointer on it.
 - New installs start with three category buttons under the mail list: All
   bought, All sold and All expired. Yours stay as they are.
 - Mail counts always show on Inbox, the collect buttons and each
