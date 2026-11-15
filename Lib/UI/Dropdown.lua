@@ -1215,6 +1215,10 @@ function Dropdown.Create(parent, opts)
 
         row:SetScript("OnEnter", function()
           if item.off then return end
+          -- (A look's own hover for a menu's row: Theme.MenuHover, the
+          -- Blizzard style's; nil in every other look.)
+          local lit = ns.Theme and ns.Theme.MenuHover
+          if lit and lit(bg) then return end
           bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4])
         end)
         row:SetScript("OnLeave", function()
@@ -1803,7 +1807,11 @@ function Dropdown.Menu(owner, items, opts)
           end
         end
         row:SetScript("OnEnter", function(self)
-          if not self._off then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+          if not self._off then
+            -- (A look's own hover for a menu's row, as a select's rows'.)
+            local lit = ns.Theme and ns.Theme.MenuHover
+            if not (lit and lit(bg)) then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+          end
           if opts.onEnter then opts.onEnter(self, self.item) end
         end)
         row:SetScript("OnLeave", function(self)

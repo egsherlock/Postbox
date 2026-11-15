@@ -4853,6 +4853,10 @@ MM.PICK_LEAD = MM.PICK_BAR + 1
 MM.PICK_GAP = 3
 
 local function PaintPickHover(texture)
+  -- A look with a hover of its own for a menu's row lays it (the Blizzard
+  -- style's, the game's menu highlight).
+  local lit = ns.Theme.MenuHover
+  if lit and lit(texture) then return end
   local shared = ns.Core and ns.Core.UI and ns.Core.UI.Theme
   local h = shared and shared.MenuColors and shared.MenuColors.hover
   if h then
@@ -5019,6 +5023,8 @@ local function PaintPicker(list)
     end
     row.Wash:SetShown(current and true or false)
     row.Bar:SetShown(current and true or false)
+    -- A look with a mark of its own for the chosen row (the Blizzard style's).
+    if T.PickChosen then T.PickChosen(row, current) end
   end
   -- A row no longer needed keeps no hover wash for the next time it is.
   for i = shown + 1, #list.rows do

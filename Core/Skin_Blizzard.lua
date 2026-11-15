@@ -3207,13 +3207,51 @@ do
     end
   end
 
-  -- The list's ground: the menu art cut in nine by its corners.
+  -- Whether the client's menu art carries its own cut in nine (an atlas's
+  -- sliceData: the game's menus set it on one texture, stretched to the
+  -- menu, and the client keeps the corners whole). Asked once.
+  local sliced
+  local function Sliced()
+    if sliced == nil then
+      sliced = false
+      local get = C_Texture and C_Texture.GetAtlasInfo
+      if type(get) == "function" then
+        local ok, info = pcall(get, BG)
+        sliced = ok and type(info) == "table" and type(info.sliceData) == "table"
+      end
+    end
+    return sliced
+  end
+
+  -- The list's ground: the menu art, cut in nine by its corners. Where the
+  -- client's art carries its own cut, one texture as the game's own menus
+  -- lay it (the client cuts it; cut here as well, in nine pieces of that
+  -- art, its sides stood a pixel out of line where a corner met an edge);
+  -- else nine pieces of it.
   local CUTS = { { 0, 0 }, { 0, 0 }, { 0, 0 } }
   function Parts.List(list)
     if list.__pbBlizzList ~= nil then return end
     list.__pbBlizzList = false
+    -- The rows' grounds in this style (Skin.MenuHover, Skin.PickChosen),
+    -- handed to Theme before a row of any list is pointed at.
+    local T = ns.Theme
+    if T and not T.MenuHover then
+      T.MenuHover = Skin.MenuHover
+      T.PickChosen = Skin.PickChosen
+    end
     local w0, h0 = Parts.Size(BG)
     if not (w0 and h0 and HasAtlas(BG)) or w0 <= 2 * BG_CORNER or h0 <= 2 * BG_CORNER then return end
+    if Sliced() then
+      local t = list:CreateTexture(nil, "BACKGROUND", nil, 1)
+      if not pcall(t.SetAtlas, t, BG, false) then
+        t:Hide()
+        return
+      end
+      t:SetPoint("TOPLEFT", list, "TOPLEFT", -BG_L, BG_T)
+      t:SetPoint("BOTTOMRIGHT", list, "BOTTOMRIGHT", BG_R, -BG_B)
+      list.__pbBlizzList = t
+      return Parts.ListDressed(list)
+    end
     local cu, cv = BG_CORNER / w0, BG_CORNER / h0
     CUTS[1][1], CUTS[1][2] = 0, cu
     CUTS[2][1], CUTS[2][2] = cu, 1 - cu
@@ -3251,6 +3289,11 @@ do
     C:SetPoint("TOPLEFT", TL, "BOTTOMRIGHT", 0, 0)
     C:SetPoint("BOTTOMRIGHT", BR, "TOPLEFT", 0, 0)
     list.__pbBlizzList = pieces
+    return Parts.ListDressed(list)
+  end
+
+  -- What a list wearing the art takes besides it.
+  function Parts.ListDressed(list)
     -- The card's own fill, line and grain, and the popup floor, faded under
     -- the art (its middle is the game's dark ground at its own strength),
     -- and again each time the list opens, after Theme has painted the floor
@@ -3280,21 +3323,62 @@ do
     end
   end
 
+  -- The row under the pointer, in every list and menu of this style, wears
+  -- the game's own menu highlight (MenuVariants.CreateHighlight: the file
+  -- Interface\QuestFrame\UI-QuestTitleHighlight over the row, added to
+  -- what is under it), a soft light that fades toward the row's ends, in
+  -- place of the house's flat wash, which stood as a hard rectangle inside
+  -- the menu art's cut corners. Theme.MenuHover(texture), asked as a row is
+  -- entered: true once the texture is the highlight (the house then lays
+  -- no wash on it); false where the client cannot load the file.
+  local MENU_GLOW = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
+  function Skin.MenuHover(texture)
+    if texture:SetTexture(MENU_GLOW) == false then return false end
+    texture:SetBlendMode("ADD")
+    return true
+  end
+
+  -- The character list's chosen row (Core/MailMemory.lua's PaintPicker:
+  -- the box on screen), which has no room for a mark: the same light held
+  -- on the row, its blue taken out and the game's gold laid in, in place
+  -- of the house's flat wash and the bar at its left edge. So the chosen
+  -- row is gold and the one pointed at is the menus' blue-white. Painted
+  -- as the house paints the row; the art is set once a row.
+  local CHOSEN_A = 0.55
+  function Skin.PickChosen(row, on)
+    local wash = row.Wash
+    if not wash then return end
+    if row.__pbBlizzChosen == nil then
+      row.__pbBlizzChosen = false
+      if wash:SetTexture(MENU_GLOW) == false then return end
+      wash:SetBlendMode("ADD")
+      wash:SetDesaturated(true)
+      Fade(row.Bar)
+      row.__pbBlizzChosen = true
+    end
+    if on and row.__pbBlizzChosen then
+      local r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+      wash:SetVertexColor(r, g, b, CHOSEN_A)
+    end
+  end
+
   -- An action in a menu's foot (Dropdown.Menu's `action` item: the sort
   -- menus' Reset in the Mail tab, Mail Memory and Manage Recipients, and
   -- Hidden characters' Show all in the options) is its glyph and its words
   -- alone, as the game's menus write an action: its plate's outline is not
-  -- drawn, and its wash shows only under the pointer while it is live, in
-  -- the menu rows' own hover. The words and glyph keep their place and
+  -- drawn, and its wash shows only under the pointer while it is live, as
+  -- the menu rows' own hover (Skin.MenuHover). The words and glyph keep their place and
   -- their colours (the body text's while there is something to do, the
   -- disabled gray while not); the click, tooltip and place are the row's.
   local function ActionPaint(row)
     row.__pbActionPaint(row)
     local fill = row._fill
     if row._hover and not row._off then
-      local T = ns.Core and ns.Core.UI and ns.Core.UI.Theme
-      local hover = T and T.MenuColors and T.MenuColors.hover
-      if hover then fill:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+      if not Skin.MenuHover(fill) then
+        local T = ns.Core and ns.Core.UI and ns.Core.UI.Theme
+        local hover = T and T.MenuColors and T.MenuColors.hover
+        if hover then fill:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+      end
       fill:SetAlpha(1)
     else
       fill:SetAlpha(0)
