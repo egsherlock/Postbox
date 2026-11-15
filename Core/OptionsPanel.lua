@@ -11997,7 +11997,9 @@ do
     if focus then
       T.FillColor(wrap.Line, "accent")
     else
-      T.FillChrome(wrap.Line, hot and FIND.LINE_HOT or FIND.LINE_A)
+      -- (A look's own strengths for the line: the Blizzard style's
+      -- `__pbLineHot` and `__pbLineA`, nil in every other look.)
+      T.FillChrome(wrap.Line, hot and (wrap.__pbLineHot or FIND.LINE_HOT) or (wrap.__pbLineA or FIND.LINE_A))
     end
     -- The magnifier in the placeholder's ink at rest, as the drawing has
     -- it; brighter under the pointer, the accent while typing, as the line.

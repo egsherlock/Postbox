@@ -2353,16 +2353,33 @@ do
   -- The options' title-bar Find box (Core/OptionsPanel.lua, Find.Build:
   -- tagged __pbFindBox) is the minimal field it is in the other styles:
   -- its words and the hairline under them on the title bar, no box (his
-  -- pick on b19, V01). Only its magnifier is this style's: the game's, the
+  -- pick on b19, V01). Its magnifier is this style's: the game's, the
   -- one the mail window's search shows, FIND_GLASS units square on the
   -- middle of Postbox's own, which is hidden as well as faded (faded
   -- alone, it was still drawn beside the game's in the game); nothing of
   -- the options shows it again. The words stay where they stand, clear of
   -- either magnifier.
-  local FIND_GLASS = 11
+  --
+  -- Its hairline stands FIND_LIFT units over the field's foot and is
+  -- brighter (his pick on b21): on the field's last unit it lay on the
+  -- title bar's own bottom border and was lost there. The strengths at
+  -- rest and under the pointer are handed to the options' own painter
+  -- (`__pbLineA`, `__pbLineHot`, read by Find's PaintLine), which keeps
+  -- the accent while the box is typed in; the line is painted at rest
+  -- here, as the box is dressed.
+  local FIND_GLASS, FIND_LIFT, FIND_LINE_A, FIND_LINE_HOT = 11, 2, 0.5, 0.75
   function Parts.Find(wrap)
     if wrap.__pbBlizzFind ~= nil then return end
     wrap.__pbBlizzFind = false
+    local line = wrap.Line
+    if line then
+      line:ClearAllPoints()
+      line:SetPoint("BOTTOMLEFT", wrap, "BOTTOMLEFT", 0, FIND_LIFT)
+      line:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", 0, FIND_LIFT)
+      wrap.__pbLineA, wrap.__pbLineHot = FIND_LINE_A, FIND_LINE_HOT
+      local T = ns.Theme
+      if T and type(T.FillChrome) == "function" then T.FillChrome(line, FIND_LINE_A) end
+    end
     local glyph = wrap.Glyph
     if not (glyph and HasAtlas(GLASS)) then return end
     local glass = wrap:CreateTexture(nil, "ARTWORK")
