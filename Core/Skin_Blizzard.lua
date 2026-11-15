@@ -3056,10 +3056,12 @@ do
   local H_B = ns.IsForever and 10.5 or 9.5
   -- The arrow on the game's box: right +1, down 3; its face 4 in from each
   -- side. The value's room, in the art's units (scaled with the box): from
-  -- a unit and a half inside the text holder's rim (which stands 4 in from
-  -- the box's edge) to a unit short of the arrow's face, measured from both
-  -- clients' art: 3.4 units more than it had (8 in, 2 from the art's left).
-  local A_X, A_Y, A_FACE, LEAD, GAP = 1, -3, 4, 5.5, 1
+  -- LEAD inside the box's left edge, ten units on the options' 22-unit box
+  -- (his pick on b19, V05: at the left as the game sets it, with room
+  -- between it and the text holder's rim, which stands 4 in; it stood 5
+  -- in, a unit and a half from the rim), to a unit short of the arrow's
+  -- face, measured from both clients' art.
+  local A_X, A_Y, A_FACE, LEAD, GAP = 1, -3, 4, 11, 1
   -- A swatch before the value (Dropdown's SWATCH_X + SIZE + GAP).
   local SWATCH_LEAD = 21
 
