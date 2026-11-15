@@ -2772,6 +2772,39 @@ do
   Parts.LaySmall = Lay
   Parts.SmallGeo = Geo
 
+  -- A plate standing alone, `w` wide and `h` tall: the whole button, or,
+  -- where the plate is narrower than the art's two ends (an arrange
+  -- heading over a narrow column, a hidden column's peg), each end cut to
+  -- half the plate from its outer side, at the art's own scale, with no
+  -- middle. The rim and its corners are whole either way.
+  function Parts.LayPlate(art, frame, state, h, w)
+    local g = Geo(state, h)
+    local half = w / 2 + g.outX
+    if half >= g.capW then
+      Lay(art, frame, state, "alone", 0, h)
+      art[2]:Show()
+      return
+    end
+    local name = NAMES[state]
+    local L, M, R = art[1], art[2], art[3]
+    local u = g.capU * half / g.capW
+    M:Hide()
+    Atlas(L, name, false)
+    L:SetTexCoord(0, u, 0, 1)
+    L:ClearAllPoints()
+    L:SetWidth(half)
+    L:SetPoint("TOPLEFT", frame, "TOPLEFT", -g.outX, g.outT)
+    L:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", -g.outX, -g.outB)
+    L:Show()
+    Atlas(R, name, false)
+    R:SetTexCoord(1 - u, 1, 0, 1)
+    R:ClearAllPoints()
+    R:SetWidth(half)
+    R:SetPoint("TOPRIGHT", frame, "TOPRIGHT", g.outX, g.outT)
+    R:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", g.outX, -g.outB)
+    R:Show()
+  end
+
   -- The rim's own column, one unit wide, at the right end of a cell with a
   -- cell after it: the metal at rest, the selected art's white beside a lit
   -- cell. Only on a change.
@@ -3902,6 +3935,80 @@ do
     if type(button.Key) == "table" then for i = 1, #button.Key do button.Key[i]:Hide() end end
     White(button.Label)
     White(button.Check, true)
+  end
+
+  -- The arrange mode's column headings over the list, on the Mail tab and
+  -- in Mail Memory (his pick on b24): each heading, and a hidden column's
+  -- peg, wears the game's small dark button where the house drew a flat
+  -- lifted card -- at rest, lit under the pointer, the selected art while
+  -- it is selected or in the hand, the disabled art over a column with no
+  -- lane and on a peg. Arrange.lua asks at the end of its own paint
+  -- (AR.PaintHead, PaintPeg), which no other look answers. The house's
+  -- plate (fill, wash, lit edge, ring and keyline) is faded once and goes
+  -- on being painted unseen; its shadow under a heading in the hand stays.
+  -- The art is laid again only when the state or the plate's size moved (a
+  -- heading follows its column's width, and stands taller on the two-line
+  -- header). Its words, its line glyphs and the subject's arrow are the
+  -- game's gold, its white while lit, its gray where dimmed; the read dot,
+  -- the item and the coin keep their own colours.
+  local HEAD_ART = { rest = "up", hover = "over", sel = "lit", selHover = "lit", hand = "lit", dim = "off", dimHover = "over" }
+  local Plate
+  local function Resized(frame)
+    local art = frame.__pbBlizzPlate
+    if art and art.state then Plate(frame, art.state) end
+  end
+
+  Plate = function(frame, state)
+    local art = frame.__pbBlizzPlate
+    if art == nil then
+      art = Parts.SmallArt(frame) or false
+      frame.__pbBlizzPlate = art
+      if art then
+        Fade(frame.Fill)
+        Fade(frame.Wash)
+        Fade(frame.Top)
+        Edges(frame.Ring, 0)
+        Edges(frame.Key, 0)
+        frame:HookScript("OnSizeChanged", Resized)
+      end
+    end
+    if not art then return false end
+    local w, h = frame:GetWidth(), frame:GetHeight()
+    if type(w) ~= "number" or type(h) ~= "number" or w <= 0 or h <= 0 then return false end
+    if art.state ~= state or art.w ~= w or art.h ~= h then
+      art.state, art.w, art.h = state, w, h
+      Parts.LayPlate(art, frame, state, h, w)
+    end
+    return true
+  end
+
+  function Skin.PaintHead(head, state)
+    if not Plate(head, HEAD_ART[state] or "up") then return end
+    local lit = state == "sel" or state == "selHover" or state == "hand"
+    local r, g, b
+    if lit then
+      r, g, b = Parts.FontRGB("GameFontHighlight", 1, 1, 1)
+    elseif state == "dim" then
+      r, g, b = Parts.FontRGB("GameFontDisable", 0.5, 0.5, 0.5)
+    else
+      r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+    end
+    if head.Text then head.Text:SetTextColor(r, g, b) end
+    if head.ChipText then head.ChipText:SetTextColor(r, g, b) end
+    local kind = head.glyphKind
+    if head.Glyph and (kind == "hourglass" or kind == "history" or kind == "slot") then
+      head.Glyph:SetVertexColor(r, g, b, 1)
+    end
+    local arrow = head.Stretch
+    if arrow then
+      local a = lit and 1 or ((state == "hover" or state == "dimHover") and 0.8 or 0.6)
+      for k = 1, 3 do arrow[k]:SetVertexColor(r, g, b, a) end
+    end
+  end
+
+  -- A hidden column's peg: its crossed eye keeps the house's ink.
+  function Skin.PaintPeg(peg, hover)
+    Plate(peg, hover and "over" or "off")
   end
 end
 

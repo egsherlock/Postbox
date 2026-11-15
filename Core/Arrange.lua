@@ -1759,6 +1759,10 @@ function AR.PaintHead(head)
     end
     for k = 1, 3 do arrow[k]:SetVertexColor(r, g, b, 1) end
   end
+  -- A skin that draws a heading its own way (the Blizzard style: the game's
+  -- small dark button, its words in the game's gold) does it last; no other
+  -- look answers.
+  if ns.Skin and type(ns.Skin.PaintHead) == "function" then ns.Skin.PaintHead(head, state) end
 end
 
 -- A heading's glyph or name where it stands (`_gx`, the glyph's left edge,
@@ -1978,6 +1982,8 @@ local function PaintPeg(peg)
   AR.KeyOff(peg, peg.Key, light)
   local eye = Th().Grey(hover and 1 or 0.6)
   if peg.Eye then peg.Eye:SetVertexColor(eye, eye, eye, 1) end
+  -- As a heading (AR.PaintHead): a skin's own plate, last.
+  if ns.Skin and type(ns.Skin.PaintPeg) == "function" then ns.Skin.PaintPeg(peg, hover) end
 end
 
 -- A change of look while the mode is open -- the Mode, the accent, a host
