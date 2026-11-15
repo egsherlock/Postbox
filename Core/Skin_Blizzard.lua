@@ -4165,6 +4165,7 @@ do
     T.RowGround = Skin.RowGround
     T.ListGround = Skin.ListGround
     T.NoteGround = Skin.NoteGround
+    T.RuleGround = Skin.RuleGround
     -- The game's UI scale or the screen moved: the papered rows laid again
     -- on their new pixels (Skin.ApplyScale does it for the window scale).
     if type(CreateFrame) == "function" then
@@ -4475,8 +4476,44 @@ do
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
   -- mail, a heading in Mail Memory's list); `gap`: the units between one
   -- row and the next in its list (nil: none, the rows touch).
+  -- The plain divider in a mail list (Mail Memory's, under the mail sent a
+  -- box since its last visit: MM.SentNotes' rule row) is not mail and gets
+  -- no paper, so on a parchment the dark list shows between the papers
+  -- there. Its line is then drawn in the game's gold (his pick on b20), as
+  -- the heading over that mail is edged, where the house's line in the
+  -- list's edge ink was faint on the dark gap. One texture on the row,
+  -- made the first time that row is the divider, on the house's line,
+  -- which is faded while it shows; put away by the next bind's RowGround.
+  -- On the dark list (Row texture None) the house's line stays as it is.
+  local RULE_A = 0.8
+  local function RuleOff(row)
+    row.__pbRuleOn = nil
+    row.__pbRule:Hide()
+    if row.Divider then row.Divider:SetAlpha(1) end
+  end
+
+  -- Theme.RuleGround: `row` was just bound as the divider, its line shown.
+  function Skin.RuleGround(row)
+    local mode = R.mode
+    local line = row.Divider
+    if not line or (mode ~= "light" and mode ~= "dark") then return end
+    local rule = row.__pbRule
+    if not rule then
+      rule = row:CreateTexture(nil, "ARTWORK")
+      rule:SetPoint("TOPLEFT", line, "TOPLEFT", 0, 0)
+      rule:SetPoint("BOTTOMRIGHT", line, "BOTTOMRIGHT", 0, 0)
+      local r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+      rule:SetColorTexture(r, g, b, RULE_A)
+      row.__pbRule = rule
+    end
+    rule:Show()
+    line:SetAlpha(0)
+    row.__pbRuleOn = true
+  end
+
   function Skin.RowGround(row, position, gap)
     if row.__pbNoteOn then NoteOff(row) end
+    if row.__pbRuleOn then RuleOff(row) end
     local mode = R.mode
     local paper = row.__pbPaper
     if position == nil or mode == "none" then

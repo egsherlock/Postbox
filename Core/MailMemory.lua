@@ -4163,6 +4163,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
       row.Divider = line
     end
     line:Show()
+    -- A look that draws the divider's line itself lays its own (the
+    -- Blizzard style's, on a parchment); nil in every other look.
+    if T.RuleGround then T.RuleGround(row) end
     row:SetAlpha(1)
     row:Show()
     return
