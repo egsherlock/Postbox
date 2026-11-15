@@ -295,7 +295,9 @@ end
 -- Sources
 --
 -- Each collector appends raw names -- exactly as its API returned them -- to
--- `out`, and caches any class it learns on the way. Canonicalisation happens in
+-- `out`, and caches any class it learns on the way. The guild, friends and
+-- Battle.net collectors also take no `out` at all: then they only learn the
+-- classes (CS.LearnClasses, for the mail lists' senders). Canonicalisation happens in
 -- one place afterwards; a collector that "helpfully" tidied a name would be a
 -- second identity rule.
 --
@@ -360,7 +362,7 @@ local function CollectGuild(out)
     local fullName, _, _, _, _, _, _, _, _, _, classFileName = GetGuildRosterInfo(i)
     if type(fullName) == "string" and fullName ~= "" then
       guildRosterSeen = guildRosterSeen + 1
-      out[#out + 1] = fullName
+      if out then out[#out + 1] = fullName end
       CacheClass(fullName, classFileName)
     end
   end
@@ -401,7 +403,7 @@ local function CollectFriends(out)
     local name = type(info) == "table" and info.name or nil
     if type(name) == "string" and name ~= "" then
       friendListSeen = friendListSeen + 1
-      out[#out + 1] = name
+      if out then out[#out + 1] = name end
       CacheClass(name, ClassTokenOf(info.classFile, info.className))
     end
   end
@@ -466,7 +468,7 @@ local function CollectBattleNet(out)
     -- realm in the addon.
     local name = JoinRealm(game.characterName, game.realmName)
     if type(name) ~= "string" or name == "" then return end
-    out[#out + 1] = name
+    if out then out[#out + 1] = name end
     CacheClass(name, ClassTokenOf(game.classFile, game.className))
   end
 
@@ -1094,9 +1096,11 @@ do
     -- close. Whatever they would have said in between is covered by marking
     -- both sources dirty at the open -- the same coalesced dirty an event
     -- sets, and the time away is always past the coalescing window.
+    -- The two lists' answers also tell a mail list's class walk that missed
+    -- them (CS.ClassesLanded, below ClassOf).
     local presence = {
-      GUILD_ROSTER_UPDATE = function() MarkDirty("guild") end,
-      FRIENDLIST_UPDATE = function() MarkDirty("friends") end,
+      GUILD_ROSTER_UPDATE = function() MarkDirty("guild"); CS.ClassesLanded("guild") end,
+      FRIENDLIST_UPDATE = function() MarkDirty("friends"); CS.ClassesLanded("friends") end,
       BN_FRIEND_INFO_CHANGED = function() MarkDirty("friends") end,
       BN_DISCONNECTED = function() MarkDirty("friends") end,
       -- The friends list has just become readable again; do not make the
@@ -1495,8 +1499,9 @@ local SENDER_MEMO_MAX = 1024
 -- to, raw or normalised, for a box that is not the one being played (nil: the
 -- realm being played). Known means one of the player's own characters (the
 -- census, first: it is the player's own record) or a name the contact sources
--- have learned the class of (friends, guild, Battle.net, the alts). Never
--- collects anything: what the sources have not learned yet is simply unknown.
+-- have learned the class of (friends, guild, Battle.net, the alts). Builds no
+-- list: a player not known yet has the friends' and guild's classes read
+-- once for the visit (CS.LearnClasses, below), and is unknown after that.
 -- An NPC's name holds a space before any realm, which no player's can, and is
 -- never looked up. On Forever a player's name holds exactly one space ("Abla
 -- Stone"), so there only a name with two or more is an NPC's; a one-space NPC
@@ -1531,6 +1536,13 @@ function CS.ClassOf(sender, realm)
     end
     local key = IdentityKey(name)
     if key ~= "" then token = ownClasses[key] or classCache[key] or false end
+    -- A player no list has told the class of yet: the friends' and guild's
+    -- classes are learned once (CS.LearnClasses, below), and the name asked
+    -- again if one was. The memo built before the walk is dropped.
+    if not token and key ~= "" and CS.LearnClasses() then
+      token = classCache[key] or false
+      senderMemo, memoCount, memoGen, byRealm = {}, 0, classGen, nil
+    end
   end
 
   if memoCount >= SENDER_MEMO_MAX then
@@ -1543,6 +1555,105 @@ function CS.ClassOf(sender, realm)
   byRealm[sender] = token
   memoCount = memoCount + 1
   return token or nil
+end
+
+-------------------------------------------------------------
+-- A mail list's senders learn their classes
+--
+-- The classes of friends and guildmates are learned while the Send tab's
+-- sources are collected, so a visit that only showed the Mail tab drew them
+-- in plain text until the Send tab had been shown once. Now the first sender
+-- CS.ClassOf cannot place -- a player, not one of the player's own characters
+-- -- reads the guild roster, the friends list and Battle.net once, for their
+-- classes alone: the login's answers already in the client, nothing asked of
+-- the server, no list built (the collectors without an `out`). It happens in
+-- the lookup that asked, so that name and every one after it are drawn in
+-- their colours in the same pass.
+--
+-- Once per visit to a mailbox, and once between visits for a window opened
+-- away from one. A walk that found the roster or the friends list not yet
+-- arrived is owed one more, when that list lands during the visit (the
+-- visit's presence events, above): then the Mail tab, if it is on screen, is
+-- refreshed once, and only if a class was learned. Everything after is the
+-- memo's: a stranger's mail is a lookup and nothing else.
+-------------------------------------------------------------
+do
+  local spent = false
+  -- Which list the visit's walk found still in flight, and so owes a walk
+  -- when it lands; whether the owed walk has been taken.
+  local owedGuild, owedFriends, retried = false, false, false
+  -- A walk left a list unread: the senders it could not place are asked again
+  -- after the next visit begins rather than kept as unknown.
+  local leftPending = false
+  -- Whether a mailbox is open, so the two events an opening sends (and the
+  -- two a closing sends) start one period, not two.
+  local open = false
+
+  -- -> whether a class was learned.
+  local function Walk()
+    local before = classGen
+    CollectFriends(nil)
+    CollectBattleNet(nil)
+    CollectGuild(nil)
+    owedGuild = not GuildReady()
+    owedFriends = not FriendsReady()
+    leftPending = owedGuild or owedFriends
+    return classGen ~= before
+  end
+
+  -- -> whether a class was learned. The visit's one walk; after it, false.
+  function CS.LearnClasses()
+    if spent then return false end
+    spent = true
+    return Walk()
+  end
+
+  -- id ("guild" or "friends"): that list's answer arrived during a visit.
+  function CS.ClassesLanded(id)
+    if retried then return end
+    if not ((id == "guild" and owedGuild) or (id == "friends" and owedFriends)) then return end
+    retried = true
+    if not Walk() then return end
+    leftPending = false
+    local UI, CT = ns.MailboxUI, ns.CollectTab
+    local frame = UI and UI._frame
+    local panel = frame and frame.Tabs and frame.Tabs.collect
+    if panel and panel:IsVisible() and CT and type(CT.RequestRefresh) == "function" then
+      CT.RequestRefresh(panel)
+    end
+  end
+
+  local function Begin()
+    spent, owedGuild, owedFriends, retried = false, false, false, false
+    if leftPending then
+      leftPending = false
+      memoGen = 0
+    end
+  end
+  local function Opened()
+    if open then return end
+    open = true
+    Begin()
+  end
+  local function Closed()
+    if not open then return end
+    open = false
+    Begin()
+  end
+
+  local bus = ns.Events
+  if type(bus) == "table" and type(bus.Register) == "function" then
+    bus.Register("MAIL_SHOW", Opened)
+    bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, kind)
+      if ns.Helpers.IsMailInteraction(kind) then Opened() end
+    end)
+    bus.Register("MAIL_CLOSED", Closed)
+    bus.Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(_, kind)
+      if ns.Helpers.IsMailInteraction(kind) then Closed() end
+    end)
+    -- A loading screen empties the class cache (PLAYER_LEAVING_WORLD).
+    bus.Register("PLAYER_ENTERING_WORLD", Begin)
+  end
 end
 
 -- `name` identifies the character and must be the full name the caller has,
