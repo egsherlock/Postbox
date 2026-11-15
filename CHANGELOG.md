@@ -286,6 +286,10 @@
   Memory keep it under that name. With no title to say how the auction
   ended, the row says **AH Mail** where the sender goes and its tooltip
   says why; All mail collects it.
+- **Auction mail on its way shows its item.** A sold, expired or won
+  auction listed before its mail lands wears the item's icon, in Mail
+  Memory and in another character's box on the Mail tab. Where the game
+  had not loaded the item it showed a question mark.
 - **Mail tab: a friend's or guild member's name wears its class color on
   every visit.** It stayed plain until the Send tab had been shown once
   after a login or a reload; now the name is in color the first time the
