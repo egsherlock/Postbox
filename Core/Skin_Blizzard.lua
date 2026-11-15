@@ -4367,6 +4367,27 @@ do
     local token = roles and roles.secondary and roles.secondary.color or "textSecondary"
     T.SetColor(empty, token, on and "row" or nil)
     Shadow(empty, on and R.light)
+    -- The words are a text of the list's own frame, and the paper lies on
+    -- the scroll child, a frame inside that one, which the client draws
+    -- over its parent's texts: the words stood under the paper. While the
+    -- paper is on they are the text of a frame of their own over the
+    -- scroll child (no higher than a row's own parts, so whatever covers
+    -- the rows covers them), where they were, as large as they were; with
+    -- the paper off they are the list's own text again.
+    local home = L.home
+    if on then
+      if not home then
+        home = empty:GetParent()
+        L.home = home
+        local over = CreateFrame("Frame", nil, home)
+        over:SetAllPoints(home)
+        L.over = over
+      end
+      L.over:SetFrameLevel(L.child:GetFrameLevel() + 1)
+      empty:SetParent(L.over)
+    elseif home then
+      empty:SetParent(home)
+    end
   end
 
   LayBands = function(L, force)
