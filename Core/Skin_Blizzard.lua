@@ -3596,8 +3596,7 @@ do
     -- The caption: the game's white open or pointed at, its gold at rest;
     -- a tab whose feature is off (`__pbDim`: the Minimap tab while the
     -- minimap icon is off) the game's disabled gray in every state, its art
-    -- still saying open. White art beside the caption (`__pbInks`: that
-    -- tab's mark) wears the caption's ink, as Theme's own paint gives it.
+    -- still saying open.
     local r, g, b
     if plate.__pbDim then
       r, g, b = Parts.FontRGB("GameFontDisable", 0.5, 0.5, 0.5)
@@ -3607,17 +3606,10 @@ do
       r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
     end
     if plate.Text then plate.Text:SetTextColor(r, g, b) end
-    local inks = plate.__pbInks
-    if inks then
-      for i = 1, #inks do
-        local ink = inks[i]
-        if ink.SetVertexColor then ink:SetVertexColor(r, g, b, 1) elseif ink.SetTextColor then ink:SetTextColor(r, g, b) end
-      end
-    end
   end
 
-  -- Theme.RepaintPlate (the options repaint a tab when its mark or its
-  -- gray changes) paints the house's caption ink on the plate; a tab this
+  -- Theme.RepaintPlate (the options repaint a tab when its gray changes)
+  -- paints the house's caption ink on the plate; a tab this
   -- skin dressed takes its own again after it. Put in place once, when the
   -- first options tab is dressed: no other look has it.
   local function OwnRepaint()
