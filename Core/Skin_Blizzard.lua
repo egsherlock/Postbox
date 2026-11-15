@@ -40,7 +40,7 @@ local _, ns = ...
 -- the bar over finished mail, every field and search box, every list's scroll bar, every segment and
 -- tile (one strip where they are joined, and a field's last cell joined to
 -- its field), the Sent clock as a cell of Send mail, the dropdowns and their
--- lists, the options' tabs, checkboxes, heading rules, Find box and footer
+-- lists, the options' tabs, checkboxes, heading rules and footer
 -- buttons, and the lit Test mail switches and Arrange key; the mail rows
 -- stand on the ground Row texture chooses (the game's letter paper by
 -- default), with inks of their own; and the options' small drawings of the
@@ -2256,14 +2256,15 @@ end
 
 -- Every one-line field (an input wrap: Recipient, Subject, the gold boxes,
 -- Character Groups' boxes, the bug report's address, the options' words
--- boxes and its Find box) and every search box (Theme.CreateSearchBox)
--- wears the game's small dark button, the rim and face of the key a field
--- is joined to: a whole button of it where the field stands alone, the
--- strip's first cell where a key is joined to it (below). Its words stand
--- where they stood; a search box (and the Find box) has the game's
--- magnifier at its left as the search box template lays it, and its words
--- after it. Art only, on Postbox's own frames: the game's InputBoxTemplate
--- and SearchBoxTemplate are never made (their scripts would take the box's
+-- boxes) and every search box (Theme.CreateSearchBox) wears the game's
+-- small dark button, the rim and face of the key a field is joined to: a
+-- whole button of it where the field stands alone, the strip's first cell
+-- where a key is joined to it (below). Its words stand where they stood; a
+-- search box has the game's magnifier at its left as the search box
+-- template lays it, and its words after it. The options' title-bar Find
+-- box has no box (Parts.Find, below): the house's minimal field with the
+-- game's magnifier. Art only, on Postbox's own frames: the game's
+-- InputBoxTemplate and SearchBoxTemplate are never made (their scripts would take the box's
 -- focus, hint and clear button over). The field's own fill, line and grain
 -- are faded under the art. The game's search border and the older
 -- Common-Input-Border are not drawn.
@@ -2350,28 +2351,30 @@ do
   end
 
   -- The options' title-bar Find box (Core/OptionsPanel.lua, Find.Build:
-  -- tagged __pbFindBox): a whole button of the small dark art, as the
-  -- fields standing alone, with the game's magnifier where the search box
-  -- template lays it, in place of its hairline and its own magnifier; its
-  -- words stay where they stand, already clear of the magnifier. One
-  -- magnifier, the game's: Postbox's own is hidden as well as faded (faded
-  -- alone, it was still drawn beside the game's in the game), and nothing
-  -- of the options shows it again.
+  -- tagged __pbFindBox) is the minimal field it is in the other styles:
+  -- its words and the hairline under them on the title bar, no box (his
+  -- pick on b19, V01). Only its magnifier is this style's: the game's, the
+  -- one the mail window's search shows, FIND_GLASS units square on the
+  -- middle of Postbox's own, which is hidden as well as faded (faded
+  -- alone, it was still drawn beside the game's in the game); nothing of
+  -- the options shows it again. The words stay where they stand, clear of
+  -- either magnifier.
+  local FIND_GLASS = 11
   function Parts.Find(wrap)
     if wrap.__pbBlizzFind ~= nil then return end
     wrap.__pbBlizzFind = false
-    local h = wrap:GetHeight()
-    if type(h) ~= "number" or h <= 0 then return end
-    local pieces = Strip(wrap, true)
-    if not pieces then return end
-    LayStrip(wrap, pieces, nil)
-    wrap.__pbBlizzFind = pieces
-    Fade(wrap.Line)
     local glyph = wrap.Glyph
-    if pieces[4] and glyph then
-      Fade(glyph)
-      glyph:Hide()
+    if not (glyph and HasAtlas(GLASS)) then return end
+    local glass = wrap:CreateTexture(nil, "ARTWORK")
+    if not Atlas(glass, GLASS, false) then
+      glass:Hide()
+      return
     end
+    glass:SetSize(FIND_GLASS, FIND_GLASS)
+    glass:SetPoint("CENTER", glyph, "CENTER", 0, 0)
+    wrap.__pbBlizzFind = glass
+    Fade(glyph)
+    glyph:Hide()
   end
 
   -- The plate joined to the wrap as its last cell (Theme.JoinCell: the
@@ -3508,7 +3511,8 @@ end
 --   * each group heading's rule is the game's Settings rule
 --     (Options_HorizontalDivider) where the rule stands, never under a
 --     screen pixel; the rule's own line is faded.
--- The Find box is dressed with the search boxes (Parts.Find).
+-- The Find box keeps the house's minimal field, with the game's magnifier
+-- (Parts.Find, with the fields).
 do
   local REST = { "Options_Tab_Left", "Options_Tab_Middle", "Options_Tab_Right" }
   local OPEN = { "Options_Tab_Active_Left", "Options_Tab_Active_Middle", "Options_Tab_Active_Right" }
