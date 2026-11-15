@@ -338,7 +338,7 @@ cards across the top, with **Mail Memory**, **Character Groups** and
 about expiring mail, **Sound on new mail**, Chat line at login and Flash
 on new mail)
 and **Characters** (Class icons, Character order, Hidden characters). The
-sound is one of four soft sounds made for Postbox, the mail chime or
+sound is one of nine soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
 through LibSharedMedia, such as ElvUI's or a SharedMedia pack's, or
 EllesmereUI's own alert sounds while it is loaded (with a button to hear

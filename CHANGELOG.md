@@ -125,8 +125,6 @@
 - **Manage Recipients lists a hidden name only under Hidden.** After Hide
   or Delete the row leaves the list you are on; Hidden is the one place to
   find it and Show it.
-- **Sound on new mail** (Options > General > Alerts) also offers
-  EllesmereUI's own alert sounds while EllesmereUI is loaded.
 
 ### Options and Arrange
 
@@ -139,6 +137,12 @@
   way. Down and Up choose a result and Enter opens it.
 - **Text size** (Options > Window) works in every window style, and all of
   Postbox's text is a comfortable size on the default UI.
+- **Sound on new mail** (Options > General > Alerts) has six new soft
+  sounds of Postbox's own: Soft rise, Marimba, Bubble, Glass tick, Three
+  notes and Low bump. Wood tap is now called Tock. Envelope has left the
+  list; if you had chosen it, you hear the mail chime until you pick
+  another. The list also offers EllesmereUI's own alert sounds while
+  EllesmereUI is loaded.
 - **Arrange:** each column's card holds its own settings (stack counts,
   quality marks, expiry marks), and the options step aside while you
   arrange.
