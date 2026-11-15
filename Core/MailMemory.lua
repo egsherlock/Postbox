@@ -3883,6 +3883,9 @@ function MM.NewRow(parent)
     GameTooltip:Hide()
   end)
   row.HeaderHit:Hide()
+  -- Its tooltips follow what the row shows after each pass, in this window
+  -- and on the Mail tab (Theme.TipFollow).
+  row.__pbTipRow, hit.__pbTipRow, row.HeaderHit.__pbTipRow = row, row, row
 
   return row
 end
@@ -6450,6 +6453,8 @@ local function BindRows(frame)
   -- An open fan stays only while its row still shows its mail.
   local R = Rules()
   if R and R.FanCheck then R.FanCheck() end
+  -- A row's tooltip follows what the row shows now (Theme.TipFollow).
+  ns.Theme.TipFollow(frame.ListChild)
 end
 
 local function OnHeader(frame, realm, name)

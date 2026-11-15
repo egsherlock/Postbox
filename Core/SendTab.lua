@@ -2901,6 +2901,9 @@ local function AcquireRow(picker, index)
   row:SetScript("OnEnter", RowEnter)
   row:SetScript("OnLeave", RowLeave)
   row:SetScript("OnClick", RowClick)
+  -- Its tooltip and its star's follow the name the row shows after each
+  -- pass (Theme.TipFollow).
+  row.__pbTipRow, row.StarButton.__pbTipRow = row, row
 
   picker.Rows[index] = row
   return row, true
@@ -3119,6 +3122,8 @@ local function UpdatePickerRows(picker)
   if created and ns.Skin and ns.Skin.Refresh then
     pcall(ns.Skin.Refresh, picker:GetParent())
   end
+  -- A row's tooltip follows the name the row shows now.
+  Theme.TipFollow(picker.Child)
 end
 
 local function EnsureContactPicker(panel)

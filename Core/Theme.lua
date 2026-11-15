@@ -4133,6 +4133,37 @@ function Theme.TipBegin(owner, anchor)
   return GameTooltip
 end
 
+-- A pooled list's rows are bound again under a pointer that has not moved
+-- (a mail taken, the list scrolled): the frame under it is the same, so
+-- the game fires no OnEnter, and a tooltip one of them owns would go on
+-- describing what the row showed before. Each such list marks its rows
+-- and their hover children with `__pbTipRow` (the row) and calls this
+-- once its pass is done, with the frame its rows stand in. The tooltip
+-- owned by one of them is built again by the owner's own OnEnter, from
+-- what the row shows now; on a row or child no longer shown, its own
+-- OnLeave hides it and puts the row's light out. Always built again while
+-- owned, not only when the row's mail changed: what a mail holds changes
+-- under the tooltip too (a take of one item of several), and the hide and
+-- the build fall in one frame, so nothing flickers. A tooltip anything
+-- else owns is never touched; while none shows this is one test.
+function Theme.TipFollow(list)
+  if not GameTooltip:IsShown() then return end
+  local owner = GameTooltip.GetOwner and GameTooltip:GetOwner()
+  local row = owner and owner.__pbTipRow
+  if not row or row:GetParent() ~= list then return end
+  if owner:IsVisible() then
+    -- Hidden first: an OnEnter that finds nothing to say returns before
+    -- it begins a tooltip, and must leave none behind.
+    GameTooltip:Hide()
+    local enter = owner:GetScript("OnEnter")
+    if enter then enter(owner) end
+  else
+    local leave = owner:GetScript("OnLeave")
+    if leave then leave(owner) end
+    if GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
+  end
+end
+
 -- The title: white, wrapped, unless a colour is given (a name, an item).
 function Theme.TipTitle(text, r, g, b)
   GameTooltip:SetText(text or "", r or 1, g or 1, b or 1, 1, true)

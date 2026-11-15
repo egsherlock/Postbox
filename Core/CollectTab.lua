@@ -7551,6 +7551,9 @@ local function BuildRow(panel)
     Th().StyleMailRow(self, self._rowIndex, false)
     GameTooltip:Hide()
   end)
+  -- Its tooltip, and its icon's and its delete mark's, follow the mail the
+  -- row shows after each pass (Theme.TipFollow, UpdateVisibleRows).
+  row.__pbTipRow, row.IconHit.__pbTipRow, row.Delete.__pbTipRow = row, row, row
 
   -- A row is never handed back without a height and without its icon anchored:
   -- the hit area is SetAllPoints(row.Icon) and would have nothing to follow. The
@@ -9031,6 +9034,8 @@ function HV.BuildHistoryRow(panel)
     Th().StyleMailRow(self, self._rowIndex, false)
     GameTooltip:Hide()
   end)
+  -- Its tooltip follows the entry it shows after each pass (Theme.TipFollow).
+  row.__pbTipRow = row
   return row
 end
 
@@ -11876,6 +11881,10 @@ local function UpdateVisibleRows(panel)
   -- An open fan follows its row: the same mail, drawn again as it now is;
   -- anything else closes it. One comparison while none is open.
   if RV.fanOpen then RV.FanCheck(panel) end
+  -- A tooltip one of the list's rows owns -- the inbox's, another
+  -- character's box's or History's, all standing in the list's child --
+  -- follows what that row shows now; one test while none shows.
+  Th().TipFollow(panel.MailListChild)
   if perfAt then perf.Rows(perfAt, used) end
 end
 

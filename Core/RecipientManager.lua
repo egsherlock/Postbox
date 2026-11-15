@@ -1785,6 +1785,10 @@ local function BuildRow(parent)
   row:SetScript("OnDoubleClick", ROWS.RowDoubleClick)
   row:SetScript("OnEnter", ROWS.RowEnter)
   row:SetScript("OnLeave", ROWS.RowLeave)
+  -- Its tooltips, the row's and its parts', follow the name the row shows
+  -- after each pass (Theme.TipFollow).
+  row.__pbTipRow, row.Fav.__pbTipRow, noteCell.__pbTipRow = row, row, row
+  row.CrossMark.__pbTipRow, row.EyeMark.__pbTipRow, row.NoteMark.__pbTipRow = row, row, row
   return row
 end
 
@@ -1884,6 +1888,8 @@ local function UpdateVisibleRows()
   if created and ns.Skin and ns.Skin.Refresh then
     ns.Skin.Refresh(frame)
   end
+  -- A row's tooltip follows the name the row shows now.
+  Theme.TipFollow(frame.ListChild)
 end
 
 -- The column names, placed as the rows are.
