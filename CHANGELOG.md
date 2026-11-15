@@ -282,6 +282,10 @@
   Memory keep it under that name. With no title to say how the auction
   ended, the row says **AH Mail** where the sender goes and its tooltip
   says why; All mail collects it.
+- **Mail tab: a friend's or guild member's name wears its class color on
+  every visit.** It stayed plain until the Send tab had been shown once
+  after a login or a reload; now the name is in color the first time the
+  mail is listed, in Mail Memory and History too.
 - **Send tab: the Recipient box keeps a name you typed in full.** With
   "Bob" typed and a longer "Bob-Draenor" suggested, the box stays on Bob.
 - **Send tab: your own character is no longer suggested to itself** when
