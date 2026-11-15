@@ -6460,9 +6460,10 @@ local function BindRows(frame)
   local R = Rules()
   if R and R.FanCheck then R.FanCheck() end
   -- The ground a look lays under the list's empty part, where it has one
-  -- (Theme.ListGround); nil in every other look.
+  -- (Theme.ListGround); nil in every other look. The rows under the plain
+  -- divider stand `cut` higher, and that ground starts under the last row.
   local listGround = ns.Theme.ListGround
-  if listGround then listGround(scroll, frame.ListChild, #rows, ROW_HEIGHT, 0, 0, frame.Empty) end
+  if listGround then listGround(scroll, frame.ListChild, #rows, ROW_HEIGHT, cut, 0, frame.Empty) end
   -- A row's tooltip follows what the row shows now (Theme.TipFollow).
   ns.Theme.TipFollow(frame.ListChild)
 end
