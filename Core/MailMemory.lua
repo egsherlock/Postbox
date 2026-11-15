@@ -6950,7 +6950,58 @@ end
 local LOGIN_SETTLE = 10
 local CLOSE_SETTLE = 5
 
-local function OnPendingMail()
+-- The last pending-mail events of this session, for /postbox debug: each
+-- one's verdict, whether the sound played, how long since the mailbox
+-- closed and since the loading screen, whether unread mail was left at the
+-- last close (the saved record's baseNew) and whether the latest-senders
+-- line has changed since (Arrived's comparison). Eight records made once
+-- and written over in turn; nothing is saved, so a /reload empties it.
+do
+  local SIZE = 8
+  local ring = {}
+  for i = 1, SIZE do ring[i] = { at = 0 } end
+  -- `n`: events written this session. `played`: the event being handled
+  -- played the sound (OnPendingMail, MB.NotifyArrival's answer).
+  local log = { n = 0, played = false }
+  MM.PendingLog = log
+
+  function log.Note(verdict, played)
+    local n = log.n + 1
+    log.n = n
+    local e = ring[(n - 1) % SIZE + 1]
+    local now = time()
+    e.at, e.verdict, e.played = now, verdict, played and true or false
+    e.closed = closedAt > 0 and now - closedAt or nil
+    e.loaded = loginAt and now - loginAt or nil
+    local snap = StoredSnapshot()
+    e.unread = snap and snap.baseNew
+    e.changed = nil
+    if snap and snap.baseFrom ~= nil then
+      local triple = SenderTriple()
+      if triple ~= nil then e.changed = triple ~= snap.baseFrom end
+    end
+  end
+
+  local function YesNo(v)
+    if v == nil then return "?" end
+    return v and "yes" or "no"
+  end
+
+  -- -> the events, newest first, one line each.
+  function MM.PendingReportLines()
+    local out = {}
+    for k = 0, math.min(log.n, SIZE) - 1 do
+      local e = ring[(log.n - 1 - k) % SIZE + 1]
+      out[#out + 1] = string.format("  %s %s | sound %s | closed %s | loaded %s | unread left %s | senders changed %s",
+        date("%H:%M:%S", e.at), tostring(e.verdict), YesNo(e.played),
+        e.closed and (e.closed .. "s ago") or "never", e.loaded and (e.loaded .. "s ago") or "?",
+        YesNo(e.unread), YesNo(e.changed))
+    end
+    return out
+  end
+end
+
+local function PendingWatch()
   lastPendingAt = time()
   lastPendingVerdict = "at mailbox"
   local state = MailboxState()
@@ -6965,7 +7016,7 @@ local function OnPendingMail()
   -- An arrival. The minimap icon's sound and flash answer it whether or not
   -- Mail Memory is on to record it: they are alerts, not memory.
   local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival() end
+  if Icon and type(Icon.NotifyArrival) == "function" then MM.PendingLog.played = Icon.NotifyArrival() end
 
   lastPendingVerdict = "memory off"
   if not MemoryEnabled() then return end
@@ -6989,6 +7040,14 @@ local function OnPendingMail()
   if frame and frame:IsShown() then Refresh(frame) end
 end
 
+-- The watch, then its record (MM.PendingLog), whichever way it ended.
+local function OnPendingMail()
+  local log = MM.PendingLog
+  log.played = false
+  PendingWatch()
+  log.Note(lastPendingVerdict, log.played)
+end
+
 -- The fourth detector watches the CAUSE instead of the effect. The server
 -- sends no new-mail push while the mail flag is already up, so an auction
 -- purchase on top of existing unread mail -- the single most common arrival
@@ -6999,7 +7058,9 @@ local function OnPurchaseCompleted()
   -- The alert first: it does not depend on the memory. Your own purchase:
   -- the icon flashes and counts it, the sound stays quiet (MB.NotifyArrival).
   local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then Icon.NotifyArrival("purchase") end
+  local played = false
+  if Icon and type(Icon.NotifyArrival) == "function" then played = Icon.NotifyArrival("purchase") end
+  MM.PendingLog.Note("purchase", played)
   if not MemoryEnabled() then return end
   MM._NoteSignal()
   local snap = StoredSnapshot()

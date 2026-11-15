@@ -3091,13 +3091,20 @@ end
 -- so itself, at the auction house the player is standing at. It still opens
 -- the echo's window, so the purchase's own mail landing a moment later is
 -- quiet too, and it still flashes the icon.
+-- -> whether a tone was played (AlertTone is "off" or one that plays), for
+-- /postbox debug's list of pending-mail events (Core/MailMemory.lua).
 function MB.NotifyArrival(kind)
   local now = Now()
   local prefs = Settings()
+  local played = false
 
   if not (now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT) then
     lastAlertAt = now
-    if kind ~= "purchase" then MB.PlayTone(AlertTone(prefs)) end
+    if kind ~= "purchase" then
+      local tone = AlertTone(prefs)
+      MB.PlayTone(tone)
+      played = tone ~= "off"
+    end
   end
 
   if prefs.alertFlash and not (now and lastFlashAt and now - lastFlashAt < ALERT_REPEAT) then
@@ -3107,6 +3114,7 @@ function MB.NotifyArrival(kind)
       flashWantedAt = now
     end
   end
+  return played
 end
 
 FlushFlash = function()

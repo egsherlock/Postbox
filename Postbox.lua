@@ -2344,6 +2344,14 @@ local function BuildDiagnosticReport()
     if ok and type(state) == "string" then
       add("Mail memory: " .. state)
     end
+    -- The last pending-mail events under it, newest first, and whether each
+    -- played the sound.
+    if type(Memory.PendingReportLines) == "function" then
+      local gotLines, pendingLines = pcall(Memory.PendingReportLines)
+      if gotLines and type(pendingLines) == "table" then
+        for i = 1, #pendingLines do add(pendingLines[i]) end
+      end
+    end
   end
 
   local Collect = ns.CollectTab
