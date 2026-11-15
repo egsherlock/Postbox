@@ -304,6 +304,10 @@
   alone. A game window you open beside the docked mail window, such as the
   character sheet or the group finder, still opens clear of it, beside its
   right edge.
+- A row's tooltip follows the row under the pointer: when you take a mail
+  and the next one moves up, or the list scrolls, it describes the mail
+  now under it (Mail tab, History, Mail Memory), and the same goes for
+  names in Manage Recipients and the Send tab's contact list.
 - History records what you paid for an auction you won, also when its
   mail was still unread.
 - In the character list and the minimap icon's tooltip, a character whose
