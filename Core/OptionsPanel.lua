@@ -8376,17 +8376,14 @@ function Pages.mail(col)
   -- left's own choices are arranged in the window itself, where the rows
   -- are (Core/Arrange.lua). This is the way in from here: the same one the
   -- mark beside the cog is, a row like the others with its button on the
-  -- right. The inspector names what the row and its button do together,
-  -- what else the arrange mode's cards hold (the marks on an item's icon,
-  -- quality by the name, the expiry marks, the gold's coins; on World of
-  -- Warcraft: Forever, first names), and that it works anywhere: away from
-  -- a mailbox it opens the window's preview over sample mail. First, since
-  -- it is where most of how a row looks is chosen. (Test mail's switch is
-  -- on the Preview's heading: Ctx.PreviewCaption.)
-  local cards = ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]
+  -- right. The inspector says what the arrange mode does (the arrange
+  -- mark's own tooltip line, ARRANGE_TIP), and under it the mark beside the
+  -- cog, drawn (Ctx.Extra "arrange"). First, since it is where most of how
+  -- a row looks is chosen. (Test mail's switch is on the Preview's heading:
+  -- Ctx.PreviewCaption.)
   local arrange = Rows.Button(col, {
     title = L["OPT_ARRANGE_ROW"],
-    text = L["ARRANGE_TIP"] .. "\n\n" .. cards .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"],
+    text = L["ARRANGE_TIP"],
     caption = L["ARRANGE_TITLE"], onClick = Panel.Arrange, glyph = "layout",
     minWidth = DD_W,
   })
@@ -12351,8 +12348,7 @@ local function Build()
   S.weekEntry.onText = S.weekEntry.text
   S.weekEntry.offText = L["OPT_WEEK_OFF"]
   S.weekEntry.tab = "general"
-  S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"] .. "\n\n"
-    .. (ns.IsForever and L["OPT_ARRANGE_CARDS_FOREVER"] or L["OPT_ARRANGE_CARDS"]) .. "\n\n" .. L["OPT_ARRANGE_ANYWHERE"])
+  S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"])
   S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
