@@ -633,9 +633,12 @@ function DN.Place(f, wide, again)
   f.__tL = (s0 > 0 and off > 0.25) and 1 or 0
   f.__tR = (s0 > 0 and off < -0.25) and 1 or 0
   local o = f.__one or 1
+  -- (A window style's own lift for the words and their icon, in screen
+  -- pixels: the Blizzard style's `__pbWordsUp`, nil in every other look.)
+  local up = (f.__pbWordsUp or 0) * o
   if iconW > 0 then
     mark:ClearAllPoints()
-    mark:SetPoint("LEFT", inner, "LEFT", x * o, f.__iconUp or 0)
+    mark:SetPoint("LEFT", inner, "LEFT", x * o, (f.__iconUp or 0) + up)
     x = x + leadP
   end
   -- Off the pixel grid, the words' string is held just under half a pixel
@@ -643,7 +646,7 @@ function DN.Place(f, wide, again)
   -- letters keep their columns against the shape wherever the list stands
   -- within a pixel; on it, they stand on the whole pixel itself.
   local hold = (k ~= 1) and DN.HOLD or 0
-  local lift = f.__lift or 0
+  local lift = (f.__lift or 0) + up
   if wordsW > 0 then
     label:ClearAllPoints()
     label:SetPoint("LEFT", inner, "LEFT", (x - hold) * o, lift)

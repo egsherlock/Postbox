@@ -2211,6 +2211,11 @@ do
       Fade(P.edgeL)
       Fade(P.edgeR)
       f.__pbWords = Words
+      -- Its words and their icon a screen pixel up (DividerNotch's
+      -- DN.Place): centred by their capitals on the island's middle, they
+      -- read low between the gold lines, their shadow falling a pixel
+      -- under them. Placed again on the copy's next pass.
+      f.__pbWordsUp, f.__pw = 1, nil
       if marks then f.__pbSign = IsleSign end
     else
       if marks then
