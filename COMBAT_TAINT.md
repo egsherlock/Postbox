@@ -326,7 +326,7 @@ events only while there is something of ours to close. No binding, no
 `SetOverrideBinding`, no `RegisterGameMenuEscHandler`, and nothing of `MailFrame` or the
 panel layout.
 
-The same frame, and no other, also closes the Postbox windows one at a time (1.70): it is
+The same frame, and no other, also closes the Postbox windows one at a time (2.0): it is
 up, out of combat, while two or more of them are shown, and a kept press hides the top one
 (the editors and the bug report, then the options' preview, then the options, then Mail
 Memory) with the plain `Hide` the client's pass would give it. The mail window is the
@@ -335,7 +335,7 @@ client's pass as before, which closes everything in one press. The windows' own 
 hide (hooked on Postbox's frames in `Helpers.RegisterEscClose`) keep it in step; nothing
 of Blizzard's is read beyond what `AR.EscapeReachesAddOns` already reads.
 
-Before any window, the same frame closes an open popup of Postbox's own (1.70): a
+Before any window, the same frame closes an open popup of Postbox's own (2.0): a
 select's list or a menu, the Send tab's contact picker and type-ahead list, a character
 list. It is up, out of combat, while one is shown, and a kept press hides the highest
 one alone. Each popup registers itself as it is made (`Helpers.RegisterEscPopup`, a

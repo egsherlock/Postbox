@@ -77,12 +77,12 @@ local function Releases()
   return {
     -- Each release's Forever news is a group like the others (1.60's says
     -- Postbox runs there from that release on).
-    { version = "1.70.0", groups = {
-      { "WHATSNEW_170_NEW", "WHATSNEW_170_NEW_LINES" },
-      { "WHATSNEW_170_LOOKS", "WHATSNEW_170_LOOKS_LINES" },
-      { "WHATSNEW_170_OPTIONS", "WHATSNEW_170_OPTIONS_LINES" },
-      { "WHATSNEW_FIXED", "WHATSNEW_170_FIXED_LINES" },
-      { game = "forever", lines = "WHATSNEW_170_FOREVER_LINES" },
+    { version = "2.0.0", groups = {
+      { "WHATSNEW_200_NEW", "WHATSNEW_200_NEW_LINES" },
+      { "WHATSNEW_200_LOOKS", "WHATSNEW_200_LOOKS_LINES" },
+      { "WHATSNEW_200_OPTIONS", "WHATSNEW_200_OPTIONS_LINES" },
+      { "WHATSNEW_FIXED", "WHATSNEW_200_FIXED_LINES" },
+      { game = "forever", lines = "WHATSNEW_200_FOREVER_LINES" },
     } },
     { version = "1.60.0", note = "WHATSNEW_160_BUGS", groups = {
       { "WHATSNEW_160_MAIL", "WHATSNEW_160_MAIL_LINES" },
@@ -1208,15 +1208,16 @@ end
 -- by itself for it once: the first time the player opens a mailbox with
 -- it after an update (never on a fresh install: WN.ArmOnce), beside the
 -- mail window as the 1.50 notice stands (WN.WindowShown, from the mail
--- window's open in Core/MailboxUI.lua). 1.60's was WoW Forever; 1.70's is
+-- window's open in Core/MailboxUI.lua). 1.60's was WoW Forever; 2.0's is
 -- Sent mail, the sort and filter menu and Find a setting. A release
 -- without such news sets NEWS to nil, and nothing here runs at all.
 --
 -- PostboxDB.newsShown holds the NEWS of the last release whose news was
 -- shown, and the news is shown while it differs: a key per release, so a
--- player who saw 1.60's has "1.60" and is shown 1.70's once. No build ever
--- carried "1.70" before this one (the 1.70 dev builds still said "1.60"),
--- so nobody can hold it by mistake.
+-- player who saw 1.60's has "1.60" and is shown 2.0's once. 2.0 was built
+-- as 1.70 (its dev builds were v1.70.0-devN, and the later ones carried
+-- "1.70" here), so only a dev install can hold "1.70", and it is shown
+-- 2.0's once more. Comments elsewhere that say 1.70 mean this release.
 --
 -- Postbox.lua arms it at load (WN.ArmOnce), after the one-time steps: one
 -- read of PostboxDB.newsShown. Once it was shown nothing is armed, and a
@@ -1241,7 +1242,7 @@ end
 -- never shows it twice. Reset everything keeps the mark
 -- (Core/MailboxUI.lua, CENSUS_KEEP).
 -------------------------------------------------------------
-local NEWS = "1.70"
+local NEWS = "2.0"
 
 -- The one saved read: shown already, or no news to show.
 local function NewsShown()
