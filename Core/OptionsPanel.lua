@@ -5064,7 +5064,9 @@ do
   -- A push button on the right. spec: title, text, caption, onClick
   -- [, onHover(cell)] [, glyph] [, minWidth] [, chevron]: `glyph` (Theme.
   -- GLYPHS) stands before the caption in its ink, the two centred as one
-  -- (FitButton); `minWidth`, the button's width, the caption cut short in
+  -- (FitButton); with `glyphAfter` it stands after the caption instead, the
+  -- same gap from its last letter, drawn left for right where `mirror`
+  -- (its crop turned, no art of its own); `minWidth`, the button's width, the caption cut short in
   -- it only where it cannot fit, and said whole on hover; `chevron`, the
   -- General tiles' chevron at its right end, for a button that opens a
   -- window of its own.
@@ -5174,7 +5176,19 @@ do
     -- own textures. The icon and the caption on it, the icon in the
     -- caption's ink (Rows.PaintCaption).
     local art = ArtHolder(btn)
-    if spec.glyph then
+    if spec.glyph and spec.glyphAfter then
+      -- After the words (FitCaption): the art at its master's own size, its
+      -- clear rim (`pad`) round it as the master has it; `mirror`, drawn
+      -- left for right by its crop, no art of its own.
+      local g = T.GLYPHS and T.GLYPHS[spec.glyph]
+      local icon = g and T.Glyph and T.Glyph(art, spec.glyph, g.h - 2 * (g.pad or 0), "OVERLAY") or nil
+      if icon then
+        if spec.mirror then icon:SetTexCoord(g.r, g.l, g.t, g.b) end
+        icon.w = math.floor((icon:GetWidth() or ICON.BOX) + 0.5)
+        icon.after = true
+        btn.Icon = icon
+      end
+    elseif spec.glyph then
       -- At its master's own size (ICON).
       local g = T.GLYPHS and T.GLYPHS[spec.glyph]
       local icon = Ctx.Mark(art, g and g.h or ICON.BOX, "OVERLAY", spec.glyph)
@@ -5884,9 +5898,14 @@ do
     local icon, chev = btn.Icon, btn.Chev
     local inkL, inkW = 0, 0
     if icon then inkL, inkW = Rows.IconInk(icon) end
-    local lead = icon and (inkW + ICON.GAP) or 0
+    local after = icon and icon.after
+    local lead = icon and not after and (inkW + ICON.GAP) or 0
     local tail = chev and (chev.w + CHEVRON_R + CHEVRON_GAP - pad) or 0
     if tail < 0 then tail = 0 end
+    -- A mark after the words (Rows.Button `glyphAfter`) is part of the
+    -- unit centred, ICON.GAP after the caption's last letter; the caption
+    -- fits the room left beside it, so it never pushes the mark off.
+    if after then tail = tail + ICON.GAP + inkW end
     label:SetText(btn.captionText)
     local whole = TextW(label)
     local width = cell.minW
@@ -5903,8 +5922,10 @@ do
     if icon then
       icon:ClearAllPoints()
       -- The ink's first column on x: the texture's clear margin stands
-      -- before it, inside the button's padding.
+      -- before it, inside the button's padding. After the words, on the
+      -- caption's end and its gap.
       local ix = x - inkL
+      if after then ix = x + capW + ICON.GAP - inkL end
       if icon.dots then
         icon:SetPoint("LEFT", btn, "LEFT", ix, 0)
       else
@@ -10067,13 +10088,15 @@ function Pages.Alerts(col)
   -- Where the marker that follows Warn about is set: a row named as the
   -- marker's own row is on the Minimap tab, its button where a dropdown
   -- stands and as wide as one, which opens that tab at the marker's group
-  -- (Pages.OpenMarker). Outside Warn about's block, so it stays live
+  -- (Pages.OpenMarker); its mark a return arrow after the words (the
+  -- expiry marks' arrow, mirrored). Outside Warn about's block, so it stays live
   -- whatever greys here; in the options search as every row is.
   local tab = L["OPT_MINIMAP_HEADING"]
   local group = L["OPT_MINIMAP_GROUP_MARKER"]
   Rows.Button(col, {
     title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_OPEN_DESC"], tab, group),
-    caption = L["OPT_MARKER_OPEN"], glyph = "link-10", minWidth = DD_W, onClick = Pages.OpenMarker,
+    caption = L["OPT_MARKER_OPEN"], glyph = "expiry-back", glyphAfter = true, mirror = true, minWidth = DD_W,
+    onClick = Pages.OpenMarker,
   })
 
   local pair = Rows.Pair(col, {
