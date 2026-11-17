@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/hero.gif" alt="Postbox: the mailbox Azeroth deserves. Its window in each of its looks: the Postbox style in Dark, Blizzard, ElvUI, EllesmereUI and the Postbox style in Light. For Retail and Forever, each beside its game's own emblem, with the Blizzard UI, ElvUI or EllesmereUI" />
+  <img src="docs/screenshots/hero.gif" alt="Postbox: the mailbox Azeroth deserves. Its window collects all its mail in one click while it changes look: the Postbox style, the game's own look on Retail and on Forever, ElvUI and EllesmereUI. Then a search takes only the ore, and one item is taken from a mail without opening it. For Retail and Forever, each beside its game's own emblem, with the Blizzard UI, ElvUI or EllesmereUI" />
 </p>
 
 <p align="center">

@@ -19,17 +19,20 @@ Featured cover.
 | 11 | `11-expiry.gif` | Where expiring mail goes |
 
 All are 16:9, the shape of CurseForge's slideshow (834 x 472 on the page): the
-slides are 1200 x 679, the largest the gallery viewer shows them, and the cover is
-1774 x 1004. Each slide is the same clip as on the description, on the hero's sky
+slides and the cover are 1200 x 679, the largest the gallery viewer shows them
+(the cover's still, `01-hero.png`, is 1774 x 1004). Each slide is the same clip as on the description, on the hero's sky
 with a short caption. Slide 3 moves too: two windows side by side, the Postbox
 style, EllesmereUI and ElvUI on the left and the game's own look on Retail and
 Forever on the right; `03-looks.png` is its first frame.
 
-The cover moves: the window wipes through Postbox's five looks (the Postbox
-style in Dark, Blizzard, ElvUI, EllesmereUI, the Postbox style in Light), with
-the look's name under it. Under the tagline, where Postbox runs: Retail and
-Forever, each beside its game's own emblem, and under them the UIs it fits
-(Blizzard UI, ElvUI, EllesmereUI), named in text. `01-hero.png` is its first
+The cover moves: one click collects all the mail while the window wipes through
+its looks (the Postbox style, the game's own look on Retail and on Forever,
+ElvUI, EllesmereUI), then a search takes only the ore and one item is taken from
+a mail without opening it; the line under the window names the feature on show.
+Under the tagline, where Postbox runs: Retail and Forever, each beside its game's
+own emblem and lit while the window wears that game's look, and under them the
+UIs it fits (Blizzard UI, ElvUI, EllesmereUI), a gold line under the one on
+show; in the Postbox style the crest glows instead. `01-hero.png` is its first
 frame, for anywhere a still is wanted instead.
 
 The description's own pictures are in `../screenshots`. Nothing under `docs/`
