@@ -1,94 +1,69 @@
 <h1 style="text-align:center">The mailbox Azeroth deserves.</h1>
 <p style="text-align:center"><strong><span style="color:#e5e5e5">Postbox replaces the game's mailbox with one fast window: collect in one click, send faster, and never lose mail on a forgotten alt.</span></strong><br>It works the moment you open a mailbox. Every extra has an off switch, and it stays light either way.</p>
-<p style="text-align:center"><strong><span style="color:#ffd100">Retail · WoW Forever</span></strong> &nbsp;|&nbsp; <strong><span style="color:#ffd100">Blizzard UI · ElvUI · EllesmereUI</span></strong><br>One download runs on retail and on World of Warcraft: Forever. On the Blizzard UI it wears its own Dark or Light style or the game's own look; under ElvUI or EllesmereUI it matches them.</p>
+<p style="text-align:center"><strong><span style="color:#ffd100">Retail · WoW Forever</span></strong> &nbsp;|&nbsp; <strong><span style="color:#ffd100">Blizzard UI · ElvUI · EllesmereUI</span></strong><br>One download runs on retail and on World of Warcraft: Forever. On the Blizzard UI it wears the game's own look or its own Dark or Light style; under ElvUI or EllesmereUI it matches them.</p>
 <ul style="display:flex;flex-wrap:wrap;gap:20px 24px;padding-left:0">
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">All mail, one click</span></strong><span style="display:none">: </span><span style="display:block">The whole inbox, gold, items and letters, in one go.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Just what you want</span></strong><span style="display:none">: </span><span style="display:block">Search an item's name, a sender or "sold", Shift- or Ctrl-click rows, or use buttons for sold, bought, your alts and your own Character Groups.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Finished mail, out of the way</span></strong><span style="display:none">: </span><span style="display:block">Read mail with nothing left waits under one quiet bar at the foot of the list, to fold away or clear in one go.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Every alt's mail</span></strong><span style="display:none">: </span><span style="display:block">What each character has waiting, and what each mail holds, searched from anywhere. At a mailbox, your class icon opens every character's box.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Never lose expiring mail</span></strong><span style="display:none">: </span><span style="display:block">Expired auction mail is deleted, gold and all. You're warned at login and on the minimap while there's still time, and a mail about to run out shows whether it goes back to its sender or is deleted.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Every alt's mail</span></strong><span style="display:none">: </span><span style="display:block">What each character has waiting, and what each mail holds, searched from anywhere. At a mailbox, the Inbox button opens every character's box.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Never lose expiring mail</span></strong><span style="display:none">: </span><span style="display:block">The game deletes auction mail that runs out, gold and all. Postbox warns you at login and on the minimap while there's still time, and shows whether a mail about to run out goes back to its sender or is deleted.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Faster sending</span></strong><span style="display:none">: </span><span style="display:block">Names complete as you type, from the lists you choose. Right-click attaches; Alt-right-click attaches every stack.</span></li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, keeps the Blizzard look, or wears its own Dark or Light style. Drag any column or button.</span></li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Your look, your layout</span></strong><span style="display:none">: </span><span style="display:block">Matches EllesmereUI or ElvUI, wears the game's own look, letter paper and all, or its own Dark or Light style. Drag any column or button.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">A minimap icon</span></strong><span style="display:none">: </span><span style="display:block">A count of what's waiting and an expiry marker, in two dozen styles.</span></li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#ffd100">Safe with your gold</span></strong><span style="display:none">: </span><span style="display:block">C.O.D. is never paid without asking, and full bags stop a run cleanly.</span></li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Empty your mailbox in one click</h2>
+<p style="text-align:center">All mail takes gold, items and letters in your list's order. Bags are checked first, and a run stops cleanly if they fill.</p>
+<p style="text-align:center">History keeps what you collected and what you sent, for up to a year, searchable by an item's name.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.gif" width="672" alt="All mail collecting a full inbox"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">In the order you see.</span></strong> Gold, items and letters come out in your list's order. Sort by date, time left, gold or sender (click again to reverse), and show only unread mail, mail with gold or mail with items, several at once.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Bags checked first.</span></strong> Keep a few slots free for loot. If your bags fill anyway, the run stops cleanly and says what's left.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">History.</span></strong> What you collected (Received) and what you sent (Sent), kept for a week or up to a year: who, what, how much, even the letter's text. Search any of it by an item's name.</li>
-</ul>
+<p>&nbsp;</p>
+<h2 style="text-align:center">A look for every UI</h2>
+<p style="text-align:center">On the game's own UI, Postbox wears the game's own look by default, letter paper and all, on retail and WoW Forever, or the Postbox style in Dark or Light.</p>
+<p style="text-align:center">Under EllesmereUI or ElvUI it matches them: your font, your accent, live.</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/looks.gif" width="836" alt="Postbox in its own style, then EllesmereUI's and ElvUI's, beside the game's own look on retail and WoW Forever"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Or take only what you want</h2>
-<p style="text-align:center">Search ("ore", "sold", a name), Shift- or Ctrl-click the rows you want, or turn on one-click buttons.</p>
+<p style="text-align:center">Ctrl- or Shift-click the mail you want, search "sold" or a name, or use one-click buttons for bought, sold, expired and your own Character Groups.</p>
+<p style="text-align:center">Sort by date, time left, gold or sender, show only unread mail, mail with gold or mail with items, and search finds a mail by the items inside it.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/sweeps.gif" width="584" alt="Ctrl-click two mails and take just those, then only the sold mail, then only your bank alts' mail"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Pick by hand:</span></strong> Ctrl-click mails one by one, or Shift-click a range, and take just those.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One click per kind:</span></strong> All bought, All sold and All expired are there from the start; canceled, other and from-alts are a right-click away in Arrange.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Character Groups:</span></strong> put your bank alts or crafters in a group and it gets a button of its own.</li>
-</ul>
-<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center">
-<div style="flex:1;min-width:260px">
-<ul>
-<li><strong><span style="color:#e5e5e5">Take one item without opening the mail:</span></strong> point at a mail's icon, its items fan out, and a click takes the one you want.</li>
-<li><strong><span style="color:#e5e5e5">Your choice:</span></strong> Attachments on hover fans the items out, or set it to Tooltip for a list.</li>
-</ul>
-</div>
-<div style="flex:0 1 520px"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/fanout.gif" width="520" alt="Pointing at a mail's icon fans out its items, and a click takes one"></div>
-</div>
 <p>&nbsp;</p>
+<h2 style="text-align:center">One item, without opening the mail</h2>
+<p style="text-align:center">Point at a mail's icon and its items fan out; a click takes the one you want (Attachments on hover: Fan out).</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/fanout.gif" width="520" alt="Pointing at a mail's icon fans out its items, and a click takes one"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Finished mail, out of the way</h2>
-<p style="text-align:center">Read mail with nothing left in it sits under one quiet bar. While it's out of view, the bar waits at the foot of the list as a small island; scroll to it or click it and it opens.</p>
+<p style="text-align:center">Read mail with nothing left waits under one quiet bar at the foot of the list. Fold it away, or clear it with Delete all, which asks first.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/finished.gif" width="672" alt="Scrolling down to the island at the list's foot: it opens into the bar over the read mail, and Delete all turns red under the pointer"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Yours to style:</span></strong> the Island, a thin Hairline or a Full row, saying Done, Nothing left, Collected or your own words, with an icon, a count and a color.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Clear it in one go:</span></strong> Delete all removes only the finished mail under the bar, takes a click only once the bar is open, and asks first.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Or never see it:</span></strong> give finished mail a Done tab of its own, or delete each letter once it's emptied. History keeps its words.</li>
-</ul>
-<p>&nbsp;</p>
-<h2 style="text-align:center">Never lose mail on a forgotten alt</h2>
-<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Warned in time:</span></strong> a line in chat at login and a marker on the minimap icon when any character's mail with gold or items has under three days left (one for C.O.D.). One choice covers both: mail to be deleted, or mail sent back too.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Mail Memory</span></strong> remembers each character's mailbox at your last visit. Search one character or all of them.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One glance:</span></strong> the icon's tooltip lists every character with mail waiting, and what's about to run out; the options' General tab lists every character's mail, what's about to run out first, gold included, with a total for them all and a weekly summary of the gold you earned and spent by mail.</li>
-</ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Sending made easy</h2>
+<p style="text-align:center">Names complete as you type, favorites first. Right-click attaches; Alt-right-click attaches every stack.</p>
+<p style="text-align:center">Manage Recipients lists every name in one table: favorite, hide or add a note to any of them.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.gif" width="770" alt="A name completing as it is typed, then one click attaching every stack"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Names finish themselves:</span></strong> recent contacts, alts, friends, guild and players you grouped with, favorites first; you choose which (Options &gt; Send tab). Right-click hides a name, and a pin makes one character always start with the same name.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Right-click to attach,</span></strong> Alt-right-click for every stack. More than 12 items go out in one press.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Gold always asks first,</span></strong> Ctrl+Enter sends, and <strong><span style="color:#e5e5e5">Manage Recipients</span></strong> is a table of every name: double-click to favorite, right-click to hide, a note for each, select several at once.</li>
-</ul>
+<p>&nbsp;</p>
+<h2 style="text-align:center">Every alt's mail, at a glance</h2>
+<p style="text-align:center">The minimap icon's tooltip lists every character with mail waiting. Mail Memory remembers each character's box at your last visit, to search from anywhere.</p>
+<p style="text-align:center">Mail you send your other characters shows in their box before they log in.</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Arrange it your way</h2>
+<p style="text-align:center">Drag any column or button, hide what you don't need, and choose what each figure shows.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/arrange.gif" width="704" alt="Dragging a column to a new place"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Drag any column or button,</span></strong> hide what you don't need, and choose what each figure shows.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Columns or Packed:</span></strong> figures lined up like a table, or packed so subjects get the room.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">One-line rows, larger rows and History</span></strong> each keep their own layout, and <strong><span style="color:#e5e5e5">Test mail</span></strong> fills the list with samples to try it on, even away from a mailbox.</li>
-</ul>
-<p style="text-align:center"><strong><span style="color:#e5e5e5">A look for every UI:</span></strong> under EllesmereUI, your font, your accent, and the same opacity and border as the windows beside it; under ElvUI, your accent, live; beside the default UI, the game's own window art or the Postbox style, the default there, in Dark or Light with your accent, border, corners, font (the game's or six of Postbox's own, Expressway among them, each Regular or Bold) and text size. Scale 80% to 130%. Your characters wear the class icons you pick: the game's own, Painted, Pixel, Comic or Glyphs. And the options have a search that finds any setting.</p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
+<p style="text-align:center">A count of what's waiting and a marker when mail is about to expire, in two dozen styles. Off until you turn it on.</p>
+<p style="text-align:center">New mail can flash it and play a sound you choose.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Off until you turn it on;</span></strong> then the game's own mail icon steps aside. New mail can flash it, and play a sound you choose: one of Postbox's own, the game's, or one your other addons share (Options &gt; General).</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">A count of what's waiting,</span></strong> and a marker when mail is about to expire, in the shape, color and spot you pick.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Two dozen hand-painted styles</span></strong> with glow, pulse and shadow. Point at any option and the panel beside it shows you.</li>
-</ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Know where expiring mail goes</h2>
-<p style="text-align:center">When mail runs out, the game sends a player's mail with gold or items back to its sender and deletes the rest, auction mail too, gold and all. Postbox shows you which while there's still time.</p>
-<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/expiry.gif" width="672" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a C.O.D. mail's arrow: On expiry: returns to Brannoc"></p>
-<ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">An arrow or a bin</span></strong> in front of the time left as it turns amber (under three days, one for C.O.D.): the arrow when it goes back to its sender, the bin when it's deleted.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Said in words:</span></strong> point at any mail with gold or items and its tooltip says what happens on expiry, short or not. Turn off Expiry marks and the tooltip still says it.</li>
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">On every alt:</span></strong> Mail Memory's rows carry the same marks, so you see what's at risk on characters you're not playing.</li>
+<p style="text-align:center">An arrow or a bin before the time left says whether a mail goes back to its sender or is deleted, while there's still time.</p>
+<p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/expiry.gif" width="672" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a player's mail's arrow: On expiry: returns to Kaelyth"></p>
+<p>&nbsp;</p>
+<h2 style="text-align:center">And more</h2>
+<ul>
+<li><strong><span style="color:#e5e5e5">The last 7 days:</span></strong> gold earned and spent by mail, for all your characters or the one you're on (Options &gt; General).</li>
+<li><strong><span style="color:#e5e5e5">A search in the options</span></strong> that finds any setting and takes you to it.</li>
+<li><strong><span style="color:#e5e5e5">A sold auction</span></strong> wears the icon of the item that sold.</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Ready for WoW Forever</h2>

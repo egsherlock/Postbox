@@ -132,7 +132,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 <br clear="all" />
 
 <p align="center">
-  <img src="docs/screenshots/collect.gif" alt="A search for ore taking just those mails, All mail taking the rest, then History showing what came in" />
+  <img src="docs/screenshots/collect.gif" alt="A search for ore taking just those mails, All mail taking the rest, then History showing what came in and what you sent" />
 </p>
 
 <p align="center">
@@ -140,7 +140,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/expiry.gif" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a C.O.D. mail's arrow: On expiry: returns to Brannoc" />
+  <img src="docs/screenshots/expiry.gif" alt="Pointing at a short mail's bin: its tooltip says On expiry: deleted. Then at a player's mail's arrow: On expiry: returns to Kaelyth" />
 </p>
 
 <p align="center">
