@@ -3449,9 +3449,11 @@ end
 -- icon is the item's, by that link. A number either way: nothing is made.
 function MM.MailIcon(mail)
   -- A sold auction's gold: the item that sold, where it can be told
-  -- (CollectTab, CT.SoldIcon, kept by its subject), else the coin.
+  -- (CollectTab, CT.SoldIcon, kept by its subject), else the coin; the
+  -- coin always where that is chosen (CT.SoldShowsItem).
   if mail.kind == "sold" and (mail.items or 0) == 0 then
     local CT = ns.CollectTab
+    if CT and type(CT.SoldShowsItem) == "function" and not CT.SoldShowsItem() then return mail.icon end
     local icon = CT and type(CT.SoldIcon) == "function" and CT.SoldIcon(mail.subject) or nil
     if icon then return icon end
   end
@@ -4431,6 +4433,13 @@ do
 
   -- gen: MM.PostsGen(), read once for the list.
   function PendingIcon(entry, gen)
+    -- A sale with the coin chosen (CollectTab, CT.SoldShowsItem): the coin.
+    if entry.k == "sold" then
+      local CT = ns.CollectTab
+      if CT and type(CT.SoldShowsItem) == "function" and not CT.SoldShowsItem() then
+        return "Interface\\Icons\\INV_Misc_Coin_01"
+      end
+    end
     if gen ~= heldGen then
       for key in pairs(held) do held[key] = nil end
       heldGen = gen

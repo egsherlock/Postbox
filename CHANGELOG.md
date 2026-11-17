@@ -29,7 +29,8 @@
   Mail Memory, type an item's name to find any mail it's attached to.
 - **Sold auctions show the item that sold:** an AH Sold mail wears that
   item's icon in the Inbox, History and Mail Memory, wherever Postbox can
-  tell which it was.
+  tell which it was. Prefer the gold coin? Set AH Sold icon to Gold on the
+  Item icon's card while arranging.
 
 ### Mail tab
 
@@ -51,6 +52,9 @@
   letters (Arrange > Gold column > Written as).
 - With **Attachments on hover** set to Fan out, a mail's items open from
   its own icon, as one piece.
+- **Attachments on hover** (Options > Mail tab, and the Item icon's card
+  while arranging) is Fan out on a new install and after a reset. If you
+  are updating, you keep what you had.
 - **Easier to read rows:** item names, time left, gold, slots, the totals
   strip and the Search placeholder are a size larger on the default UI,
   the same size on every client and in every window style.
@@ -244,6 +248,11 @@
   icon's size and place under EllesmereUI's minimap.
 - **The Minimap tab's name is gray while the minimap icon is off**
   (Options > Minimap).
+- **Count on icon** (the minimap icon): from 100 up the number is a touch
+  smaller so it stays on the icon, and reads 99+ only when it is too wide
+  even then.
+- **Position and Lock position** (Options > Minimap) stand under When to
+  show, in the When it shows group; the Place heading is gone.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars. Mail Memory's is an

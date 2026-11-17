@@ -5105,7 +5105,9 @@ do
   -- A push button on the right. spec: title, text, caption, onClick
   -- [, onHover(cell)] [, glyph] [, minWidth] [, chevron]: `glyph` (Theme.
   -- GLYPHS) stands before the caption in its ink, the two centred as one
-  -- (FitButton); `minWidth`, the button's width, the caption cut short in
+  -- (FitButton); with `glyphAfter` it stands after the caption instead, the
+  -- same gap from its last letter, drawn left for right where `mirror`
+  -- (its crop turned, no art of its own); `minWidth`, the button's width, the caption cut short in
   -- it only where it cannot fit, and said whole on hover; `chevron`, the
   -- General tiles' chevron at its right end, for a button that opens a
   -- window of its own.
@@ -5215,7 +5217,19 @@ do
     -- own textures. The icon and the caption on it, the icon in the
     -- caption's ink (Rows.PaintCaption).
     local art = ArtHolder(btn)
-    if spec.glyph then
+    if spec.glyph and spec.glyphAfter then
+      -- After the words (FitCaption): the art at its master's own size, its
+      -- clear rim (`pad`) round it as the master has it; `mirror`, drawn
+      -- left for right by its crop, no art of its own.
+      local g = T.GLYPHS and T.GLYPHS[spec.glyph]
+      local icon = g and T.Glyph and T.Glyph(art, spec.glyph, g.h - 2 * (g.pad or 0), "OVERLAY") or nil
+      if icon then
+        if spec.mirror then icon:SetTexCoord(g.r, g.l, g.t, g.b) end
+        icon.w = math.floor((icon:GetWidth() or ICON.BOX) + 0.5)
+        icon.after = true
+        btn.Icon = icon
+      end
+    elseif spec.glyph then
       -- At its master's own size (ICON).
       local g = T.GLYPHS and T.GLYPHS[spec.glyph]
       local icon = Ctx.Mark(art, g and g.h or ICON.BOX, "OVERLAY", spec.glyph)
@@ -5928,9 +5942,14 @@ do
     local icon, chev = btn.Icon, btn.Chev
     local inkL, inkW = 0, 0
     if icon then inkL, inkW = Rows.IconInk(icon) end
-    local lead = icon and (inkW + ICON.GAP) or 0
+    local after = icon and icon.after
+    local lead = icon and not after and (inkW + ICON.GAP) or 0
     local tail = chev and (chev.w + CHEVRON_R + CHEVRON_GAP - pad) or 0
     if tail < 0 then tail = 0 end
+    -- A mark after the words (Rows.Button `glyphAfter`) is part of the
+    -- unit centred, ICON.GAP after the caption's last letter; the caption
+    -- fits the room left beside it, so it never pushes the mark off.
+    if after then tail = tail + ICON.GAP + inkW end
     label:SetText(btn.captionText)
     local whole = TextW(label)
     local width = cell.minW
@@ -5947,8 +5966,10 @@ do
     if icon then
       icon:ClearAllPoints()
       -- The ink's first column on x: the texture's clear margin stands
-      -- before it, inside the button's padding.
+      -- before it, inside the button's padding. After the words, on the
+      -- caption's end and its gap.
       local ix = x - inkL
+      if after then ix = x + capW + ICON.GAP - inkL end
       if icon.dots then
         icon:SetPoint("LEFT", btn, "LEFT", ix, 0)
       else
@@ -8399,7 +8420,8 @@ function Pages.mail(col)
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
   -- The settings that live on the arrange mode's cards alone now (the marks
-  -- on an item's icon, quality by the name, the expiry marks) are still
+  -- on an item's icon, quality by the name, the expiry marks, a sold
+  -- auction's icon) are still
   -- the Mail tab's to reset (TabReset.Units): their getters ride on the
   -- row that opens the cards.
   arrange.moreGets = {
@@ -8407,6 +8429,7 @@ function Pages.mail(col)
     function() return ns.MailboxUI.GetOption("expiryMarks") end,
     function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
     function() return ns.MailboxUI.GetQualityName and ns.MailboxUI.GetQualityName() or "off" end,
+    function() return ns.MailboxUI.GetOption("soldItemIcon") end,
   }
 
   -- Row layout: every figure in its own column on every row (Columns), or
@@ -8470,7 +8493,7 @@ function Pages.mail(col)
       { id = "tooltip", name = L["OPT_ATTACH_HOVER_TOOLTIP"] },
       { id = "fan",     name = L["OPT_ATTACH_HOVER_FAN"] },
     },
-    get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "tooltip" end,
+    get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "fan" end,
     set = function(id)
       if ns.MailboxUI.SetAttachHover then ns.MailboxUI.SetAttachHover(id) end
       ArrangeFollows()
@@ -9617,9 +9640,9 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then five groups --
--- when the icon shows, the icon itself, its glow, the marker it wears for
--- expiring mail, and where it sits. Resolved at click time like every other
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups --
+-- when the icon shows and where it sits, the icon itself, its glow, and the
+-- marker it wears for expiring mail. Resolved at click time like every other
 -- binding, so the page stays honest if the module is absent. A row grey
 -- because another setting is off says what turns it on (Rows.Why); with
 -- the switch off, every row says to turn the icon on.
@@ -9685,6 +9708,54 @@ function Pages.minimap(col)
   rows.show = showRow
   Rows.Why(showRow, "OPT_MINIMAP_WHY_ANY")
 
+  -- Where it sits on the map, and the lock on moving it, under When to
+  -- show in the same group: no heading of their own. Under EllesmereUI's
+  -- minimap that, and the size, are EllesmereUI's, and one quiet line says
+  -- so in their place.
+  -- Where the icon was moved to, besides the choice: the spot on the rim a
+  -- shift-drag left (Custom) and the one on screen (Anywhere on
+  -- screen). Read only by Reset this tab (TabReset.Units).
+  local function MovedTo()
+    local store = ns.Store
+    local prefs = store and store.Get and store.Get("profile.minimap")
+    if type(prefs) ~= "table" then return nil end
+    return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
+  end
+  if hostStyled then
+    -- One quiet line, not a paragraph: the whole of it is in the inspector.
+    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
+  else
+    -- Every placement in ONE list -- a mode checkbox beside a position list
+    -- gave two controls authority over one fact, and they contradicted
+    -- each other the moment shift-drag moved the icon. Blizzard default
+    -- leads: it is where the stock indicator lives. A fresh install starts
+    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
+    -- picking that corner again is the way back to it after a shift-drag.
+    local placeRow = Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
+      items = {
+        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
+        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
+      },
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
+    })
+    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
+    -- puts it back with Position, as Reset settings does, and a later pick
+    -- of either choice starts from the default spot.
+    placeRow.moreGet = MovedTo
+    Rows.Check(block, {
+      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
+    })
+  end
+
   -- Icon: its art, its size, its count and its shadow. EllesmereUI's
   -- button wears all of it but the size.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
@@ -9740,6 +9811,18 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  if hostStyled then
+    -- The size, the place and the lock have no rows here, but they are
+    -- still this tab's settings, saved for the icon Postbox draws when
+    -- EllesmereUI's minimap is gone: Reset this tab puts them back too
+    -- (TabReset.Units), as Reset settings does.
+    iconRow.moreGets = {
+      function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      MovedTo,
+    }
+  end
 
   if not hostStyled then
     -- 16 to 40 in steps of four, from the module, which also refuses any other.
@@ -9804,64 +9887,6 @@ function Pages.minimap(col)
 
   -- Expiring mail marker: Minimap marker and the marker's look.
   Pages.MinimapMarker(block, modes, rows)
-
-  -- Place: where it sits on the map, and the lock on moving it. Under
-  -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
-  -- quiet line says so in their place.
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_PLACE"])
-  -- Where the icon was moved to, besides the choice: the spot on the rim a
-  -- shift-drag left (Custom) and the one on screen (Anywhere on
-  -- screen). Read only by Reset this tab (TabReset.Units).
-  local function MovedTo()
-    local store = ns.Store
-    local prefs = store and store.Get and store.Get("profile.minimap")
-    if type(prefs) ~= "table" then return nil end
-    return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
-  end
-  if hostStyled then
-    -- One quiet line, not a paragraph: the whole of it is in the inspector.
-    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
-    -- The size, the place and the lock have no rows here, but they are
-    -- still this tab's settings, saved for the icon Postbox draws when
-    -- EllesmereUI's minimap is gone: Reset this tab puts them back too
-    -- (TabReset.Units), as Reset settings does.
-    iconRow.moreGets = {
-      function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
-      function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-      function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-      MovedTo,
-    }
-  else
-    -- Every placement in ONE list -- a mode checkbox beside a position list
-    -- gave two controls authority over one fact, and they contradicted
-    -- each other the moment shift-drag moved the icon. Blizzard default
-    -- leads: it is where the stock indicator lives. A fresh install starts
-    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
-    -- picking that corner again is the way back to it after a shift-drag.
-    local placeRow = Rows.Dropdown(block, {
-      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
-      items = {
-        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
-        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
-        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
-        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
-        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
-        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
-      },
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
-    })
-    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
-    -- puts it back with Position, as Reset settings does, and a later pick
-    -- of either choice starts from the default spot.
-    placeRow.moreGet = MovedTo
-    Rows.Check(block, {
-      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
-    })
-  end
   Rows.EndBlock(block)
 end
 
@@ -10195,13 +10220,15 @@ function Pages.Alerts(col)
   -- Where the marker that follows Warn about is set: a row named as the
   -- marker's own row is on the Minimap tab, its button where a dropdown
   -- stands and as wide as one, which opens that tab at the marker's group
-  -- (Pages.OpenMarker). Outside Warn about's block, so it stays live
+  -- (Pages.OpenMarker); its mark a return arrow after the words (the
+  -- expiry marks' arrow, mirrored). Outside Warn about's block, so it stays live
   -- whatever greys here; in the options search as every row is.
   local tab = L["OPT_MINIMAP_HEADING"]
   local group = L["OPT_MINIMAP_GROUP_MARKER"]
   Rows.Button(col, {
     title = L["OPT_WARN_MARKER_TITLE"], text = string.format(L["OPT_MARKER_OPEN_DESC"], tab, group),
-    caption = L["OPT_MARKER_OPEN"], glyph = "link-10", minWidth = DD_W, onClick = Pages.OpenMarker,
+    caption = L["OPT_MARKER_OPEN"], glyph = "expiry-back", glyphAfter = true, mirror = true, minWidth = DD_W,
+    onClick = Pages.OpenMarker,
   })
 
   local pair = Rows.Pair(col, {
@@ -11007,6 +11034,16 @@ do
       local q = Put(name, where)
       q.span = {}
       for _, pair in ipairs({ { "before", "OPT_QUALITY_NAME_BEFORE" }, { "after", "OPT_QUALITY_NAME_AFTER" }, { "off", "OPT_QUALITY_OFF" } }) do
+        local c = PutChoice(name, { id = pair[1], name = L[pair[2]] }, q)
+        q.span[#q.span + 1] = c
+      end
+    end
+    -- The Icon card's AH Sold icon (Arrange, AR.SoldIcon): its two answers.
+    if id == "icon" and type(AR.SoldIcon) == "function" then
+      local name = L["OPT_SOLD_ICON_TITLE"]
+      local q = Put(name, where)
+      q.span = {}
+      for _, pair in ipairs({ { "item", "COL_ICON" }, { "coin", "OPT_ROW_GOLD" } }) do
         local c = PutChoice(name, { id = pair[1], name = L[pair[2]] }, q)
         q.span[#q.span + 1] = c
       end

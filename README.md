@@ -120,8 +120,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   figures together, the subject gets the rest). Columns: read mark, item
   icon, sender, subject, time left ("9h", "3d"), gold, slots.
 - **Item icons** carry stack counts and crafting quality marks, as your bags
-  do. Hover an icon for what the mail holds, or set **Attachments on hover**
-  to **Fan out** and click one item to take it (C.O.D. still asks first).
+  do. Hover an icon and its items fan out: click one to take it (C.O.D.
+  still asks first), or set **Attachments on hover** to **Tooltip** for a
+  list of what the mail holds.
 - **Senders wear their class color** when Postbox knows them (your alts,
   friends, guild), in your UI's own class colors.
 - **One tooltip format everywhere:** the subject, then only what the row
@@ -309,8 +310,8 @@ icon steps aside.
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.
-- **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
-  Expiring mail marker, Place). Its preview draws the icon large beside a copy at
+- **The Minimap tab** reads in four groups (When it shows, with Position and
+  Lock position, Icon, Glow, Expiring mail marker). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
