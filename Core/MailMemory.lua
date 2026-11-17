@@ -5857,6 +5857,10 @@ function MM.HostPick(zone, plate)
     local level = ns.Theme.LevelOf(plate)
     if level and ns.Theme.LevelOf(zone) ~= level + 2 then zone:SetFrameLevel(level + 2) end
   end
+  -- A look that seats the cap on its own art (Skin.SeatCap); nil in every
+  -- other look.
+  local seat = ns.Skin and ns.Skin.SeatCap
+  if seat then seat(zone, plate) end
 end
 
 -- parent -> the plate that names a box. The count has a caption of its own,

@@ -2805,6 +2805,60 @@ do
     R:Show()
   end
 
+  -- The class icon on a key (Mail tab > Inbox, Mail Memory's box key; the
+  -- house's cap, MM.NewPickCell / MM.HostPick). The house lays it a unit
+  -- inside the key's top, foot and left edge, square, "so the ring runs
+  -- round it": true of its own one-unit square ring. This art's rim is
+  -- thicker than a unit and its corners are cut, so that square lay on the
+  -- rim's left side with its two left corners outside the cut ones (seen in
+  -- game, 2026-11-17). Here the icon fills the key's left end inside the
+  -- rim's dark line (his pick on b27): CAP_IN of the art's height in from
+  -- the body's left, top and foot (the light line and the dark line, an
+  -- art unit each, the same on both clients), square, and a mask cuts its
+  -- two left corners where the dark line's inner side runs diagonally
+  -- (Media/blizzard-cap-mask.tga, drawn to the art's own texels: 7 of leg
+  -- at the top corner, 8 at the foot, of the icon's 48). The mask's
+  -- picture holds the icon's square in its middle three quarters, so it
+  -- stands a sixth of the icon's side past it all round and the icon's
+  -- straight edges are its own. The caption keeps its place: the room the
+  -- house gives the cap on the key is not touched, and the icon's right
+  -- edge stands half a unit short of where the house's did.
+  -- Asked for by MM.HostPick at its end, each call: laid only when the
+  -- key or the picker's height moved (two compares), and again when the
+  -- picker comes back to a key, since the house lays its own seat then.
+  -- Where the client makes no mask, or the art is missing, the house's
+  -- seat stands.
+  local CAP_IN = 2 / 34
+  local CAP_MASK = "Interface\\AddOns\\Postbox\\Media\\blizzard-cap-mask.tga"
+  function Skin.SeatCap(zone, plate)
+    local icon = zone.Icon
+    if not icon then return end
+    if not plate then
+      zone.__pbSeat = nil
+      return
+    end
+    local h = zone:GetHeight()
+    if zone.__pbSeat == plate and zone.__pbSeatH == h then return end
+    zone.__pbSeat, zone.__pbSeatH = plate, h
+    if type(h) ~= "number" or h <= 0 or type(zone.CreateMaskTexture) ~= "function" or not HasAll() then return end
+    local t = h * CAP_IN / (1 - RIM_T - RIM_B)
+    local d = h - 2 * t
+    icon:SetSize(d, d)
+    icon:ClearAllPoints()
+    icon:SetPoint("TOPLEFT", plate, "TOPLEFT", t, -t)
+    local mask = zone.__pbCapMask
+    if not mask then
+      mask = zone:CreateMaskTexture()
+      mask:SetTexture(CAP_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+      icon:AddMaskTexture(mask)
+      zone.__pbCapMask = mask
+    end
+    local m = d / 6
+    mask:ClearAllPoints()
+    mask:SetPoint("TOPLEFT", icon, "TOPLEFT", -m, m)
+    mask:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", m, -m)
+  end
+
   -- The rim's own column, one unit wide, at the right end of a cell with a
   -- cell after it: the metal at rest, the selected art's white beside a lit
   -- cell. Only on a change.
