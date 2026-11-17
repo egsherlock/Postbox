@@ -22,9 +22,10 @@ local _, ns = ...
 -- it steps aside while the arrange mode's inspector stands beside the
 -- window (WN.Aside, from Core/Arrange.lua).
 --
--- Once by itself: a release with news for everyone (NEWS, section 5) opens
--- the window by itself beside the mail window the first time a player
--- opens a mailbox with it, and never again.
+-- Unread: while a release with news for everyone (NEWS, section 5) has
+-- not had its window opened, a still dot in the accent stands on the
+-- options cogs and at the top right of the options' footer's What's new?.
+-- The window never opens by itself.
 --
 -- Nothing here is built until it is shown. With no notice waiting and the
 -- news shown, a mailbox open costs one read of the saved variables' root,
@@ -41,7 +42,7 @@ local ceil, floor, max, min = math.ceil, math.floor, math.max, math.min
 -- and its words.
 local NOTICE = { key = "1.50", text = "NOTICE_150" }
 
--- Escape's own small parts (section 4), and the open by itself's (section
+-- Escape's own small parts (section 4), and the unread news's (section
 -- 5), named here so the window and the notice can reach them.
 local ESC = {}
 local ONCE = {}
@@ -653,7 +654,7 @@ local function Place(f, beside, foot)
 end
 
 -- Shown (or raised, where it is up) beside `beside`, as Place puts it.
--- However it is opened, the news it brings counts as shown (section 5).
+-- However it is opened, the news it brings counts as read (section 5).
 function WN.Open(beside, foot)
   ONCE.Shown()
   if not win then
@@ -853,13 +854,9 @@ local function ShowCard(frame)
 end
 
 -- The mail window has opened, at a mailbox (Core/MailboxUI.lua, OnMailShow):
--- the notice, where one waits, else the news, the first time (section 5).
+-- the notice, where one waits.
 function WN.WindowShown(frame)
-  if Waiting() then
-    ShowCard(frame)
-  elseif ONCE.armed then
-    ONCE.Try(frame)
-  end
+  if Waiting() then ShowCard(frame) end
 end
 
 -- The arrange mode opened (true) or closed (false) (Core/Arrange.lua): its
@@ -1202,107 +1199,82 @@ function WN.TestNotice()
 end
 
 -------------------------------------------------------------
--- 5. Once by itself
+-- 5. Unread news
 --
--- A release with news for everyone names it in NEWS, and What's new opens
--- by itself for it once: the first time the player opens a mailbox with
--- it after an update (never on a fresh install: WN.ArmOnce), beside the
--- mail window as the 1.50 notice stands (WN.WindowShown, from the mail
--- window's open in Core/MailboxUI.lua). 1.60's was WoW Forever; 2.0's is
--- Sent mail, the sort and filter menu and Find a setting. A release
--- without such news sets NEWS to nil, and nothing here runs at all.
+-- A release with news for everyone names it in NEWS, and until its window
+-- has been opened the way to it is marked, quietly and still: the Mail
+-- tab's own dot (MailboxUI's TAB_DOT) in the accent's mark tone at the top
+-- right of the options cog, on the mail window's title bar and on Mail
+-- Memory's (Theme.PaintCog, which asks WN.Unread), a line in the cog's
+-- tooltip naming the release (MailboxUI's BuildOptionsButton), and the
+-- same dot at the top right of the options' footer's What's new?
+-- (OptionsPanel's Panel.PaintNews). Nothing opens by itself, anywhere. 1.60's news was WoW
+-- Forever; 2.0's is Sent mail, the sort and filter menu, Find a setting
+-- and the looks. A release without such news sets NEWS to nil, and
+-- nothing here runs at all.
 --
 -- PostboxDB.newsShown holds the NEWS of the last release whose news was
--- shown, and the news is shown while it differs: a key per release, so a
--- player who saw 1.60's has "1.60" and is shown 2.0's once. 2.0 was built
--- as 1.70 (its dev builds were v1.70.0-devN, and the later ones carried
--- "1.70" here), so only a dev install can hold "1.70", and it is shown
--- 2.0's once more. Comments elsewhere that say 1.70 mean this release.
+-- read, and the news is unread while it differs: a key per release, so a
+-- player who read 1.60's has "1.60" and has 2.0's marked once. 2.0 was
+-- built as 1.70 (its dev builds were v1.70.0-devN, and the later ones
+-- carried "1.70" here), so only a dev install can hold "1.70", and it has
+-- 2.0's marked once more. Comments elsewhere that say 1.70 mean this
+-- release.
 --
--- Postbox.lua arms it at load (WN.ArmOnce), after the one-time steps: one
--- read of PostboxDB.newsShown. Once it was shown nothing is armed, and a
--- mailbox open reads nothing more than the notice's one read.
+-- Postbox.lua reads it at load (WN.ArmOnce), after the one-time steps: one
+-- read of PostboxDB.newsShown, and never unread on a fresh install. Once
+-- read, a cog's paint and the footer's fit ask one flag and draw nothing.
 --
--- Shown politely, with no timer and no OnUpdate:
---   * never in combat: a mailbox opened in a fight waits for
---     PLAYER_REGEN_ENABLED, once, and it opens then beside the mail window
---     if that is still up, else at the next mailbox;
---   * never with the 1.50 notice, which only a player coming from 1.40 has.
---     While it waits, the news is left to it (its What's new? opens this
---     window), and comes by itself at the next mailbox if it was answered
---     with OK;
---   * never over the arrange mode's inspector, nor for a visit Postbox
---     stepped aside from (a controller player in Forever, whose mailbox is
---     Blizzard's): the next mailbox.
--- Escape and its close button close it as ever.
---
--- Any open of the window shows the news -- by itself, from the notice, the
--- options' footer or /postbox whatsnew -- and the mark is written as it
--- opens (ONCE.Shown), so a /reload or a second mailbox straight after
--- never shows it twice. Reset everything keeps the mark
--- (Core/MailboxUI.lua, CENSUS_KEEP).
+-- Any open of the window reads the news -- from the notice, the options'
+-- footer or /postbox whatsnew -- and the mark is written as it opens
+-- (ONCE.Shown), which takes every dot down at once, on whatever window
+-- shows one. Opening the options alone does not. Reset everything keeps
+-- the mark (Core/MailboxUI.lua, CENSUS_KEEP).
 -------------------------------------------------------------
 local NEWS = "2.0"
 
--- The one saved read: shown already, or no news to show.
+-- The one saved read: read already, or no news to read.
 local function NewsShown()
   if not NEWS then return true end
   local db = PostboxDB
   return type(db) == "table" and db.newsShown == NEWS
 end
 
--- Nothing more to wait for; unregistering what is not registered costs
--- nothing.
-function ONCE.Disarm()
-  ONCE.armed, ONCE.fight = nil, nil
-  ns.Events.Unregister("PLAYER_REGEN_ENABLED", ONCE.Resume)
+-- Whether this release's news is still unread: what the dots show.
+function WN.Unread()
+  return ONCE.unread == true
 end
 
--- The window opened, however: the news is shown, for good.
+-- The release the news is for ("2.0"): the cog's tooltip names it.
+function WN.NewsKey()
+  return NEWS
+end
+
+-- The window opened, however: the news is read, for good, and the dots
+-- come down at once on every window showing one.
 function ONCE.Shown()
-  if NewsShown() then return end
-  local db = PostboxDB
-  if type(db) ~= "table" then return end
-  db.newsShown = NEWS
-  ONCE.Disarm()
-end
-
--- The mail window has opened at a mailbox, or a fight it opened in is
--- over: open beside it, unless something says not yet.
-function ONCE.Try(frame)
-  if not (ONCE.armed and frame and frame:IsShown()) then return end
-  -- The 1.50 notice goes first, and alone.
-  if Waiting() then return end
-  local arrange = ns.Arrange
-  if arrange and arrange.host then return end
-  if InCombatLockdown() then
-    if not ONCE.fight then
-      ONCE.fight = true
-      ns.Events.Register("PLAYER_REGEN_ENABLED", ONCE.Resume)
-    end
-    return
+  if not NewsShown() then
+    local db = PostboxDB
+    if type(db) ~= "table" then return end
+    db.newsShown = NEWS
   end
-  WN.Open(frame, false)
-end
-
--- The fight is over: the mail window, if a mailbox still holds it open.
-function ONCE.Resume()
-  ONCE.fight = nil
-  ns.Events.Unregister("PLAYER_REGEN_ENABLED", ONCE.Resume)
-  local UI = ns.MailboxUI
-  local st = UI and UI._state
-  if st and st.mailboxOpen then ONCE.Try(UI._frame) end
+  if not ONCE.unread then return end
+  ONCE.unread = nil
+  local T = ns.Theme
+  if T and T.RepaintCog then T.RepaintCog() end
+  local panel = ns.OptionsPanel
+  if panel and type(panel.PaintNews) == "function" then panel.PaintNews() end
 end
 
 -- At load, from Postbox.lua's ADDON_LOADED. A fresh install, with no saved
 -- variables at all (ns.freshInstall), has nothing new to be told about:
--- the current news is marked as shown, so What's new never opens by itself
--- for a first install. It still opens from the options' footer and
--- /postbox whatsnew. An update arms it as before.
+-- the current news is marked as read, so a first install never shows a
+-- dot. What's new still opens from the options' footer and /postbox
+-- whatsnew. An update marks it unread.
 function WN.ArmOnce()
   if ns.freshInstall and NEWS then
     local db = PostboxDB
     if type(db) == "table" then db.newsShown = NEWS end
   end
-  ONCE.armed = not NewsShown() or nil
+  ONCE.unread = not NewsShown() or nil
 end

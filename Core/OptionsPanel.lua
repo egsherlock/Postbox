@@ -10435,6 +10435,21 @@ function Footer.Build(frame, above)
   end)
   news:SetScript("OnEnter", function() T.SetColor(newsText, "textPrimary") end)
   news:SetScript("OnLeave", function() T.SetColor(newsText, "textSecondary") end)
+  -- While this release's What's new is unread (Core/WhatsNew.lua, section
+  -- 5): the Mail tab's dot, raised at the words' top right as it stands at
+  -- the cog's, its middle 3 units past the caption's box and a unit under
+  -- its top. A string of its own beside the caption: the caption, the
+  -- button and Footer.Fit's measure are what they were, so nothing in the
+  -- footer moves, and the dot's ink keeps inside the 8 units the band
+  -- leaves after the words (" " and the dot after them, as the Mail tab
+  -- has it, would need them all and more at a large font). It never takes
+  -- the pointer. Theme.PaintNewsDot shows, tints or hides it
+  -- (Panel.PaintNews).
+  local newsDot = T.CreateText(news, "secondary")
+  newsDot:SetPoint("CENTER", newsText, "TOPRIGHT", 3, -1)
+  newsDot:SetWordWrap(false)
+  newsDot:SetText("\226\128\162")
+  newsDot:Hide()
 
   -- The version, under the band's right end in the game's smallest face (in
   -- the host's where it has one), quiet: the disabled grey, at full
@@ -10454,7 +10469,7 @@ function Footer.Build(frame, above)
 
   S.footer = {
     band = statusBand, bugText = statusText, bugMark = bug and 17 or 0, bugGap = bug and Footer.ICON_GAP or 0,
-    news = news, newsText = newsText, version = versionText,
+    news = news, newsText = newsText, newsDot = newsDot, version = versionText,
   }
 
   -- Reset to defaults, at the band's left end across from What's new?: the
@@ -10689,6 +10704,22 @@ function Footer.Build(frame, above)
   end)
 end
 
+-- The dot at What's new?'s top right (Footer.Build), shown while this release's
+-- news is unread, in the face the caption wears now (a skin may have set
+-- the caption's font on the string itself). From the fit, the accent's
+-- repaints and What's new's opening (Core/WhatsNew.lua), which takes it
+-- down at once.
+function Panel.PaintNews()
+  local f = S.footer
+  local dot = f and f.newsDot
+  if not dot then return end
+  local T = ns.Theme
+  if T and T.PaintNewsDot then T.PaintNewsDot(dot) end
+  if not dot:IsShown() then return end
+  local face, size, flags = f.newsText:GetFont()
+  if face then dot:SetFont(face, size, flags) end
+end
+
 -- Measured on every open, after the skins have had their say about fonts,
 -- and in whatever language the client speaks. The ends are held: Reset to
 -- defaults 4 in from the band's left, What's new? 8 in from its right.
@@ -10702,6 +10733,7 @@ function Footer.Fit()
   local resetR = 4 + f.FitReset()
   local newsW = math.max(1, math.ceil(TextW(f.newsText)))
   f.news:SetWidth(newsW)
+  Panel.PaintNews()
   local newsL = Footer.BAND_W - 8 - newsW
   -- Centred as the mark and words were before the gap after the mark, so
   -- the mark keeps its place; the gap counts toward the room it needs.
@@ -12517,6 +12549,7 @@ end
 function Panel.RepaintLook()
   local frame = S.frame
   if not (frame and frame:IsShown()) then return end
+  Panel.PaintNews()
   if Rows.WhyFresh() and S.shown then Insp.Repaint() else Ctx.Readout() end
 end
 
