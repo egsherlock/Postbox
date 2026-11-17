@@ -8367,7 +8367,8 @@ function Pages.mail(col)
   arrange.entry.title, arrange.entry.extra = L["OPT_ARRANGE_BUTTON"], "arrange"
   S.arrangeCell = arrange
   -- The settings that live on the arrange mode's cards alone now (the marks
-  -- on an item's icon, quality by the name, the expiry marks) are still
+  -- on an item's icon, quality by the name, the expiry marks, a sold
+  -- auction's icon) are still
   -- the Mail tab's to reset (TabReset.Units): their getters ride on the
   -- row that opens the cards.
   arrange.moreGets = {
@@ -8375,6 +8376,7 @@ function Pages.mail(col)
     function() return ns.MailboxUI.GetOption("expiryMarks") end,
     function() return not ns.MailboxUI.GetQualityIcon or ns.MailboxUI.GetQualityIcon() end,
     function() return ns.MailboxUI.GetQualityName and ns.MailboxUI.GetQualityName() or "off" end,
+    function() return ns.MailboxUI.GetOption("soldItemIcon") end,
   }
 
   -- Row layout: every figure in its own column on every row (Columns), or
@@ -10899,6 +10901,16 @@ do
       local q = Put(name, where)
       q.span = {}
       for _, pair in ipairs({ { "before", "OPT_QUALITY_NAME_BEFORE" }, { "after", "OPT_QUALITY_NAME_AFTER" }, { "off", "OPT_QUALITY_OFF" } }) do
+        local c = PutChoice(name, { id = pair[1], name = L[pair[2]] }, q)
+        q.span[#q.span + 1] = c
+      end
+    end
+    -- The Icon card's AH Sold icon (Arrange, AR.SoldIcon): its two answers.
+    if id == "icon" and type(AR.SoldIcon) == "function" then
+      local name = L["OPT_SOLD_ICON_TITLE"]
+      local q = Put(name, where)
+      q.span = {}
+      for _, pair in ipairs({ { "item", "COL_ICON" }, { "coin", "OPT_ROW_GOLD" } }) do
         local c = PutChoice(name, { id = pair[1], name = L[pair[2]] }, q)
         q.span[#q.span + 1] = c
       end

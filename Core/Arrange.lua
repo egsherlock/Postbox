@@ -5212,14 +5212,25 @@ local function PaintRadio(row)
   Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
 end
 
+-- An answer put with a `tip` (its title's key and its description's) says
+-- what its choice is while pointed at, as a card's switch does
+-- (ToggleEnter).
 local function RadioEnter(self)
   self.hover = true
   PaintRadio(self)
+  local tip = self.tip
+  if tip then
+    AR.InspTip(self)
+    Th().TipTitle(L()[tip[1]])
+    Th().TipLine(L()[tip[2]])
+    GameTooltip:Show()
+  end
 end
 
 local function RadioLeave(self)
   self.hover = false
   PaintRadio(self)
+  if self.tip then GameTooltip:Hide() end
 end
 
 -- Each answer keeps the setter of the choice it was put for (PutRadio), so
@@ -6184,7 +6195,7 @@ end
 local function PutRadio(i, choice, chosen, live, y)
   local insp = AR._insp
   local row = insp.Radios[i] or Radio(insp, i)
-  row.choiceId, row.chosen, row.live, row.set = choice.id, chosen, live, insp.set
+  row.choiceId, row.chosen, row.live, row.set, row.tip = choice.id, chosen, live, insp.set, nil
   row.hover = row.hover and row:IsMouseOver() or false
   Th().FitText(row.Text, INSP.INNER - INSP.RADIO_TEXT, choice.name, row)
   At(row, INSP.PAD, y)
@@ -6464,6 +6475,27 @@ function AR.AttachHover()
   return list, AR.AttachHoverNow(), AR.SetAttachHover
 end
 
+-- The Icon card's other choice, over every list's rows (the Mail tab's,
+-- History's, Mail Memory's): what a sold auction's mail with no items
+-- wears, the item that sold or the gold coin (MailboxUI's soldItemIcon,
+-- CollectTab's RV.SoldShowsItem). Not in the options window. The list is
+-- made once.
+function AR.SoldIcon()
+  local ui = UI()
+  if not (AR.host and ui and ui.GetOption and ui.SetOption) then return nil end
+  local list = AR._sold
+  if not list then
+    list = {
+      { id = "item", name = L()["COL_ICON"] },
+      { id = "coin", name = L()["OPT_ROW_GOLD"] },
+    }
+    AR._sold = list
+  end
+  return list, ui.GetOption("soldItemIcon") and "item" or "coin", AR.SetSoldIcon
+end
+-- Its answers' tooltip (RadioEnter).
+AR.SOLD_TIP = { "OPT_SOLD_ICON_TITLE", "OPT_SOLD_ICON_DESC" }
+
 -------------------------------------------------------------
 -- 8c. The list-wide settings the cards carry
 --
@@ -6513,6 +6545,17 @@ do
     PanelFollows()
   end
 
+  -- Every list drawn again with the icon chosen, and the options panel's
+  -- Reset this tab with it.
+  function AR.SetSoldIcon(id)
+    local ui = UI()
+    if not (ui and ui.SetOption) then return end
+    local item = id == "item"
+    if (ui.GetOption("soldItemIcon") and true or false) == item then return end
+    ui.SetOption("soldItemIcon", item)
+    Redrawn()
+  end
+
   function AR.SetQualityName(id)
     local ui = UI()
     if not (ui and ui.SetQualityName) then return end
@@ -6536,6 +6579,7 @@ do
 
   AR.SELF_PLACED[AR.SetAttachHover] = true
   AR.SELF_PLACED[AR.SetQualityName] = true
+  AR.SELF_PLACED[AR.SetSoldIcon] = true
   AR.SELF_PLACED[AR.SetRowSize] = true
 
   -- The options panel changed one of these (or Larger mail rows): the card
@@ -6833,6 +6877,18 @@ local function FillColumn(id, y)
       y = PutKicker(L()["OPT_ATTACH_HOVER_TITLE"], y)
       for i = 1, #hover do
         y = PutRadio(i, hover[i], hover[i].id == now, shown and true or false, y)
+      end
+    end
+    -- What a sold auction's mail wears (AR.SoldIcon), its answers saying
+    -- what the choice is on hover.
+    local sold, soldNow, setSold = AR.SoldIcon()
+    if sold then
+      insp.set = setSold
+      y = PutKicker(L()["OPT_SOLD_ICON_TITLE"], y)
+      local first = hover and #hover or 0
+      for i = 1, #sold do
+        y = PutRadio(first + i, sold[i], sold[i].id == soldNow, shown and true or false, y)
+        insp.Radios[first + i].tip = AR.SOLD_TIP
       end
     end
   end

@@ -29,7 +29,8 @@
   Mail Memory, type an item's name to find any mail it's attached to.
 - **Sold auctions show the item that sold:** an AH Sold mail wears that
   item's icon in the Inbox, History and Mail Memory, wherever Postbox can
-  tell which it was.
+  tell which it was. Prefer the gold coin? Set AH Sold icon to Gold on the
+  Item icon's card while arranging.
 
 ### Mail tab
 

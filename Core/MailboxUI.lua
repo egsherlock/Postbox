@@ -187,6 +187,12 @@ local OPTION_DEFAULTS = {
   -- bags and the game's own inbox show a stack, and it lets an auction
   -- mail's subject drop the count the icon already writes.
   iconCounts      = true,
+  -- A sold auction's mail with no items (only its gold): its row wears the
+  -- icon of the item that sold, where Postbox can tell it (CollectTab,
+  -- RV.SoldIcon), in the Mail tab, History and Mail Memory. On: the 2.0
+  -- look. Off, it wears the gold coin, as it did before 2.0 (the arrange
+  -- mode's Item icon card, its AH Sold icon; RV.SoldShowsItem).
+  soldItemIcon    = true,
   -- The expiry marks in front of a short mail's amber time left: an arrow
   -- when it goes back to its sender, a bin when it is deleted (CollectTab,
   -- RV.MarksShown), in the Mail tab and Mail Memory. On: it is the 1.60

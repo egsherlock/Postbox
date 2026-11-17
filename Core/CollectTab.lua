@@ -733,6 +733,16 @@ function RV.CountOnIcon()
   return UI.GetOption("iconCounts") and true or false
 end
 
+-- Whether a sold auction's mail with no items wears the icon of the item
+-- that sold (RV.SoldIcon), or the gold coin (MailboxUI's soldItemIcon):
+-- the one answer the Inbox, History, Mail Memory and the arrange mode's
+-- samples all read, from the settings memo.
+function RV.SoldShowsItem()
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.GetOption) == "function") then return true end
+  return UI.GetOption("soldItemIcon") and true or false
+end
+
 -- layout -> whether the rows it arranges write counts on their icons.
 function RV.CountShown(layout)
   return RV.CountOnIcon() and (layout or RV.Layout()).shown.icon and true or false
@@ -8391,6 +8401,7 @@ do
     return icon
   end
   CT.SoldIcon = RV.SoldIcon
+  CT.SoldShowsItem = RV.SoldShowsItem
 
   -- The subjects with no answer forgotten, to be asked again.
   function RV.SoldForget()
@@ -8498,9 +8509,17 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The read mark, or on a stuck mail the warning triangle in its place
   -- (RV.PaintDot; RV.Place shows the triangle).
   RV.PaintDot(row.Indicator, wasRead, stuckReason ~= nil)
-  -- A sold auction's gold: the item that sold, where it can be told (RV.SoldIcon).
-  local icon = (S == RV.LIVE and kind == "sold" and (tonumber(itemCount) or 0) == 0)
-    and RV.SoldIcon(subject, panel._bindGen) or nil
+  -- A sold auction's gold: the item that sold, where it can be told
+  -- (RV.SoldIcon); with the coin chosen (RV.SoldShowsItem), the mail's own
+  -- icon, and a sample (whose own is the item's) the coin.
+  local icon
+  if kind == "sold" and (tonumber(itemCount) or 0) == 0 then
+    if not RV.SoldShowsItem() then
+      if S ~= RV.LIVE then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
+    elseif S == RV.LIVE then
+      icon = RV.SoldIcon(subject, panel._bindGen)
+    end
+  end
   row.Icon:SetTexture(icon or S.Icon(index))
   row.Delete:SetShown(showDelete)
   -- Back to the idle tint, for the same reason StyleMailRow above re-asserts the
@@ -9061,8 +9080,11 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
     end
   end
   -- A sold auction's gold: the item that sold, kept with the entry when it
-  -- was recorded (`ic`), else told by its subject (RV.SoldIcon).
-  if not icon and entry.k == "sold" then icon = tonumber(entry.ic) or RV.SoldIcon(entry.sub, panel._bindGen) end
+  -- was recorded (`ic`), else told by its subject (RV.SoldIcon); the coin
+  -- below where that is chosen (RV.SoldShowsItem).
+  if not icon and entry.k == "sold" and RV.SoldShowsItem() then
+    icon = tonumber(entry.ic) or RV.SoldIcon(entry.sub, panel._bindGen)
+  end
   if not icon and (entry.m or 0) > 0 then icon = "Interface\\Icons\\INV_Misc_Coin_01" end
   row.Icon:SetTexture(icon or "Interface\\Icons\\INV_Letter_02")
   -- The first item's quality mark on the icon's corner or before its name,
