@@ -88,7 +88,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   unread mail, mail with gold or mail with items, several at once. Each
   filter shows as a chip under the button, with an x to let it go.
   **Remember sort order** (Options > Mail tab) keeps your order between
-  visits; filters let go when the mailbox closes. When your bags fill,
+  visits; filters let go when the mailbox closes. Done keeps an order of
+  its own; until you pick one it follows the Inbox. When your bags fill,
   what's left is the bottom of the list.
 - **Time left** turns amber under three days (one for C.O.D.). On a mail that
   still holds something, a curved arrow in front says it goes back to its
@@ -125,6 +126,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   list of what the mail holds.
 - **Senders wear their class color** when Postbox knows them (your alts,
   friends, guild), in your UI's own class colors.
+- **A sold auction wears the item that sold** in the Inbox, History and
+  Mail Memory, where Postbox can tell which it was; **AH Sold icon** on the
+  Item icon's card in Arrange brings back the gold coin.
 - **One tooltip format everywhere:** the subject, then only what the row
   doesn't already show, and last what you can click, one gesture per line
   in smaller type.
@@ -180,7 +184,10 @@ too):
 
 - **A column header takes the top row's place**, each heading over its column.
   Drag a column by its heading or straight from any row; right-click to hide
-  it, click it for its choices (what Gold, Time left and Slots show).
+  it, click it for its card, which holds that column's own settings: what
+  Gold, Time left and Slots show (gold **Written as** letters or coins),
+  stack counts and quality marks, expiry marks, and on the Item icon's card
+  **Attachments on hover** and **AH Sold icon**.
 - **The blocks under the list lift off:** the totals, All mail and the
   category buttons. Drag them into your order, move or hide single buttons,
   or hide the totals and buttons altogether.
@@ -276,8 +283,9 @@ one line per name (Category, Class, Level, Played, Mailed, Note):
 double-click a name to favorite it (or click its star), right-click to hide
 it, click its note to write one, Shift- or Ctrl-click to select several, and
 favorite, hide or delete them together. Category names every list a name is
-in, and deleting a name your guild or friends list still offers hides it
-too, since Postbox can't take anyone off those lists.
+in, and deleting a name your guild, friends or recently grouped list
+still offers hides it too, since Postbox can't take anyone off those
+lists.
 
 <p align="center">
   <img src="docs/screenshots/recipients.png" width="560" alt="Manage Recipients: favorites, notes, hidden names and class colors" />
@@ -294,8 +302,10 @@ too, since Postbox can't take anyone off those lists.
 Optional, and off until you turn it on; while it's on, the game's own mail
 icon steps aside.
 
-- **When to show:** New since last visit, New mail, Mail on any character,
-  or Always (resting in gray until something arrives).
+- **When to show:** New since last visit (mail that came since you last
+  opened this character's mailbox; it needs Remember mailboxes), New mail,
+  Mail on any character, or Always (resting in gray until something
+  arrives).
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back. **Minimap
   marker** (Options > Minimap > Expiring mail marker) switches it on, and
@@ -336,8 +346,9 @@ it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds), **Alerts** (Warn
-about expiring mail, **Sound on new mail**, Chat line at login and Flash
-on new mail)
+about expiring mail, **Sound on new mail**, Minimap marker, whose button
+opens the Minimap tab at the marker, Chat line at login and Flash on new
+mail)
 and **Characters** (Class icons, Character order, Hidden characters). The
 sound is one of nine soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share
@@ -352,7 +363,9 @@ window as it moves or resizes, so you can watch a setting reshape it; drag
 them and they stay where you put them. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
 settings** (your recipients, groups, Mail Memory and History are kept) or
 **Reset everything**, each saying what it clears before it asks. **What's
-new?** in the footer shows the last three releases.
+new?** in the footer shows the last three releases. It never opens by
+itself: after an update a dot on the options cog says there is news until
+you open the options, and one on What's new? stays until you read it.
 
 <p align="center">
   <img src="docs/screenshots/looks.png" width="640" alt="Postbox under EllesmereUI, ElvUI, Blizzard and its own style" />
