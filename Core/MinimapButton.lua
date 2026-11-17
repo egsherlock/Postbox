@@ -645,18 +645,29 @@ end
 -- RV.PaintCount): the game's number font, outlined, white, at the icon's
 -- bottom-right corner, a hair out past it. Its size follows the icon's --
 -- 10 at the default 20 px, as on a mail row's icon -- and so does the hair.
--- Hidden at zero. Whole up to three digits, then in thousands ("1.2k").
--- The text is made only when the number changes, and the font only when
--- the icon's size does.
-local function CountFontSize(size)
+-- Hidden at zero. One or two digits are drawn so, whole. Three or more are
+-- drawn a step smaller (one unit, 9 at 20 px), and whole where they then
+-- fit: no wider than the icon's side, or than "99+" itself where that is
+-- wider, so a number as wide as "99+" always shows as itself; a number
+-- wider still reads "99+". Measured in the font string's own font, once per
+-- change of the number or the icon's size: the text is made only then, and
+-- the font only when the size or the step does.
+local function CountFontSize(size, small)
+  if small then return math.max(8, math.floor(size * 0.4 + 1.5)) end
   return math.max(9, math.floor(size * 0.4 + 2.5))
 end
 
-local function CountText(n)
-  if n < 1000 then return string.format("%d", n) end
-  local tenth = math.floor((n % 1000) / 100)
-  if n >= 10000 or tenth == 0 then return string.format("%dk", math.floor(n / 1000)) end
-  return string.format("%d.%dk", math.floor(n / 1000), tenth)
+local COUNT_MORE = "99+"
+
+-- fs, n -> the words for n, in the font fs wears now (CountFontSize).
+local function CountText(fs, n, size)
+  local text = string.format("%d", n)
+  if n < 100 then return text end
+  fs:SetText(COUNT_MORE)
+  local room = math.max(size, fs:GetStringWidth() or 0)
+  fs:SetText(text)
+  if (fs:GetStringWidth() or 0) <= room then return text end
+  return COUNT_MORE
 end
 
 -- holder: the frame the count is drawn on; anchor: the icon texture; size:
@@ -674,12 +685,15 @@ local function PaintCount(holder, anchor, size, n)
     fs:SetWordWrap(false)
     holder.__pbCount = fs
   end
-  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor then
-    fs.__pbSize, fs.__pbAnchor = size, anchor
+  local small = n >= 100
+  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor or fs.__pbSmall ~= small then
+    fs.__pbSize, fs.__pbAnchor, fs.__pbSmall = size, anchor, small
+    -- Measured again in the new font.
+    fs.__pbN = nil
     local T = ns.Theme
     local object = T and T.FontObject and T.FontObject("numberSmall")
     local path = object and object:GetFont()
-    fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size), "OUTLINE")
+    fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, small), "OUTLINE")
     fs:SetTextColor(1, 1, 1, 1)
     fs:ClearAllPoints()
     fs:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT",
@@ -687,7 +701,7 @@ local function PaintCount(holder, anchor, size, n)
   end
   if fs.__pbN ~= n then
     fs.__pbN = n
-    fs:SetText(CountText(n))
+    fs:SetText(CountText(fs, n, size))
   end
   fs:Show()
 end

@@ -248,6 +248,9 @@
   icon's size and place under EllesmereUI's minimap.
 - **The Minimap tab's name is gray while the minimap icon is off**
   (Options > Minimap).
+- **Count on icon** (the minimap icon): from 100 up the number is a touch
+  smaller so it stays on the icon, and reads 99+ only when it is too wide
+  even then.
 - **Position and Lock position** (Options > Minimap) stand under When to
   show, in the When it shows group; the Place heading is gone.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
