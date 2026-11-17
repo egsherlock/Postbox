@@ -10848,8 +10848,13 @@ function Panel.PaintNews()
   local T = ns.Theme
   if T and T.PaintNewsDot then T.PaintNewsDot(dot) end
   if not dot:IsShown() then return end
+  -- Only when the caption's face really differs: the dot is made on the
+  -- caption's own font object, and a face set on the string itself would
+  -- take it off that object and keep the shadow of that moment (a shadow
+  -- in the Light mode, where no other text there has one).
   local face, size, flags = f.newsText:GetFont()
-  if face then dot:SetFont(face, size, flags) end
+  local dface, dsize, dflags = dot:GetFont()
+  if face and (face ~= dface or size ~= dsize or flags ~= dflags) then dot:SetFont(face, size, flags) end
 end
 
 -- Measured on every open, after the skins have had their say about fonts,
