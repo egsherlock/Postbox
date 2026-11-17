@@ -3626,10 +3626,14 @@ function MM.RowTip(row, owner)
   R.TipMoney(buf, money, cod, goldShown)
   if #buf > 0 then T.TipFact(L["TIP_HOLDS"], table.concat(buf)) end
 
-  -- What a won auction cost, where the row does not show it.
+  -- What a won auction cost, exact, unless the row shows exactly that
+  -- amount (its short form drops the smaller coins), as the gold above.
   local paid = tonumber(mail.paid) or 0
-  if paid > 0 and money == 0 and cod == 0 and not (moneyOnRow and R.MoneyShown("spent")) then
-    T.TipFact(L["LABEL_PURCHASE"], T.TipTone("negative", ns.Helpers.FormatMoney(paid)))
+  if paid > 0 and money == 0 and cod == 0 then
+    local text = ns.Helpers.FormatMoney(paid)
+    if not (moneyOnRow and R.MoneyShown("spent") and ns.Core.Formatting.FormatMoneyCompact(paid, true) == text) then
+      T.TipFact(L["LABEL_PURCHASE"], T.TipTone("negative", text))
+    end
   end
 
   -- Time left, where the row does not show it; past its date, "expired".
@@ -5159,6 +5163,17 @@ function MM.OpenPicker(anchor, current, onPick)
   list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
   list:SetFrameLevel((ns.Theme.LevelOf(anchor) or 0) + 40)
   list:Show()
+  -- The button's own tooltip would stand over the list's first rows: it
+  -- goes with the click that opened it, and its OnEnter says nothing while
+  -- the list is open (MM.PickerOpen); the next time the pointer comes onto
+  -- the button after the list has closed, it is said again.
+  if GameTooltip:IsOwned(anchor) then GameTooltip:Hide() end
+end
+
+-- anchor -> whether the character list hanging from it is open.
+function MM.PickerOpen(anchor)
+  local list = anchor and anchor.__pbPickList
+  return list ~= nil and list:IsShown()
 end
 
 function MM.ClosePicker()
@@ -6274,6 +6289,8 @@ end
 -- and all (the plate may show only its start), then its clicks -- the way
 -- back only while there is one to take.
 local function PickerButtonTip(frame)
+  -- None while its list is open: it would stand over the list (MM.OpenPicker).
+  if MM.PickerOpen(frame.Picker) then return end
   local T = ns.Theme
   T.TipBegin(frame.Picker, "ANCHOR_TOPRIGHT")
   T.TipTitle(frame.Who and frame.Who.fullName or L["PICKER_TITLE"])
