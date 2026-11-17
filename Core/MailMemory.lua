@@ -3626,10 +3626,14 @@ function MM.RowTip(row, owner)
   R.TipMoney(buf, money, cod, goldShown)
   if #buf > 0 then T.TipFact(L["TIP_HOLDS"], table.concat(buf)) end
 
-  -- What a won auction cost, where the row does not show it.
+  -- What a won auction cost, exact, unless the row shows exactly that
+  -- amount (its short form drops the smaller coins), as the gold above.
   local paid = tonumber(mail.paid) or 0
-  if paid > 0 and money == 0 and cod == 0 and not (moneyOnRow and R.MoneyShown("spent")) then
-    T.TipFact(L["LABEL_PURCHASE"], T.TipTone("negative", ns.Helpers.FormatMoney(paid)))
+  if paid > 0 and money == 0 and cod == 0 then
+    local text = ns.Helpers.FormatMoney(paid)
+    if not (moneyOnRow and R.MoneyShown("spent") and ns.Core.Formatting.FormatMoneyCompact(paid, true) == text) then
+      T.TipFact(L["LABEL_PURCHASE"], T.TipTone("negative", text))
+    end
   end
 
   -- Time left, where the row does not show it; past its date, "expired".

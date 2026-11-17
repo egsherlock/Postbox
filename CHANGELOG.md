@@ -343,6 +343,8 @@
   back the next time you point at the button.
 - Mail tab: scrolled to the end, the list stops at its last finished mail,
   with no strip of empty space under it.
+- A won auction's tooltip gives its exact price whenever the row shows it
+  short (35s for 35s 40c), on the Mail tab and in Mail Memory.
 - Send tab: the contact list closes when you click elsewhere, and queued
   items can be linked (Shift-click) and tried on (Ctrl-click) like attached
   ones.

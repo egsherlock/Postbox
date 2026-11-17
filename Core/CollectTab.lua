@@ -4442,7 +4442,9 @@ do
 
     -- The invoice's breakdown, where the row does not draw it: a one-line
     -- row never does, a two-line row does on its second line. A won
-    -- auction's price is on the row wherever its money is.
+    -- auction's price is on the row wherever its money is, in its short
+    -- form: said here, exact, unless the row shows exactly that amount, by
+    -- the rule the gold above follows.
     local invoiceType, bid, deposit, consignment
     if type(GetInboxInvoiceInfo) == "function" then
       invoiceType, _, _, bid, _, deposit, consignment = GetInboxInvoiceInfo(index)
@@ -4458,9 +4460,11 @@ do
         local amount = invoiceAmounts[figure.field]
         if amount > 0 and not figure.saleTotal then
           local price = invoiceType == "buyer"
-          if (price and not priceShown) or (not price and (compact or lineCut)) then
+          if price or compact or lineCut then
             local text = H.FormatMoney(amount)
-            T.TipFact(L0[figure.label], price and T.TipTone("negative", text) or text)
+            if not (price and priceShown and ns.Core.Formatting.FormatMoneyCompact(amount, compact) == text) then
+              T.TipFact(L0[figure.label], price and T.TipTone("negative", text) or text)
+            end
           end
         end
       end
