@@ -173,8 +173,9 @@
   from the lines under them, with a thin rule after each, and wear
   Postbox's gold when your accent is white or gray.
 - **What's new no longer opens by itself** (the cog on the mail window's
-  title bar): after an update, a small dot on the cog, and on What's new?
-  at the foot of the options, shows there is news until you open it.
+  title bar): after an update, a small dot on the cog shows there is news
+  until you open the options, and one on What's new? at their foot stays
+  until you open it.
 - **Every tooltip names its gestures the same way,** one per action:
   `Click: sort · Right-click: reset`.
 - **The sort buttons say their order the same way** in Mail Memory and

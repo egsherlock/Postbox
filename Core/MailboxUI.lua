@@ -614,6 +614,8 @@ local CENSUS_KEEP = {
   -- And which release's news What's new has shown (Core/WhatsNew.lua,
   -- section 5), so its dot does not come back after a reset.
   newsShown  = true,
+  -- And the cogs' dot for that news, gone once the options were opened.
+  newsHinted = true,
   -- And that the category buttons' default was settled for this install
   -- (Postbox.lua, 4b), so a reset gives today's default and not the one an
   -- install from before it kept.

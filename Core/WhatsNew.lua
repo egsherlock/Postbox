@@ -1205,7 +1205,7 @@ end
 -- has been opened the way to it is marked, quietly and still: the Mail
 -- tab's own dot (MailboxUI's TAB_DOT) in the accent's mark tone at the top
 -- right of the options cog, on the mail window's title bar and on Mail
--- Memory's (Theme.PaintCog, which asks WN.Unread), a line in the cog's
+-- Memory's (Theme.PaintCog, which asks WN.CogUnread), a line in the cog's
 -- tooltip naming the release (MailboxUI's BuildOptionsButton), and the
 -- same dot at the top right of the options' footer's What's new?
 -- (OptionsPanel's Panel.PaintNews). Nothing opens by itself, anywhere. 1.60's news was WoW
@@ -1228,8 +1228,15 @@ end
 -- Any open of the window reads the news -- from the notice, the options'
 -- footer or /postbox whatsnew -- and the mark is written as it opens
 -- (ONCE.Shown), which takes every dot down at once, on whatever window
--- shows one. Opening the options alone does not. Reset everything keeps
--- the mark (Core/MailboxUI.lua, CENSUS_KEEP).
+-- shows one.
+--
+-- The cogs' dot says only where the news is: it goes the first time the
+-- options open, by any way (OptionsPanel's OnShow, WN.OptionsOpened), for
+-- good, with its own mark, PostboxDB.newsHinted, compared with the same
+-- NEWS, so the next release's news brings it back once. The footer's dot
+-- stays until What's new is opened; reading the news writes both marks.
+-- A fresh install has both written. Reset everything keeps both marks
+-- (Core/MailboxUI.lua, CENSUS_KEEP).
 -------------------------------------------------------------
 local NEWS = "2.0"
 
@@ -1240,9 +1247,27 @@ local function NewsShown()
   return type(db) == "table" and db.newsShown == NEWS
 end
 
--- Whether this release's news is still unread: what the dots show.
+-- Whether this release's news is still unread: what the footer's dot shows.
 function WN.Unread()
   return ONCE.unread == true
+end
+
+-- Whether the cogs' dot shows: the news unread, and the options not opened
+-- since it came.
+function WN.CogUnread()
+  return ONCE.cog == true
+end
+
+-- The options window opened, however (its OnShow): the cogs' dot goes, for
+-- good, at once on every window showing one. The footer's stays.
+function WN.OptionsOpened()
+  if not ONCE.cog then return end
+  local db = PostboxDB
+  if type(db) ~= "table" then return end
+  db.newsHinted = NEWS
+  ONCE.cog = nil
+  local T = ns.Theme
+  if T and T.RepaintCog then T.RepaintCog() end
 end
 
 -- The release the news is for ("2.0"): the cog's tooltip names it.
@@ -1256,10 +1281,10 @@ function ONCE.Shown()
   if not NewsShown() then
     local db = PostboxDB
     if type(db) ~= "table" then return end
-    db.newsShown = NEWS
+    db.newsShown, db.newsHinted = NEWS, NEWS
   end
   if not ONCE.unread then return end
-  ONCE.unread = nil
+  ONCE.unread, ONCE.cog = nil, nil
   local T = ns.Theme
   if T and T.RepaintCog then T.RepaintCog() end
   local panel = ns.OptionsPanel
@@ -1274,7 +1299,9 @@ end
 function WN.ArmOnce()
   if ns.freshInstall and NEWS then
     local db = PostboxDB
-    if type(db) == "table" then db.newsShown = NEWS end
+    if type(db) == "table" then db.newsShown, db.newsHinted = NEWS, NEWS end
   end
   ONCE.unread = not NewsShown() or nil
+  local db = PostboxDB
+  ONCE.cog = (ONCE.unread and type(db) == "table" and db.newsHinted ~= NEWS) or nil
 end

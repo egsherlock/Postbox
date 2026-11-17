@@ -12506,11 +12506,18 @@ local function Build()
   frame:HookScript("OnHide", PanelHide)
   -- The two title-bar cogs wear the accent while this window is open
   -- (Theme.PaintCog): painted again as it opens and closes, and only then.
+  -- Every way in shows this frame, so its opening is where the cogs' news
+  -- dot goes for good (Core/WhatsNew.lua, WN.OptionsOpened; it repaints
+  -- the cogs itself when it does).
   local function Cogs()
     local th = ns.Theme
     if th and th.RepaintCog then th.RepaintCog() end
   end
-  frame:HookScript("OnShow", Cogs)
+  frame:HookScript("OnShow", function()
+    local news = ns.WhatsNew
+    if news and news.OptionsOpened then news.OptionsOpened() end
+    Cogs()
+  end)
   frame:HookScript("OnHide", Cogs)
 
   -- Let an active host-UI skin restyle the panel like the main window.

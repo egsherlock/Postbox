@@ -3137,7 +3137,7 @@ end
 function Theme.PaintCog(button)
   local gear = button and button.icon
   if not gear then return end
-  Theme.PaintNewsDot(button.newsDot)
+  Theme.PaintNewsDot(button.newsDot, true)
   local native = Theme.NativeLook()
   local panel = ns.OptionsPanel and ns.OptionsPanel._frame
   local open = panel and panel:IsShown() and true or false
@@ -3170,15 +3170,17 @@ end
 
 -- The dot on a cog (`button.newsDot`) and at the top right of the options'
 -- footer's What's new? (Core/OptionsPanel.lua): shown while this release's What's
--- new is unread (Core/WhatsNew.lua, section 5), in the accent's mark tone
+-- new is unread (Core/WhatsNew.lua, section 5), a cog's (`cog` true) only
+-- until the options are first opened, in the accent's mark tone
 -- as the Mail tab's dot is, in every look; hidden once it is read. Out of
 -- the palette's keeping (Theme.SetTextRGB), so a repaint never greys it:
 -- the cogs' repaints (Theme.RepaintCog) and the footer's fit paint it
 -- again. Still: no animation, no timer.
-function Theme.PaintNewsDot(dot)
+function Theme.PaintNewsDot(dot, cog)
   if not dot then return end
   local news = ns.WhatsNew
-  if not (news and news.Unread and news.Unread()) then
+  local unread = news and (cog and news.CogUnread or news.Unread)
+  if not (unread and unread()) then
     if dot:IsShown() then dot:Hide() end
     return
   end
