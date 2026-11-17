@@ -10357,10 +10357,11 @@ end
 -- and Delete all are uncovered at its ends.
 --
 -- Because the slot is shorter than a row's pitch, every row under the bar
--- stands `pitch - slot` units higher (the virtualiser's one extra term), and
--- the list's end is padded by the same units of ground: the list is still
--- whole rows tall, so its height, its scroll range and the window standing
--- on whole rows are the rows' arithmetic as before.
+-- stands `pitch - slot` units higher (the virtualiser's one extra term,
+-- RV.BarAt), and the list is that much shorter (RV.ContentHeight): it ends
+-- where its last row ends, with no air under the last finished mail at the
+-- scroll's end. (It was once padded by those units to stay whole rows
+-- tall, which showed as a gap under the last finished mail.)
 -------------------------------------------------------------
 
 RV.BAR = {
@@ -11695,7 +11696,7 @@ function RV.GoToBar(panel)
   local scroll = panel.MailListScroll
   local _, _, stride = RowMetrics()
   local listed = #((panel._preview and panel._pvList) or panel._filtered)
-  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ContentHeight(panel, listed, stride) - (scroll:GetHeight() or 0))
   local to = min((at - 1) * stride, maxScroll)
   local DN = ns.DividerNotch
   if DN then return DN.Glide(panel, to) end
@@ -11727,6 +11728,32 @@ CT.BarParts = {
 -- never grows past one screenful however large the inbox is, and a refresh is a
 -- re-bind of frames that already exist rather than a rebuild.
 -------------------------------------------------------------
+
+-- The bar over the read mail stands in a slot shorter than a row's pitch
+-- (RV.BAR), so every row after it stands `lift` units higher: the one term
+-- the bar adds to the rows' arithmetic. -> the bar's place in the list on
+-- screen and that lift; nil and 0 with no bar in it (History, another
+-- character's box, no finished mail listed). The rows' places and the
+-- list's height both read it here.
+function RV.BarAt(panel, compact, stride)
+  if panel.viewMode == VIEW_HISTORY or AV.Active(panel) then return nil, 0 end
+  local at = panel._dividerAt
+  local list = (panel._preview and panel._pvList) or panel._filtered
+  if not (at and list and list[at] == DIVIDER) then return nil, 0 end
+  -- Hairline's height is its font's: the bar typed before it is read.
+  if panel.Divider and RV.LookOf() ~= "notch" then RV.LineReady(panel.Divider, RV.LookOf(), compact) end
+  return at, stride - RV.BarSlotOf(compact)
+end
+
+-- The list's content: `listed` entries at this pitch, less the bar's lift
+-- while the bar is one of them, so it ends where its last row (or the bar,
+-- last) ends and no air is left under it at the scroll's end. The child's
+-- height and every sum of the scroll's end read it.
+function RV.ContentHeight(panel, listed, stride)
+  local compact = RowMetrics()
+  local _, lift = RV.BarAt(panel, compact, stride)
+  return max(0, RV.ListHeight(listed, stride) - lift)
+end
 
 local function UpdateVisibleRows(panel)
   -- Timed, with the rows it binds, while an open is being measured
@@ -11764,18 +11791,12 @@ local function UpdateVisibleRows(panel)
   local viewport = scroll:GetHeight() or 0
   local offset = scroll:GetVerticalScroll() or 0
 
-  -- The bar over the read mail stands in a slot shorter than a row's pitch
-  -- (RV.BAR), so every row after it stands `lift` units higher: the one
-  -- term the bar adds to the rows' arithmetic. `split` is where the rows
+  -- The bar's place and its lift (RV.BarAt). `split` is where the rows
   -- after it begin. With no bar, both are nothing and every row is where
   -- it always was.
-  local at = (not historyView and not away) and panel._dividerAt or nil
-  if at and filtered[at] ~= DIVIDER then at = nil end
-  -- Hairline's height is its font's: the bar typed before it is read.
+  local at, lift = RV.BarAt(panel, compact, stride)
   local look = RV.LookOf()
-  if at and look ~= "notch" and panel.Divider then RV.LineReady(panel.Divider, look, compact) end
   local band = RV.BarHeight(compact)
-  local lift = at and (stride - RV.BarSlotOf(compact)) or 0
   local split = at and (at * stride - lift) or 0
 
   local first = max(1, floor(offset / stride) + 1)
@@ -12354,12 +12375,12 @@ function CT.RefreshMailList(panel)
   end
   panel._measureWalk = nil
   RV.ApplyFooter(panel)
-  panel.MailListChild:SetHeight(max(RV.ListHeight(listed, stride), 1))
+  panel.MailListChild:SetHeight(max(RV.ContentHeight(panel, listed, stride), 1))
 
   -- A shorter list can leave the scroll offset past the new end, which would
   -- render an empty viewport over a list that has content.
   local scroll = panel.MailListScroll
-  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ContentHeight(panel, listed, stride) - (scroll:GetHeight() or 0))
   if (scroll:GetVerticalScroll() or 0) > maxScroll then scroll:SetVerticalScroll(maxScroll) end
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
 
@@ -12449,7 +12470,7 @@ function CT.ApplyRowLayout(panel)
   elseif panel.viewMode == VIEW_HISTORY then
     listed = #panel._history
   end
-  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ContentHeight(panel, listed, stride) - (scroll:GetHeight() or 0))
   scroll:SetVerticalScroll(min(anchor * stride, maxScroll))
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
   -- Explicit rather than left to the scroll frame's own handler: that fires only
@@ -16787,7 +16808,7 @@ function CT.SetSamples(panel, on, quiet)
   elseif panel.viewMode == VIEW_HISTORY then
     listed = #panel._history
   end
-  local maxScroll = max(0, RV.ListHeight(listed, stride) - (scroll:GetHeight() or 0))
+  local maxScroll = max(0, RV.ContentHeight(panel, listed, stride) - (scroll:GetHeight() or 0))
   scroll:SetVerticalScroll(min(offset, maxScroll))
   if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
   if panel:IsShown() then UpdateVisibleRows(panel) end

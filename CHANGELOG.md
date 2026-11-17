@@ -341,6 +341,8 @@
 - The character list opens clear of its button's tooltip: on the Mail
   tab's Inbox and in Mail Memory, the tooltip goes when you click, and is
   back the next time you point at the button.
+- Mail tab: scrolled to the end, the list stops at its last finished mail,
+  with no strip of empty space under it.
 - Send tab: the contact list closes when you click elsewhere, and queued
   items can be linked (Shift-click) and tried on (Ctrl-click) like attached
   ones.
