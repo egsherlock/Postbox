@@ -9510,9 +9510,9 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then five groups --
--- when the icon shows, the icon itself, its glow, the marker it wears for
--- expiring mail, and where it sits. Resolved at click time like every other
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups --
+-- when the icon shows and where it sits, the icon itself, its glow, and the
+-- marker it wears for expiring mail. Resolved at click time like every other
 -- binding, so the page stays honest if the module is absent. A row grey
 -- because another setting is off says what turns it on (Rows.Why); with
 -- the switch off, every row says to turn the icon on.
@@ -9578,6 +9578,54 @@ function Pages.minimap(col)
   rows.show = showRow
   Rows.Why(showRow, "OPT_MINIMAP_WHY_ANY")
 
+  -- Where it sits on the map, and the lock on moving it, under When to
+  -- show in the same group: no heading of their own. Under EllesmereUI's
+  -- minimap that, and the size, are EllesmereUI's, and one quiet line says
+  -- so in their place.
+  -- Where the icon was moved to, besides the choice: the spot on the rim a
+  -- shift-drag left (Custom) and the one on screen (Anywhere on
+  -- screen). Read only by Reset this tab (TabReset.Units).
+  local function MovedTo()
+    local store = ns.Store
+    local prefs = store and store.Get and store.Get("profile.minimap")
+    if type(prefs) ~= "table" then return nil end
+    return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
+  end
+  if hostStyled then
+    -- One quiet line, not a paragraph: the whole of it is in the inspector.
+    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
+  else
+    -- Every placement in ONE list -- a mode checkbox beside a position list
+    -- gave two controls authority over one fact, and they contradicted
+    -- each other the moment shift-drag moved the icon. Blizzard default
+    -- leads: it is where the stock indicator lives. A fresh install starts
+    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
+    -- picking that corner again is the way back to it after a shift-drag.
+    local placeRow = Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
+      items = {
+        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
+        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
+      },
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
+    })
+    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
+    -- puts it back with Position, as Reset settings does, and a later pick
+    -- of either choice starts from the default spot.
+    placeRow.moreGet = MovedTo
+    Rows.Check(block, {
+      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
+    })
+  end
+
   -- Icon: its art, its size, its count and its shadow. EllesmereUI's
   -- button wears all of it but the size.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
@@ -9633,6 +9681,18 @@ function Pages.minimap(col)
       Ctx.Repaint()
     end,
   })
+  if hostStyled then
+    -- The size, the place and the lock have no rows here, but they are
+    -- still this tab's settings, saved for the icon Postbox draws when
+    -- EllesmereUI's minimap is gone: Reset this tab puts them back too
+    -- (TabReset.Units), as Reset settings does.
+    iconRow.moreGets = {
+      function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      MovedTo,
+    }
+  end
 
   if not hostStyled then
     -- 16 to 40 in steps of four, from the module, which also refuses any other.
@@ -9697,64 +9757,6 @@ function Pages.minimap(col)
 
   -- Expiring mail marker: Minimap marker and the marker's look.
   Pages.MinimapMarker(block, modes, rows)
-
-  -- Place: where it sits on the map, and the lock on moving it. Under
-  -- EllesmereUI's minimap that, and the size, are EllesmereUI's, and one
-  -- quiet line says so in their place.
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_PLACE"])
-  -- Where the icon was moved to, besides the choice: the spot on the rim a
-  -- shift-drag left (Custom) and the one on screen (Anywhere on
-  -- screen). Read only by Reset this tab (TabReset.Units).
-  local function MovedTo()
-    local store = ns.Store
-    local prefs = store and store.Get and store.Get("profile.minimap")
-    if type(prefs) ~= "table" then return nil end
-    return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
-  end
-  if hostStyled then
-    -- One quiet line, not a paragraph: the whole of it is in the inspector.
-    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
-    -- The size, the place and the lock have no rows here, but they are
-    -- still this tab's settings, saved for the icon Postbox draws when
-    -- EllesmereUI's minimap is gone: Reset this tab puts them back too
-    -- (TabReset.Units), as Reset settings does.
-    iconRow.moreGets = {
-      function() return ns.MinimapButton and ns.MinimapButton.GetIconSize() end,
-      function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-      function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-      MovedTo,
-    }
-  else
-    -- Every placement in ONE list -- a mode checkbox beside a position list
-    -- gave two controls authority over one fact, and they contradicted
-    -- each other the moment shift-drag moved the icon. Blizzard default
-    -- leads: it is where the stock indicator lives. A fresh install starts
-    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
-    -- picking that corner again is the way back to it after a shift-drag.
-    local placeRow = Rows.Dropdown(block, {
-      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
-      items = {
-        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
-        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
-        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
-        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
-        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
-        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
-      },
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
-    })
-    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
-    -- puts it back with Position, as Reset settings does, and a later pick
-    -- of either choice starts from the default spot.
-    placeRow.moreGet = MovedTo
-    Rows.Check(block, {
-      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
-    })
-  end
   Rows.EndBlock(block)
 end
 

@@ -244,6 +244,8 @@
   icon's size and place under EllesmereUI's minimap.
 - **The Minimap tab's name is gray while the minimap icon is off**
   (Options > Minimap).
+- **Position and Lock position** (Options > Minimap) stand under When to
+  show, in the When it shows group; the Place heading is gone.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars. Mail Memory's is an

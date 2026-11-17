@@ -309,8 +309,8 @@ icon steps aside.
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.
-- **The Minimap tab** reads in five groups (When it shows, Icon, Glow,
-  Expiring mail marker, Place). Its preview draws the icon large beside a copy at
+- **The Minimap tab** reads in four groups (When it shows, with Position and
+  Lock position, Icon, Glow, Expiring mail marker). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
