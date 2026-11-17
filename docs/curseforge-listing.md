@@ -23,7 +23,7 @@
 <p style="text-align:center">Under EllesmereUI or ElvUI it matches them: your font, your accent, live.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/looks.gif" width="836" alt="Postbox in its own style, then EllesmereUI's and ElvUI's, beside the game's own look on retail and WoW Forever"></p>
 <p>&nbsp;</p>
-<h2 style="text-align:center">Or take only what you want</h2>
+<h2 style="text-align:center">Take only what you want</h2>
 <p style="text-align:center">Ctrl- or Shift-click the mail you want, search "sold" or a name, or use one-click buttons for bought, sold, expired and your own Character Groups.</p>
 <p style="text-align:center">Sort by date, time left, gold or sender, show only unread mail, mail with gold or mail with items, and search finds a mail by the items inside it.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/sweeps.gif" width="584" alt="Ctrl-click two mails and take just those, then only the sold mail, then only your bank alts' mail"></p>
