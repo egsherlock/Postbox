@@ -8,7 +8,7 @@ Featured cover.
 |---|---|---|
 | 1 | `01-hero.gif` | Postbox (Featured) |
 | 2 | `02-collect.gif` | Collect in one click |
-| 3 | `03-looks.png` | Fits your UI |
+| 3 | `03-looks.gif` | Fits your UI |
 | 4 | `04-minimap.gif` | Every alt's mail |
 | 5 | `05-sweeps.gif` | Take only what you want |
 | 6 | `06-send.gif` | Send in seconds |
@@ -21,7 +21,9 @@ Featured cover.
 All are 16:9, the shape of CurseForge's slideshow (834 x 472 on the page): the
 slides are 1200 x 679, the largest the gallery viewer shows them, and the cover is
 1774 x 1004. Each slide is the same clip as on the description, on the hero's sky
-with a short caption.
+with a short caption. Slide 3 moves too: two windows side by side, the Postbox
+style, EllesmereUI and ElvUI on the left and the game's own look on Retail and
+Forever on the right; `03-looks.png` is its first frame.
 
 The cover moves: the window wipes through Postbox's five looks (the Postbox
 style in Dark, Blizzard, ElvUI, EllesmereUI, the Postbox style in Light), with
