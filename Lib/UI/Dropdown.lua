@@ -1031,7 +1031,10 @@ function Dropdown.Create(parent, opts)
     list:SetClampedToScreen(true)
     list:SetWidth(listWidth)
     list:SetHeight(scrolling and maxHeight or ((LIST_PADDING * 2) + contentHeight))
-    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    -- Its layer kept over its window's, whatever that window's strata has
+    -- been since (Theme.HoldPopupLayer).
+    local hold = ns.Theme and ns.Theme.HoldPopupLayer
+    if hold then hold(list) else list:SetFrameStrata("FULLSCREEN_DIALOG") end
     -- The whole card takes the pointer, not only its rows: its padding and
     -- its edges let the pointer through to the row under them, which then
     -- answered as if nothing covered it.
@@ -1672,7 +1675,8 @@ function Dropdown.Menu(owner, items, opts)
     local hover = colors and colors.hover or { 0.90, 0.78, 0.30, 0.18 }
     list = CreateFrame("Frame", nil, owner, "BackdropTemplate")
     list:SetClampedToScreen(true)
-    list:SetFrameStrata("FULLSCREEN_DIALOG")
+    local hold = ns.Theme and ns.Theme.HoldPopupLayer
+    if hold then hold(list) else list:SetFrameStrata("FULLSCREEN_DIALOG") end
     list:EnableMouse(true)
     list._toggle = owner
     list.__pbPopupAlways = true

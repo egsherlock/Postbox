@@ -4382,6 +4382,32 @@ function Theme.LevelOf(frame)
   return tonumber(level)
 end
 
+-- A popup's own layer, kept: the Send tab's name list and type-ahead, a
+-- dropdown's list. Each was given FULLSCREEN_DIALOG once, when it was made,
+-- but a strata set on its window later (UI.YieldToDialog steps the mail
+-- window to HIGH under the game's question and back to DIALOG) is handed by
+-- the client to every child whose strata is not fixed. The list then sat on
+-- the window's own layer, where the frame levels drew the Subject and body
+-- boxes over it until a /reload (GitHub issue 6). So the layer is fixed
+-- where the client can fix it, and a window's strata no longer reaches it;
+-- and it is set again on every show, which holds on a client without the
+-- fix and puts the popup's own rows back on its layer with it. Postbox's
+-- own frames only, no read of a strata (secret on Forever), safe in combat.
+function Theme.KeepPopupLayer(frame)
+  local fixed = frame.SetFixedFrameStrata
+  if fixed then fixed(frame, false) end
+  frame:SetFrameStrata("FULLSCREEN_DIALOG")
+  if fixed then fixed(frame, true) end
+end
+
+-- Once, where the popup is made, in place of its SetFrameStrata.
+function Theme.HoldPopupLayer(frame)
+  Theme.KeepPopupLayer(frame)
+  if type(frame.HookScript) == "function" then
+    frame:HookScript("OnShow", Theme.KeepPopupLayer)
+  end
+end
+
 local function Floats(frame)
   if type(frame.IsToplevel) == "function" and frame:IsToplevel() then return true end
 

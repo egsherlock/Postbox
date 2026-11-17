@@ -359,6 +359,9 @@
 - Send tab: the contact list closes when you click elsewhere, and queued
   items can be linked (Shift-click) and tried on (Ctrl-click) like attached
   ones.
+- Send tab: the favorites and the other name lists, and the names offered
+  as you type, always open over the Subject box. After the game had asked
+  you to confirm a send, they could open underneath it until a reload.
 - The window's resize grip resets on a right-click's release, and only the
   left button resizes.
 - Options: grayed rows on the General and Minimap tabs name the right

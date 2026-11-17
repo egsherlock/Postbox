@@ -3131,7 +3131,8 @@ local function EnsureContactPicker(panel)
 
   local f = CreateFrame("Frame", nil, panel, "BackdropTemplate")
   f:SetSize(PICKER_MIN_W, PICKER_MAX_H)
-  f:SetFrameStrata("FULLSCREEN_DIALOG")
+  -- Over the form whatever the window's strata has been since (issue 6).
+  Theme.HoldPopupLayer(f)
   f:SetToplevel(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
@@ -4331,7 +4332,7 @@ local function CreateSuggestionPopup(panel)
   sf:SetPoint("TOPLEFT", panel.ToWrap, "BOTTOMLEFT", 0, -1)
   sf:SetPoint("RIGHT", panel.ToWrap, "RIGHT", 0, 0)
   sf:SetHeight(10)
-  sf:SetFrameStrata("FULLSCREEN_DIALOG")
+  Theme.HoldPopupLayer(sf)
   sf:SetToplevel(true)
   sf:SetClampedToScreen(true)
 
