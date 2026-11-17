@@ -9682,7 +9682,7 @@ function Pages.minimap(col)
   -- quiet line says so in their place.
   Rows.Group(block, L["OPT_MINIMAP_GROUP_PLACE"])
   -- Where the icon was moved to, besides the choice: the spot on the rim a
-  -- shift-drag left (Minimap - custom) and the one on screen (Anywhere on
+  -- shift-drag left (Custom) and the one on screen (Anywhere on
   -- screen). Read only by Reset this tab (TabReset.Units).
   local function MovedTo()
     local store = ns.Store
