@@ -612,7 +612,7 @@ local CENSUS_KEEP = {
   -- (Postbox.lua, 4b), which the next release's one-time steps go by.
   savedBy    = true,
   -- And which release's news What's new has shown (Core/WhatsNew.lua,
-  -- section 5), so it does not open by itself again after a reset.
+  -- section 5), so its dot does not come back after a reset.
   newsShown  = true,
   -- And that the category buttons' default was settled for this install
   -- (Postbox.lua, 4b), so a reset gives today's default and not the one an
@@ -4449,6 +4449,21 @@ local function BuildOptionsButton(frame, theme, onClick)
   local highlight = button:GetHighlightTexture()
   if highlight then highlight:SetBlendMode("ADD") end
 
+  -- While this release's What's new is unread (Core/WhatsNew.lua, section
+  -- 5): the Mail tab's own dot (TAB_DOT, in the tab caption's font) in the
+  -- accent's mark tone, its middle 2 units in from the cog's top right
+  -- corner, so its ink stays on the cog's own box, clear of the arrange
+  -- key beside it. A string on the cog itself: no frame, no size, no
+  -- anchor of the cog's changes, and it never takes the pointer.
+  -- Theme.PaintCog shows, tints or hides it with the cog; a skin restyles
+  -- it there, as `button.newsDot`.
+  button.newsDot = theme and theme.CreateText and theme.CreateText(button, "tab", "OVERLAY") or nil
+  if button.newsDot then
+    button.newsDot:SetText(TAB_DOT)
+    button.newsDot:SetPoint("CENTER", button, "TOPRIGHT", -2, -2)
+    button.newsDot:Hide()
+  end
+
   -- Chrome, as the arrange mark beside it: grey at rest, brighter under the
   -- pointer, and the accent only while the options window is open
   -- (Theme.PaintCog, which Theme.RepaintCog runs again for both cogs as
@@ -4465,6 +4480,17 @@ local function BuildOptionsButton(frame, theme, onClick)
     if not (GameTooltip and T) then return end
     T.TipBegin(self, "ANCHOR_RIGHT")
     T.TipTitle(L("OPTIONS_TITLE"))
+    -- What the dot means, while it shows: the dot, then "What's new?
+    -- Postbox 2.0", from the window's own title and release heading.
+    local dot = self.newsDot
+    local news = ns.WhatsNew
+    if dot and dot:IsShown() and news and news.NewsKey and T.GetAccentTone then
+      local r, g, b = T.GetAccentTone("mark")
+      T.TipLine(("|cff%02x%02x%02x%s|r %s %s"):format(
+        math.floor((r or 1) * 255 + 0.5), math.floor((g or 1) * 255 + 0.5),
+        math.floor((b or 1) * 255 + 0.5), TAB_DOT,
+        L("WHATSNEW_TITLE"), LF("WHATSNEW_RELEASE", news.NewsKey())))
+    end
     -- The gesture, muted after the blank line as the arrange mark's is: the
     -- title already says what opens. The click toggles: with the options
     -- on screen it closes them (OptionsPanel.Toggle; options stepped aside
@@ -5092,8 +5118,8 @@ local function OnMailShow()
   UI.ApplyWindowLayout()
   if mark then perf.Stage("layout", mark, true) end
   -- The update notice, beside the window where it now stands, when an update
-  -- has one waiting, else What's new the first time a release with news
-  -- opens a mailbox (Core/WhatsNew.lua); otherwise one read, and nothing built.
+  -- has one waiting (Core/WhatsNew.lua); otherwise one read, and nothing
+  -- built. What's new never opens by itself: a dot on the cog points at it.
   local news = ns.WhatsNew
   if news and news.WindowShown then news.WindowShown(UI._frame) end
 end

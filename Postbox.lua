@@ -2719,10 +2719,10 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
     end
   end
 
-  -- What's new, once by itself at the first mailbox, for a release with
-  -- news for everyone (Core/WhatsNew.lua, section 5): after the steps,
-  -- which may have left the 1.50 notice waiting. One read of the saved
-  -- variables; once it has been shown, nothing is armed.
+  -- Whether What's new for a release with news for everyone is still
+  -- unread, which puts a dot on the options cogs and the options' footer
+  -- (Core/WhatsNew.lua, section 5): after the steps, as a fresh install is
+  -- marked read. One read of the saved variables; once read, nothing shows.
   local News = ns.WhatsNew
   if News and type(News.ArmOnce) == "function" then News.ArmOnce() end
 

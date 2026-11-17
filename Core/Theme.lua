@@ -3137,6 +3137,7 @@ end
 function Theme.PaintCog(button)
   local gear = button and button.icon
   if not gear then return end
+  Theme.PaintNewsDot(button.newsDot)
   local native = Theme.NativeLook()
   local panel = ns.OptionsPanel and ns.OptionsPanel._frame
   local open = panel and panel:IsShown() and true or false
@@ -3165,6 +3166,25 @@ function Theme.PaintCog(button)
     return
   end
   Theme.SetColor(icon, button.hover and "textPrimary" or "textDisabled")
+end
+
+-- The dot on a cog (`button.newsDot`) and at the top right of the options'
+-- footer's What's new? (Core/OptionsPanel.lua): shown while this release's What's
+-- new is unread (Core/WhatsNew.lua, section 5), in the accent's mark tone
+-- as the Mail tab's dot is, in every look; hidden once it is read. Out of
+-- the palette's keeping (Theme.SetTextRGB), so a repaint never greys it:
+-- the cogs' repaints (Theme.RepaintCog) and the footer's fit paint it
+-- again. Still: no animation, no timer.
+function Theme.PaintNewsDot(dot)
+  if not dot then return end
+  local news = ns.WhatsNew
+  if not (news and news.Unread and news.Unread()) then
+    if dot:IsShown() then dot:Hide() end
+    return
+  end
+  local r, g, b = Theme.GetAccentTone("mark")
+  Theme.SetTextRGB(dot, r, g, b, 1)
+  dot:Show()
 end
 
 -- Both options cogs, the Postbox window's and Mail Memory's, painted again:
