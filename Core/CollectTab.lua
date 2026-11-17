@@ -6986,6 +6986,9 @@ end
 -- Inbox without a cap has no tooltip either.
 function AV.PickerTip(picker, panel)
   if not panel._picking then return end
+  -- None while its list is open: it would stand over the list (MM.OpenPicker).
+  local Memory = AV.Memory()
+  if Memory and Memory.PickerOpen and Memory.PickerOpen(picker) then return end
   local T = Th()
   local host = picker.host
   local name = host and host == (panel.ViewToggle and panel.ViewToggle.alt) and host.fullName
@@ -6993,7 +6996,6 @@ function AV.PickerTip(picker, panel)
   T.TipTitle(name or (host and host.baseLabel) or L()["VIEW_INBOX"])
   -- The characters the player hid that the list would offer, as its foot
   -- counts them: the list keeps them under that foot.
-  local Memory = AV.Memory()
   if Memory then
     local _, hidden = Memory.HasOthers()
     hidden = tonumber(hidden) or 0

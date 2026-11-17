@@ -338,6 +338,9 @@
   close** while the options are open, the minimap icon says **Click:
   Characters** at a mailbox, and a favorite's row in Manage Recipients says
   its click removes the star.
+- The character list opens clear of its button's tooltip: on the Mail
+  tab's Inbox and in Mail Memory, the tooltip goes when you click, and is
+  back the next time you point at the button.
 - Send tab: the contact list closes when you click elsewhere, and queued
   items can be linked (Shift-click) and tried on (Ctrl-click) like attached
   ones.
