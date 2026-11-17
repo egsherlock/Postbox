@@ -4468,7 +4468,16 @@ do
   -- the paper in its ink.
   -- `L`: scroll, child, n (rows listed), stride, height (a row's), rise
   -- (units the rows after the bar over finished mail stand higher), gap,
-  -- empty (the words), bands, shown, and the last pass's key.
+  -- empty (the words), done (the list ends in finished mail), bands, shown,
+  -- and the last pass's key.
+  -- Under finished mail the empty rows are as faint as it is (his pick on
+  -- b27): a finished row is drawn whole at DONE_A (Core/CollectTab.lua,
+  -- BindRow's row:SetAlpha), paper included, and bright paper under it read
+  -- as room for live mail. So with the list's last entry finished (or the
+  -- bar over finished mail, folded) every empty row is drawn at that
+  -- strength; a list that ends in live mail, or holds none, keeps them
+  -- whole.
+  local DONE_A = 0.6
   -- The words on the first paper (his pick on b24): at the house's place,
   -- 16 units under the list's top, their feet lay on the dark gap between
   -- the first two papers. On a parchment they stand in the middle of the
@@ -4573,10 +4582,11 @@ do
     -- nothing is shown); else only when something it is laid from moved.
     local need = on and top < viewport
     if not force and L.on == on and L.top == top and L.vp == viewport and L.s == s and L.h == h
-        and L.mode == mode and L.st == L.stride and L.ht == L.height and (need or L.shown == 0) then
+        and L.mode == mode and L.st == L.stride and L.ht == L.height and L.dn == L.done
+        and (need or L.shown == 0) then
       return
     end
-    L.on, L.top, L.vp, L.s, L.h, L.mode, L.st, L.ht = on, top, viewport, s, h, mode, L.stride, L.height
+    L.on, L.top, L.vp, L.s, L.h, L.mode, L.st, L.ht, L.dn = on, top, viewport, s, h, mode, L.stride, L.height, L.done
     Paint(L, on)
     local bands, shown = L.bands, 0
     if need then
@@ -4593,6 +4603,7 @@ do
       if band < BAND_MIN then band = BAND_MIN end
       local span = (PY1 - PY0) - band
       local v = (mode == "dark") and DARK_V or 1
+      local a = L.done and DONE_A or 1
       local pos = L.n
       while top < viewport do
         shown = shown + 1
@@ -4611,6 +4622,7 @@ do
         local at = PY0 + (pos * STEP) % span
         t:SetTexCoord(PX0 / SIZE, PX1 / SIZE, at / SIZE, (at + band) / SIZE)
         t:SetVertexColor(v, v, v, 1)
+        t:SetAlpha(a)
         t:Show()
         top = top + stride
       end
@@ -4623,10 +4635,11 @@ do
   -- view resized. `scroll` the list's scroll frame, `child` its scroll
   -- child (the rows' parent), `n` the rows the list holds, `stride` their
   -- pitch, `rise` how much higher the rows after the bar stand, `gap` the
-  -- units between two rows, `empty` the list's empty-state words (or nil).
+  -- units between two rows, `empty` the list's empty-state words (or nil),
+  -- `done` true where the list's last entry is finished mail.
   -- The rows' own gap is kept on their parent for a binder that does not
   -- pass it (Mail Memory's rows, listed in the main window).
-  function Skin.ListGround(scroll, child, n, stride, rise, gap, empty)
+  function Skin.ListGround(scroll, child, n, stride, rise, gap, empty, done)
     if not (scroll and child and stride and stride > 0) then return end
     local L = child.__pbBands
     if not L then
@@ -4644,6 +4657,7 @@ do
       end
     end
     L.n, L.stride, L.height, L.rise, L.empty = n or 0, stride, stride - gap, rise or 0, empty
+    L.done = done and true or false
     LayBands(L)
   end
 

@@ -11981,12 +11981,14 @@ local function UpdateVisibleRows(panel)
   local listGround = ns.Theme.ListGround
   if listGround then
     local n, rise = #filtered, at and lift or 0
+    -- Whether the list ends in finished mail (or the bar over it, folded).
+    local done = filteredDone[n] == true
     if historyView then
-      n, rise = #panel._history, 0
+      n, rise, done = #panel._history, 0, false
     elseif away then
-      n, rise = panel._avRows and #panel._avRows or 0, 0
+      n, rise, done = panel._avRows and #panel._avRows or 0, 0, false
     end
-    listGround(scroll, panel.MailListChild, n, panel._rowStride, rise, ROW_GAP, panel.Empty)
+    listGround(scroll, panel.MailListChild, n, panel._rowStride, rise, ROW_GAP, panel.Empty, done)
   end
   -- A tooltip one of the list's rows owns -- the inbox's, another
   -- character's box's or History's, all standing in the list's child --
