@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.70.0
+## 2.0.0
 
 *Restart the game once after updating (a /reload is not enough).*
 
