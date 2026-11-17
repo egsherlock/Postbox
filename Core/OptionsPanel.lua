@@ -8438,7 +8438,7 @@ function Pages.mail(col)
       { id = "tooltip", name = L["OPT_ATTACH_HOVER_TOOLTIP"] },
       { id = "fan",     name = L["OPT_ATTACH_HOVER_FAN"] },
     },
-    get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "tooltip" end,
+    get = function() return ns.MailboxUI.GetAttachHover and ns.MailboxUI.GetAttachHover() or "fan" end,
     set = function(id)
       if ns.MailboxUI.SetAttachHover then ns.MailboxUI.SetAttachHover(id) end
       ArrangeFollows()

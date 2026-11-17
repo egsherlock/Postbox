@@ -618,6 +618,9 @@ local CENSUS_KEEP = {
   -- And that an install from before the category buttons were on by
   -- default kept them as it had them (Postbox.lua, 4b), for the same reason.
   gridShown  = true,
+  -- And that an install from before Fan out was the default kept the
+  -- tooltip it had (Postbox.lua, 4b), for the same reason.
+  attachHover = true,
 }
 
 -- Clears everything but the census, tells the modules that remember what
@@ -1559,22 +1562,25 @@ function UI.TryDivider(arg)
 end
 
 -- What resting the pointer on the item icon of a mail holding several items
--- shows (CollectTab, the fan): "tooltip", the list of them (the default), or
--- "fan", the items spread out beside the icon, each taken by a click. One
--- behaviour for the Mail tab's rows, not a part of any arrangement. Stored
--- only when it is the fan, so nothing stored is the tooltip. Read on hover,
--- never on a bind, so it keeps no memo.
+-- shows (CollectTab, the fan): "fan", the items spread out beside the icon,
+-- each taken by a click (the default from 2.0), or "tooltip", the list of
+-- them. One behaviour for the Mail tab's rows, not a part of any
+-- arrangement. Stored only when it is the tooltip, so nothing stored is the
+-- fan, and a reset gives the fan; an install from before 2.0 that never
+-- chose was written "tooltip" once at the update, so it keeps what it had
+-- (Postbox.lua, SettleAttachHover). Read on hover, never on a bind, so it
+-- keeps no memo.
 function UI.GetAttachHover()
   local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.attachHover")
-  return (stored == "fan") and "fan" or "tooltip"
+  return (stored == "tooltip") and "tooltip" or "fan"
 end
 function UI.SetAttachHover(mode)
   if mode ~= nil and mode ~= "tooltip" and mode ~= "fan" then return end
   local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if profile then profile.attachHover = (mode == "fan") and "fan" or nil end
+  if profile then profile.attachHover = (mode == "tooltip") and "tooltip" or nil end
   -- An open fan goes when the tooltip is chosen instead.
   local collect = ns.CollectTab
-  if mode ~= "fan" and collect and collect.CloseFan then collect.CloseFan() end
+  if mode == "tooltip" and collect and collect.CloseFan then collect.CloseFan() end
 end
 
 -- How many days History keeps: 7 by default, up to 365 (a year). However

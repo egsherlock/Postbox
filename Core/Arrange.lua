@@ -6502,7 +6502,7 @@ do
 
   function AR.AttachHoverNow()
     local ui = UI()
-    return ui and ui.GetAttachHover and ui.GetAttachHover() or "tooltip"
+    return ui and ui.GetAttachHover and ui.GetAttachHover() or "fan"
   end
 
   -- Read on hover, so nothing is redrawn.

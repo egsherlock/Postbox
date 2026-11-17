@@ -33,7 +33,7 @@
 <div style="flex:1;min-width:260px">
 <ul>
 <li><strong><span style="color:#e5e5e5">Take one item without opening the mail:</span></strong> point at a mail's icon, its items fan out, and a click takes the one you want.</li>
-<li><strong><span style="color:#e5e5e5">Your choice:</span></strong> set Attachments on hover to Fan out, or keep the tooltip.</li>
+<li><strong><span style="color:#e5e5e5">Your choice:</span></strong> Attachments on hover fans the items out, or set it to Tooltip for a list.</li>
 </ul>
 </div>
 <div style="flex:0 1 520px"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/fanout.gif" width="520" alt="Pointing at a mail's icon fans out its items, and a click takes one"></div>

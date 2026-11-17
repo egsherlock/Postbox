@@ -120,8 +120,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   figures together, the subject gets the rest). Columns: read mark, item
   icon, sender, subject, time left ("9h", "3d"), gold, slots.
 - **Item icons** carry stack counts and crafting quality marks, as your bags
-  do. Hover an icon for what the mail holds, or set **Attachments on hover**
-  to **Fan out** and click one item to take it (C.O.D. still asks first).
+  do. Hover an icon and its items fan out: click one to take it (C.O.D.
+  still asks first), or set **Attachments on hover** to **Tooltip** for a
+  list of what the mail holds.
 - **Senders wear their class color** when Postbox knows them (your alts,
   friends, guild), in your UI's own class colors.
 - **One tooltip format everywhere:** the subject, then only what the row

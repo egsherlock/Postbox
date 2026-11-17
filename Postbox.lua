@@ -468,6 +468,24 @@ end
 
 local GROUPS_SETTLED = "groupOrder"
 
+-- 2.0: Attachments on hover is Fan out by default (Core/MailboxUI.lua,
+-- GetAttachHover), for a fresh install and after every reset; the tooltip
+-- was the default until now and was stored as nothing, so a player who
+-- chose it and one who never chose look the same. Every install that is
+-- not fresh, a 2.0 dev build's included, keeps what it had: a profile with
+-- no choice saved is written "tooltip", once; one that saved the fan keeps
+-- it. Its own mark at the root, kept through Reset everything
+-- (CENSUS_KEEP), so a reset after it gives the fan. `fresh`: no saved
+-- variables, which starts on the new default.
+local function SettleAttachHover(fresh)
+  local db = PostboxDB
+  if type(db) ~= "table" or db.attachHover ~= nil then return end
+  db.attachHover = "2.0"
+  if fresh then return end
+  local profile = db.profile
+  if type(profile) == "table" and profile.attachHover == nil then profile.attachHover = "tooltip" end
+end
+
 local function SettleGroupOrder(fresh)
   local db = PostboxDB
   if type(db) ~= "table" or db[GROUPS_SETTLED] ~= nil then return end
@@ -2692,7 +2710,8 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   Upgrade(savedBy)
   -- Each settled once, as Upgrade runs its steps: one that fails is
   -- reported, and the rest of the setup below goes on.
-  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown, SettleHiddenRecipients }) do
+  for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown, SettleHiddenRecipients,
+      SettleAttachHover }) do
     local ok, err = pcall(settle, ns.freshInstall, savedBy)
     if not ok and type(geterrorhandler) == "function" then
       local handler = geterrorhandler()
