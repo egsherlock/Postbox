@@ -9,7 +9,7 @@
 
 <p align="center">
   <b>Runs on retail WoW (12.0.7–12.1.x) and, since 1.60, World of Warcraft: Forever (1.60.1), from one download.</b><br />
-  On the Blizzard UI it wears its own Dark or Light style or the game's own look; under ElvUI or EllesmereUI it matches them.<br />
+  On the Blizzard UI it wears the game's own look or its own Dark or Light style; under ElvUI or EllesmereUI it matches them.<br />
   No dependencies, no libraries &nbsp;·&nbsp;
   <a href="https://www.curseforge.com/wow/addons/postboxmail">CurseForge</a> &nbsp;·&nbsp;
   <a href="CHANGELOG.md">Changelog</a> &nbsp;·&nbsp;
@@ -25,7 +25,7 @@
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
 | **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
-| **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Postbox style (the default, in Dark or Light) or the Blizzard look. |
+| **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Blizzard look (the default: the game's frames, buttons and letter paper) or the Postbox style in Dark or Light. |
 | **Options** | Five tabs, General first with every character's mail and your last 7 days at a glance, a search that finds any setting, and a panel that explains and previews whatever you point at. |
 | **WoW Forever** | The same download: full names, Forever's mail rules, slow sends waited for, and Blizzard's mailbox for controller players. |
 
@@ -361,17 +361,23 @@ new?** in the footer shows the last three releases.
 - **EllesmereUI:** its font for all of Postbox's text, its accent, and **Match
   EllesmereUI** opacity and border (the default), so Postbox matches the
   windows beside it, atrocityEssentials' included. Under EllesmereUI's
-  Blizzard Style or Classic WoW UI, Postbox wears its Blizzard look to match.
+  Blizzard Style or Classic WoW UI, or with EllesmereUI's skinning off for
+  Postbox, Postbox wears its Blizzard look to match.
 - **ElvUI:** its accent (value color) and class colors, live.
-- **The Postbox style** (the default on the game's own UI): **Dark** or
+- **The Postbox style:** **Dark** or
   **Light** mode, accent (Gold by default, White and other presets, your
   class color or any color), background color, opacity, border (None, Edge,
   Thin or Thick) and its color, corners, row stripes, sheen, font (the
   game's, Barlow Semi Condensed, Expressway, Fira Sans Condensed, Noto Sans,
   Overpass or Roboto Condensed), text weight (Regular or Bold) and text size. In Light mode text is crisp dark ink and your accent stays in the
   marks; each mode keeps its own background.
-- **Blizzard**, to match the default UI with the game's own art (texture
-  packs restyle it).
+- **Blizzard** (the default on the game's own UI), rebuilt from the game's
+  own art: its window frame, red and dark buttons, tabs, boxes, dropdowns,
+  checkboxes and scroll bars (bronze on WoW Forever), with your mail on the
+  game's letter paper. Its own settings on the Window tab: **Row texture**
+  (Light parchment, Dark parchment or None), **Buttons** (All red; Mail red,
+  rest dark; All dark) and **Background opacity**, and its own Font, Text
+  style and Text weight. Texture packs restyle it.
 - **Class icons** (Options > General > Characters): how your characters'
   classes are drawn on the Inbox button and in its list: the game's own,
   Game (round), Painted, Pixel, Comic or Glyphs, EllesmereUI's sets while

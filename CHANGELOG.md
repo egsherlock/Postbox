@@ -6,6 +6,14 @@
 
 ### New
 
+- **The Blizzard look is rebuilt from the game's own art** and is the
+  default on the game's own UI: the game's window frame, red and dark
+  buttons, tabs, boxes and dropdowns, and your mail on the game's letter
+  paper. If you never chose a Window style, this is the look you meet
+  after updating; a style you chose is kept. Three settings of its own
+  (Options > Window): Row texture (Light parchment, Dark parchment or
+  None), Buttons (which buttons are red) and Background opacity. Prefer
+  the Postbox style? Options > Window > Window style.
 - **Sent mail:** History, the clock on the Mail tab, now has **Received**
   and **Sent**. Sent lists what you mailed, to whom, with its gold and any
   C.O.D. On the Send tab, the clock at the left of Send mail opens it
@@ -123,9 +131,10 @@
   sort by it.
 - Manage Recipients can delete a saved name that no list offers any more,
   and its Guild list fills in by itself once the roster arrives.
-- **Manage Recipients: Delete on a name your guild or friends list still
-  offers also hides it,** so the Send tab stops offering it, and the
-  question says so. Show, under Hidden, brings it back.
+- **Manage Recipients: Delete on a name your guild, friends or recently
+  grouped list still offers also hides it,** so the Send tab stops
+  offering it, and the question says so. Show, under Hidden, brings it
+  back.
 - **Manage Recipients lists a hidden name only under Hidden.** After Hide
   or Delete the row leaves the list you are on; Hidden is the one place to
   find it and Show it.
@@ -167,7 +176,7 @@
 - **History holds** (Options > General > Memory and history): choose how
   many mails History keeps for each character, 1,000 (as before), 2,500 or
   5,000, Received and Sent each. A larger History makes Postbox's saved
-  file bigger, about 1.7 MB per character at 5,000.
+  file bigger, about 0.3 MB per 1,000 mails for each character.
 - **What's new on retail says Postbox runs on Forever too:** the Forever mark and
   **Now on Forever** at the left of its title bar. Its headings stand apart
   from the lines under them, with a thin rule after each, and wear
@@ -186,7 +195,8 @@
   settings and for the tab's own text about Arrange. Each says only what
   its row can't show.
 - **Send tab: the Sent clock is part of the Send mail button,** in a cell
-  of its own at its left, in the Postbox, EllesmereUI and ElvUI styles.
+  of its own at its left, in the Postbox, EllesmereUI and ElvUI styles
+  and the Blizzard look.
 - **Dropdown lists that scroll line up with their box,** and the
   highlight runs right up to the scroll bar.
 - **Options: the footer's tooltips stand by their button** (Reset to
@@ -195,10 +205,9 @@
   from its edge.
 - **Reset has its own button** at the foot of the sort menus, lit only
   when there is something to reset.
-- **On the game's own UI, Postbox opens in its Postbox style** unless you
-  chose the Blizzard look (Options > Window > Window style). If you picked
-  EllesmereUI's or ElvUI's look and play without it, Postbox wears the
-  Postbox style until that UI is back.
+- **If you picked EllesmereUI's or ElvUI's look and play without it,**
+  Postbox wears the Blizzard look until that UI is back (Options > Window >
+  Window style).
 - **Options: the Arrange, Character Groups and Manage Recipients buttons**
   match the dropdowns beside them, with room between each icon and its
   words. A dropdown's list with icons (Class icons, Bar icon, Icon style)
@@ -228,8 +237,9 @@
 - **Options > Window: the Preview shows each item's name whole**, with AH
   at the left of its row and your own gold as your name and the amount.
 - **Test mail** has its own switch over the options' Preview, and reads
-  **Testing** while it is on, with a ring and tint of your accent so it is
-  easy to spot.
+  **Testing** while it is on, lit so it is easy to spot: a ring and tint
+  of your accent, or in the Blizzard look the game's button held down or
+  lit.
 - **Options: the description under the Preview stays** on the last setting
   you pointed at, and the Preview keeps showing that setting, when the
   pointer moves away; only the ring on the Preview goes out. A description
@@ -255,7 +265,8 @@
   smaller so it stays on the icon, and reads 99+ only when it is too wide
   even then.
 - **Position and Lock position** (Options > Minimap) stand under When to
-  show, in the When it shows group; the Place heading is gone.
+  show, in the When it shows group; the Place heading is gone. Position's
+  places read Top right, Top left, Bottom right, Bottom left and Custom.
 - Mail Memory, Character Groups and Manage Recipients have new icons: on
   the options' General tab in your accent color, on the buttons that open
   them, and on their own windows' title bars. Mail Memory's is an
@@ -278,7 +289,8 @@
   box is a key like History and the sort button, in the window's neutral
   gray.
 - **A cog of Postbox's own on the title bar,** plain gray, taking your
-  accent only while the options are open.
+  accent only while the options are open; the Blizzard look keeps the
+  game's gear.
 - **Text outline** is now called **Text style** (Options > Window), and a
   new **Text weight** under it offers Bold for Barlow Semi Condensed and
   the five new fonts.

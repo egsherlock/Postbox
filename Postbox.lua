@@ -2669,7 +2669,8 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   if loadedAddon ~= ADDON_NAME then return end
 
   -- No saved variables at all: a first install, whose profile starts on the
-  -- Postbox style where no host UI is installed (Core/MailboxUI.lua, Initialize).
+  -- Blizzard style where no host UI is installed (Core/MailboxUI.lua,
+  -- UI.DefaultStyle).
   ns.freshInstall = type(PostboxDB) ~= "table"
   -- Which release saved what the client restored (section 4b), read before
   -- the schema below adds 1.50's roots to it.
