@@ -7890,6 +7890,11 @@ function State.MinimapRows()
   if not icon then return end
   local glow = Icon.GetGlow() and true or false
   if rows.count then Rows.SetEnabled(rows.count, memory, "OPT_MINIMAP_WHY_MEMORY") end
+  if rows.countSize then
+    local counting = Icon.GetCount and Icon.GetCount() ~= "off"
+    Rows.SetEnabled(rows.countSize, memory and counting and true or false,
+      memory and "OPT_MINIMAP_WHY_COUNT" or "OPT_MINIMAP_WHY_MEMORY")
+  end
   if rows.show then
     if S.mmShowAny then S.mmShowAny.off = not memory end
     if S.mmShowSince then S.mmShowSince.off = not memory end
@@ -9878,10 +9883,35 @@ function Pages.minimap(col)
     get = function() return ns.MinimapButton and ns.MinimapButton.GetCount() end,
     set = function(id)
       if ns.MinimapButton then ns.MinimapButton.SetCount(id) end
+      -- Count size greys while the count is Off (State.MinimapRows).
+      State.MinimapRows()
       Ctx.Repaint()
     end,
   })
   Rows.Why(rows.count, "OPT_MINIMAP_WHY_MEMORY")
+  -- How big that number is drawn: a size less, as the icon gives it, or two
+  -- more (Core/MinimapButton.lua, CountFontSize). Grey while there is no
+  -- count to size.
+  do
+    local sizeNames = {
+      small = L["OPT_MINIMAP_COUNTSIZE_SMALL"], normal = L["OPT_MINIMAP_COUNTSIZE_NORMAL"],
+      large = L["OPT_MINIMAP_COUNTSIZE_LARGE"],
+    }
+    local sizeItems = {}
+    for _, mode in ipairs((Icon and Icon.COUNT_SIZES) or { "normal" }) do
+      sizeItems[#sizeItems + 1] = { id = mode, name = sizeNames[mode] }
+    end
+    rows.countSize = Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_COUNTSIZE_TITLE"], text = L["OPT_MINIMAP_COUNTSIZE_DESC"], items = sizeItems,
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetCountSize() end,
+      set = function(id)
+        if ns.MinimapButton then ns.MinimapButton.SetCountSize(id) end
+        Ctx.Repaint()
+      end,
+    })
+    Rows.Why(rows.countSize, "OPT_MINIMAP_WHY_MEMORY")
+    Rows.Why(rows.countSize, "OPT_MINIMAP_WHY_COUNT")
+  end
   Rows.Check(block, Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
   -- Glow: the glow and its pulse side by side, the one breathing the

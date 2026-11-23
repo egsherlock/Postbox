@@ -664,10 +664,20 @@ end
 -- floor, and is drawn whole there. Measured in the font string's own font,
 -- once per change of the number or the icon's size: the text is made only
 -- then, and the font only when the size or the step does.
-local function CountFontSize(size, step)
+-- Count size (Options > Minimap, under Count on icon) moves the whole rule:
+-- `off` units from the size the icon gives the count (Small a size less,
+-- Normal as above, Large two more), before the floors, which stay. A wide
+-- number steps down from there by the same rule at every size.
+local function CountFontSize(size, step, off)
   local floor = (step <= 0 and 9) or (step == 1 and 8) or 7
-  return math.max(floor, math.floor(size * 0.4 + 2.5) - step)
+  return math.max(floor, math.floor(size * 0.4 + 2.5) + (off or 0) - step)
 end
+
+-- The choices, saved by id; each one's offset. Unset or unknown reads as
+-- Normal, the size there always was, so a profile that never chose (or a
+-- reset one) draws the count as before.
+MB.COUNT_SIZES = { "small", "normal", "large" }
+MB.COUNT_SIZE_OFF = { small = -1, normal = 0, large = 2 }
 
 local COUNT_RULER = "99+"
 
@@ -678,7 +688,7 @@ local function CountFont(fs, size, step)
   local T = ns.Theme
   local object = T and T.FontObject and T.FontObject("numberSmall")
   local path = object and object:GetFont()
-  fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, step), "OUTLINE")
+  fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, step, fs.__pbOff), "OUTLINE")
 end
 
 -- holder: the frame the count is drawn on; anchor: the icon texture; size:
@@ -696,8 +706,9 @@ local function PaintCount(holder, anchor, size, n)
     fs:SetWordWrap(false)
     holder.__pbCount = fs
   end
-  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor then
-    fs.__pbSize, fs.__pbAnchor = size, anchor
+  local off = MB.COUNT_SIZE_OFF[Settings().countSize] or 0
+  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor or fs.__pbOff ~= off then
+    fs.__pbSize, fs.__pbAnchor, fs.__pbOff = size, anchor, off
     -- Measured again, in the font of the new size.
     fs.__pbN, fs.__pbStep = nil, nil
     fs:SetTextColor(1, 1, 1, 1)
@@ -714,7 +725,7 @@ local function PaintCount(holder, anchor, size, n)
       fs:SetText(COUNT_RULER)
       local room = math.max(size, fs:GetStringWidth() or 0)
       fs:SetText(text)
-      while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1) < CountFontSize(size, step) do
+      while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1, off) < CountFontSize(size, step, off) do
         step = step + 1
         CountFont(fs, size, step)
       end
@@ -2683,6 +2694,19 @@ function MB.GetCount() return CountMode() end
 function MB.SetCount(mode)
   if not COUNT_MODES[mode] then return end
   Settings().count = mode
+  Refresh()
+end
+
+-- How big the number is drawn (MB.COUNT_SIZES; unset: "normal").
+function MB.GetCountSize()
+  local mode = Settings().countSize
+  return MB.COUNT_SIZE_OFF[mode] and mode or "normal"
+end
+
+function MB.SetCountSize(mode)
+  if not MB.COUNT_SIZE_OFF[mode] then return end
+  -- Normal is the default: stored as nothing, as a reset leaves it.
+  Settings().countSize = (mode ~= "normal") and mode or nil
   Refresh()
 end
 
