@@ -14,7 +14,7 @@
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Empty your mailbox in one click</h2>
-<p style="text-align:center">All mail takes gold, items and letters in your list's order. Bags are checked first, and a run stops cleanly if they fill.</p>
+<p style="text-align:center">All mail takes gold, items and letters in your list's order. Bags are checked first, a thin line under the title bar shows how far it has got, and a run stops cleanly if they fill.</p>
 <p style="text-align:center">History keeps what you collected and what you sent, for up to a year, searchable by an item's name.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.gif" width="672" alt="All mail collecting a full inbox"></p>
 <p>&nbsp;</p>
@@ -37,7 +37,7 @@
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/finished.gif" width="672" alt="Scrolling down to the island at the list's foot: it opens into the bar over the read mail, and Delete all turns red under the pointer"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Sending made easy</h2>
-<p style="text-align:center">Names complete as you type, favorites first. Right-click attaches; Alt-right-click attaches every stack, and the arrow after Attachments every stack of one kind of material.</p>
+<p style="text-align:center">Names complete as you type, favorites first. Right-click attaches; Alt-right-click attaches every stack, and the + after Attachments every stack of one kind of material.</p>
 <p style="text-align:center">Manage Recipients lists every name in one table: favorite, hide or add a note to any of them.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.gif" width="770" alt="A name completing as it is typed, then one click attaching every stack"></p>
 <p>&nbsp;</p>

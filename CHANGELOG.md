@@ -10,8 +10,13 @@
   your mailbox, unread, for you to take yourself, and the title bar says
   how many were left. Only All mail follows the choice: Collect shown, the
   other buttons and a click on a mail take what they always did.
+- **Mail tab: a progress line while All mail works.** A run of three
+  mails or more draws a thin line in your accent under the title bar (a
+  gold thread in the Blizzard look), filling as each mail comes out. If
+  the run stops early, the line stays where it stopped, in the color of
+  the words beside it.
 - **Send tab: attach every stack of one kind of material.** The small
-  arrow after Attachments lists the kinds in your bags in the game's own
+  + after Attachments lists the kinds in your bags in the game's own
   words (Cloth, Herb, Metal & Stone), each with how many stacks it would
   add. Pick one and they are all attached; what is past twelve waits in
   the queue and goes as the next mail. A line's tooltip lists the items

@@ -87,7 +87,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
-  collects your picks. C.O.D. mail is never swept.
+  collects your picks. C.O.D. mail is never swept. A run of three mails
+  or more draws a thin line under the title bar as it goes; if it stops
+  early, the line stays where it stopped, in the color of the words beside it.
 - **All mail takes** (Options > Mail tab > Collecting) is **Every mail**
   unless you choose **Auction house, game and my characters**. All mail
   then leaves mail from other players in your mailbox, unread, for you to
@@ -290,7 +292,7 @@ Most mail, Name or Last played.
   as further mails to the same person, after one confirmation. Right-click
   "Attachments" clears them all.
 - **Every stack at once:** Alt-right-click a bag item and every stack of
-  it is attached. The small arrow after "Attachments" does the same for a
+  it is attached. The small + after "Attachments" does the same for a
   kind of material: it lists the kinds in your bags in the game's own
   words (Cloth, Herb, Metal & Stone), each with how many stacks it would
   add, and a line's tooltip lists the items. Bound and quest items are
