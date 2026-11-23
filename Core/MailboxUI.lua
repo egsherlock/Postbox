@@ -2975,8 +2975,10 @@ function UI.SetStatusActivity(text, tone)
   AdoptForeignText()
   if type(text) == "string" and text ~= "" then
     status.activity, status.activityTone = text, tone
-    -- A new run supersedes the previous run's verdict.
+    -- A new run supersedes the previous run's verdict, and the line held
+    -- under it goes with it (3b).
     status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+    UI.RunLineDrop()
   else
     status.activity, status.activityTone = nil, nil
   end
@@ -2995,6 +2997,9 @@ function UI.SetStatusOutcome(text, tone)
   else
     status.outcome, status.outcomeTone = nil, nil
   end
+  -- Another outcome's words: a line held under the last one goes (3b). A
+  -- run's own outcome is written first and its line held after it.
+  UI.RunLineDrop()
   RenderStatus()
 end
 
@@ -3057,6 +3062,7 @@ do
     if not status.outcome then
       status.outcomeTone, status.outcomeKind = nil, nil
       status.outcomeKind2 = nil
+      UI.RunLineDrop()
     end
     RenderStatus()
     return true
@@ -3107,6 +3113,8 @@ function UI.ClearStatus()
   status.activity, status.activityTone = nil, nil
   status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
   status.sent, status.sentTail, status.sentAlone = 0, nil, nil
+  -- The run's line too, at once, whatever it was doing (3b).
+  UI.RunLineDrop(true)
   RenderStatus()
 end
 
@@ -3170,6 +3178,9 @@ function UI.UpdateStatusSummary()
   -- down here, and the rest of it stays.
   if stuck == 0 then OutcomePartDown("stuck") end
   if waiting == 0 then OutcomePartDown("bags") end
+  -- Every part that could come down by itself has: a line held for them
+  -- goes with them (3b). One comparison when none is held.
+  if status.outcomeKind == nil then UI.RunLinePartsDown() end
   -- Inline escapes rather than a tone: RenderStatus paints the whole label
   -- one colour from the layer that won, and this layer has no tone of its own
   -- to pass. Colouring the text itself keeps the warning with the warning.
@@ -3226,6 +3237,476 @@ function UI.UpdateStatusSummary()
   end
 
   RenderStatus()
+end
+
+-------------------------------------------------------------
+-- 3b. The run's line
+--
+-- While a run of three mails or more collects, a thin line on the seam under
+-- the title bar fills from the left by the mails the run has done out of the
+-- mails it queued: the count the words beside it give ("Remaining: N",
+-- CollectTab's RefreshRunStatus hands it here), so the line is never ahead
+-- of the run and never a guess. A click on one row, opening a mail and
+-- taking from the reading view are no run and never draw it; a run of one or
+-- two is over before a line could say anything (one comparison, at its start).
+--
+-- Its look is the window's: two units in the accent with a small light on
+-- its leading edge in the Postbox style, EllesmereUI and ElvUI (the accent
+-- is the host's there), one unit of the game's gold with the cast bar's
+-- spark in the game's own look. Where it lies is the skin's to say
+-- (Skin.RunLinePlace: the seam under its title strip, inside its edge); 25
+-- under the top and one in where a skin says nothing.
+--
+-- How it moves. The game answers each take in its own time, so the steps
+-- come unevenly, and slowly at a busy hour or on a slow machine. The shown
+-- fraction follows the true one as a critically damped spring. It never
+-- passes it: from rest, and with a target that only rises, such a follower
+-- cannot overshoot (its speed is also capped at what keeps that so when its
+-- rate changes). Its speed carries over from one step to the next, so at a
+-- steady pace the line glides on through each mail rather than stopping at
+-- it; and its rate comes from the pace measured so far, each step settling
+-- in about the time a mail has been taking, never quicker than a quarter of
+-- a second nor slower than one: a slow take is a slower glide. At a steady
+-- pace it trails the truth by about half a mail.
+--
+-- How it ends. A run that took all it queued: the line reaches the end,
+-- glows along its length for a moment and fades (0.9 s). A run stopped
+-- short, or one whose words name something wrong (bags full, slots kept
+-- free, stuck mail, incomplete, the mailbox closed): it stays where it
+-- stopped, in the colour those words wear (the game's red in the game's
+-- look), and leaves when they do -- another run or outcome, the parts that
+-- come down by themselves (UI.UpdateStatusSummary), the mailbox closing.
+--
+-- Cost. One frame of six textures, made at the first run that draws it. Its
+-- OnUpdate is set only while it moves -- a step gliding in, the glow, a fade
+-- -- and taken off when that settles, as the fan's plate's is; a frame of it
+-- is one exp() and a width. Nothing runs once a step has arrived, between
+-- runs or away from a mailbox, and nothing is made per mail or per frame.
+-------------------------------------------------------------
+do
+  local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
+  local WHITE, LIGHT = MEDIA .. "white8x8.tga", MEDIA .. "minimap-glow.tga"
+  local SPARK = "ui-castingbar-pip"
+  local exp, min, max = math.exp, math.min, math.max
+
+  local RL = {
+    frame = nil,
+    -- nil: not shown. "run": following a run. "whole": the run took all it
+    -- queued: on to the end, the glow, the fade. "fade": stopped with
+    -- nothing said wrong: fades where it stands. "hold": settling where it
+    -- stopped into the held colour; "held": settled, still, no OnUpdate.
+    -- "leave": a held line going.
+    phase = nil,
+    -- The fraction shown, its speed (fractions a second), the true one; the
+    -- mails done and queued it is of.
+    s = 0, v = 0, target = 0, done = 0, total = 0,
+    w = 0,              -- the track's width, in units
+    k = 16,             -- the spring's rate (1/s): 4 over the settling time
+    pace = 0, at = 0,   -- seconds a mail, smoothed; when the last step came
+    -- Seconds since it came in, since its phase began, and since it arrived
+    -- where that phase takes it.
+    born = 0, t = 0, e = 0,
+    warn = 0,           -- how far into the held colour
+    lasting = false,    -- held for words that never come down by themselves
+    from = 1,           -- the alpha a leaving line starts from
+    moving = false,     -- its OnUpdate is set
+    on = nil, alpha = -1, rw = -1,
+    thread = false,     -- the game's look
+    -- The line's colour, its lit tone, and the held colour.
+    r = 1, g = 1, b = 1, br = 1, bg = 1, bb = 1, hr = 1, hg = 1, hb = 1,
+  }
+  -- For /postbox debug and the harness: read, never written from outside.
+  UI._runLine = RL
+
+  local function Mix(a, b, t) return a + (b - a) * t end
+
+  local function Tex(f, layer, sub, add)
+    local t = f:CreateTexture(nil, layer, nil, sub)
+    t:SetTexture(WHITE)
+    if add then t:SetBlendMode("ADD") end
+    return t
+  end
+
+  -- The frame and its textures, once: the fill from the left, a unit of
+  -- shade under what is filled (it reads over any backdrop at any window
+  -- opacity), the lit ramp on the fill's last units, the head's light or
+  -- spark on its leading edge, and the glow above and below the whole track.
+  function RL.Make(window)
+    local f = CreateFrame("Frame", nil, window)
+    f:SetHeight(2)
+    f:Hide()
+    RL.frame = f
+    local fill = Tex(f, "ARTWORK", 0)
+    fill:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    RL.fill = fill
+    RL.shade = Tex(f, "ARTWORK", -1)
+    RL.shade:SetPoint("TOPLEFT", fill, "BOTTOMLEFT", 0, 0)
+    RL.shade:SetPoint("TOPRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+    RL.shade:SetHeight(1)
+    RL.ramp = Tex(f, "ARTWORK", 1)
+    RL.ramp:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
+    RL.ramp:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+    RL.head = f:CreateTexture(nil, "OVERLAY")
+    RL.head:SetBlendMode("ADD")
+    RL.up = Tex(f, "OVERLAY", 1, true)
+    RL.up:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0)
+    RL.up:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0)
+    RL.down = Tex(f, "OVERLAY", 1, true)
+    RL.down:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, 0)
+    RL.down:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    -- A gradient takes colour objects: two, made once and set in place.
+    if RL.ramp.SetGradient and type(CreateColor) == "function" then
+      RL.c1, RL.c2 = CreateColor(1, 1, 1, 1), CreateColor(1, 1, 1, 1)
+    end
+    f:SetScript("OnSizeChanged", RL.Sized)
+    f:SetScript("OnHide", RL.Settle)
+  end
+
+  function RL.Arm()
+    if RL.moving or not RL.frame then return end
+    RL.moving = true
+    RL.frame:SetScript("OnUpdate", RL.Step)
+  end
+
+  function RL.Halt()
+    if not RL.moving then return end
+    RL.moving = false
+    RL.frame:SetScript("OnUpdate", nil)
+  end
+
+  function RL.Hide()
+    RL.phase = nil
+    RL.Halt()
+    if RL.frame then RL.frame:Hide() end
+  end
+
+  -- The spring's rate from the pace: a step settles in about the time a
+  -- mail has been taking, bounded.
+  function RL.Rate()
+    local d = RL.pace
+    if d < 0.25 then d = 0.25 elseif d > 1 then d = 1 end
+    RL.k = 4 / d
+  end
+
+  -- One frame of the follow: the exact critically damped step toward the
+  -- target, never past it. -> whether it is still on its way.
+  function RL.Glide(dt)
+    local x = RL.s - RL.target
+    if x >= 0 then
+      RL.s, RL.v = RL.target, 0
+      return false
+    end
+    local k, v = RL.k, RL.v
+    -- No faster than the rate can stop short of the target.
+    if v > -k * x then v = -k * x end
+    local e = exp(-k * dt)
+    local c = (v + k * x) * dt
+    x, v = (x + c) * e, (v - k * c) * e
+    -- Arrived: within a quarter of a unit.
+    if x >= 0 or -x * RL.w < 0.25 then
+      RL.s, RL.v = RL.target, 0
+      return false
+    end
+    RL.s, RL.v = RL.target + x, v
+    return true
+  end
+
+  -- Width and alpha: what a frame of motion moves.
+  function RL.Draw(alpha)
+    if alpha ~= RL.alpha then
+      RL.alpha = alpha
+      RL.frame:SetAlpha(alpha)
+    end
+    local fw = RL.s * RL.w
+    local on = fw >= 0.5
+    if on ~= RL.on then
+      RL.on = on
+      RL.fill:SetShown(on)
+      RL.shade:SetShown(on)
+      RL.head:SetShown(on)
+      RL.ramp:SetShown(on and not RL.thread and RL.c1 ~= nil)
+    end
+    if not on then return end
+    RL.fill:SetWidth(fw)
+    if not RL.thread then
+      local rw = fw < 22 and fw or 22
+      if rw ~= RL.rw then
+        RL.rw = rw
+        RL.ramp:SetWidth(rw)
+      end
+    end
+  end
+
+  -- Colours: the held colour as far as it has come, the glow's light over
+  -- it, the head's light at `head`, the glow above and below at `flash`.
+  function RL.Paint(head, flash)
+    local w = RL.warn
+    local r, g, b = Mix(RL.r, RL.hr, w), Mix(RL.g, RL.hg, w), Mix(RL.b, RL.hb, w)
+    if flash > 0 then
+      local f = (RL.thread and 0.9 or 0.85) * flash
+      r, g, b = Mix(r, RL.br, f), Mix(g, RL.bg, f), Mix(b, RL.bb, f)
+    end
+    RL.fill:SetVertexColor(r, g, b, 1)
+    RL.up:SetAlpha(flash)
+    RL.down:SetAlpha(flash)
+    if RL.thread then
+      RL.head:SetAlpha(head)
+      return
+    end
+    -- The light a touch under the drawing's (0.5 of its 0.6), the ramp to
+    -- nine tenths of the lit tone.
+    RL.head:SetAlpha(0.5 * head)
+    if RL.c1 then
+      local t = 0.9 * head
+      RL.c1:SetRGBA(r, g, b, 1)
+      RL.c2:SetRGBA(Mix(r, RL.br, t), Mix(g, RL.bg, t), Mix(b, RL.bb, t), 1)
+      RL.ramp:SetGradient("HORIZONTAL", RL.c1, RL.c2)
+    end
+  end
+
+  -- The glow's two bands in the lit tone, `near` strong at the line and
+  -- fading away from it: `below`, the band under the line (its top meets
+  -- it), else the band over it (its bottom does).
+  local function Band(tex, near, below)
+    if not RL.c1 then
+      tex:SetVertexColor(RL.br, RL.bg, RL.bb, near * 0.5)
+      return
+    end
+    -- VERTICAL: the first colour is the bottom's.
+    RL.c1:SetRGBA(RL.br, RL.bg, RL.bb, below and 0 or near)
+    RL.c2:SetRGBA(RL.br, RL.bg, RL.bb, below and near or 0)
+    tex:SetGradient("VERTICAL", RL.c1, RL.c2)
+  end
+
+  -- The OnUpdate, only while something moves.
+  function RL.Step(_, elapsed)
+    local dt = tonumber(elapsed) or 0
+    if dt > 0.1 then dt = 0.1 end
+    local gliding = RL.Glide(dt)
+    RL.born, RL.t = RL.born + dt, RL.t + dt
+    if not gliding then RL.e = RL.e + dt end
+    local alpha = RL.born < 0.15 and RL.born / 0.15 or 1
+    local ph = RL.phase
+    if ph == "run" then
+      RL.Draw(alpha)
+      if not gliding and alpha >= 1 then RL.Halt() end
+      return
+    end
+    local head, flash, e = 1, 0, RL.e
+    if ph == "whole" then
+      -- On its way to the end, lit as it ran.
+      if gliding then return RL.Draw(alpha) end
+      if e >= 0.9 then return RL.Hide() end
+      -- There: the glow along the whole line, then a soft fade.
+      flash = (e < 0.12 and e / 0.12) or (e < 0.3 and 1) or max(0, 1 - (e - 0.3) / 0.35)
+      head = max(0, 1 - e / 0.12)
+      if e > 0.45 then alpha = min(alpha, 1 - (e - 0.45) / 0.45) end
+    elseif ph == "fade" then
+      head = max(0, 1 - RL.t / 0.25)
+      if not gliding then
+        if e >= 0.6 then return RL.Hide() end
+        if e > 0.1 then alpha = min(alpha, 1 - (e - 0.1) / 0.5) end
+      end
+    elseif ph == "hold" then
+      head = max(0, 1 - RL.t / 0.25)
+      if not gliding then RL.warn = min(1, e / 0.25) end
+      if not gliding and RL.warn >= 1 and head <= 0 and alpha >= 1 then
+        RL.phase = "held"
+        RL.Paint(0, 0)
+        RL.Draw(1)
+        RL.Halt()
+        return
+      end
+    elseif ph == "leave" then
+      if RL.t >= 0.3 then return RL.Hide() end
+      head, alpha = 0, RL.from * (1 - RL.t / 0.3)
+    end
+    RL.Paint(head, flash)
+    RL.Draw(alpha)
+  end
+
+  -- The window resized: the track's width, and the line on it again.
+  function RL.Sized(_, w)
+    w = tonumber(w)
+    if not w or w <= 0 then return end
+    RL.w = w
+    if RL.phase then RL.Draw(RL.alpha >= 0 and RL.alpha or 1) end
+  end
+
+  -- Hidden with the window: whatever was moving settles where it was going,
+  -- with no OnUpdate left behind. A finished line's ending is over.
+  function RL.Settle()
+    local ph = RL.phase
+    if not ph then return end
+    RL.Halt()
+    RL.s, RL.v = RL.target, 0
+    if ph == "run" or ph == "held" then
+      RL.Draw(1)
+    elseif ph == "hold" then
+      RL.phase, RL.warn = "held", 1
+      RL.Paint(0, 0)
+      RL.Draw(1)
+    else
+      RL.phase = nil
+      RL.frame:Hide()
+    end
+  end
+
+  -- A run starts on `total` mails.
+  function UI.RunLineBegin(total)
+    total = tonumber(total) or 0
+    if total < 3 then return end
+    local window = UI._frame
+    if not window then return end
+    if not RL.frame then RL.Make(window) end
+    local f = RL.frame
+    -- Where it lies and what it wears: the skin's, else 25 down and 1 in.
+    local skin = ns.Skin
+    local top, inset, kind, r, g, b, hr, hg, hb
+    if skin and type(skin.RunLinePlace) == "function" then
+      top, inset, kind, r, g, b, hr, hg, hb = skin.RunLinePlace(window)
+    end
+    top, inset = tonumber(top) or 25, tonumber(inset) or 1
+    local thread = kind == "thread"
+    RL.thread = thread
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", window, "TOPLEFT", inset, -top)
+    f:SetPoint("TOPRIGHT", window, "TOPRIGHT", -inset, -top)
+    f:SetHeight(thread and 1 or 2)
+    f:SetFrameLevel(window:GetFrameLevel() + 11)
+    RL.w = max(0, (tonumber((window:GetWidth())) or 0) - 2 * inset)
+    local head = RL.head
+    head:ClearAllPoints()
+    if thread then
+      -- The game's gold, its spark and its light; held, the game's red.
+      RL.r, RL.g, RL.b = r or 1, g or 0.82, b or 0
+      RL.br, RL.bg, RL.bb = 1, 0.957, 0.69
+      RL.hr, RL.hg, RL.hb = hr or 1, hg or 0.125, hb or 0.125
+      local T = ns.Theme
+      if T and type(T.AtlasExists) == "function" and T.AtlasExists(SPARK) and pcall(head.SetAtlas, head, SPARK) then
+        head:SetTexCoord(0, 1, 0, 1)
+        head:SetVertexColor(1, 1, 1, 1)
+        head:SetSize(3, 9)
+      else
+        head:SetTexture(LIGHT)
+        head:SetTexCoord(0, 1, 0, 1)
+        head:SetVertexColor(RL.br, RL.bg, RL.bb, 1)
+        head:SetSize(8, 6)
+      end
+      head:SetPoint("CENTER", RL.fill, "RIGHT", 0, 0)
+      RL.shade:SetVertexColor(0, 0, 0, 0.3)
+      RL.up:SetHeight(3)
+      RL.down:SetHeight(4)
+      Band(RL.up, 0.3, false)
+      Band(RL.down, 0.3, true)
+    else
+      -- The accent as a mark, and its lit tone (the open tab's caption).
+      local T = ns.Theme
+      if T and type(T.GetAccentTone) == "function" then
+        RL.r, RL.g, RL.b = T.GetAccentTone("mark")
+        RL.br, RL.bg, RL.bb = T.GetAccentTone("bright")
+        -- A light palette's "bright" is its ink: there the light is the
+        -- accent as picked, which its mark is darkened from.
+        if type(T.IsLight) == "function" and T.IsLight() then RL.br, RL.bg, RL.bb = T.GetAccent() end
+      end
+      head:SetTexture(LIGHT)
+      head:SetTexCoord(0, 1, 0, 1)
+      head:SetVertexColor(RL.br, RL.bg, RL.bb, 1)
+      head:SetSize(22, 12)
+      head:SetPoint("CENTER", RL.fill, "RIGHT", -1, 0)
+      RL.shade:SetVertexColor(0, 0, 0, 0.5)
+      RL.up:SetHeight(4)
+      RL.down:SetHeight(6)
+      Band(RL.up, 0.2, false)
+      Band(RL.down, 0.34, true)
+    end
+    RL.s, RL.v, RL.target, RL.done, RL.total = 0, 0, 0, 0, total
+    RL.pace, RL.at, RL.k = 0, GetTime(), 16
+    RL.born, RL.t, RL.e, RL.warn, RL.lasting = 0, 0, 0, 0, false
+    RL.phase = "run"
+    RL.on, RL.alpha, RL.rw = nil, -1, -1
+    RL.Paint(1, 0)
+    RL.Draw(0)
+    f:Show()
+    RL.Arm()
+  end
+
+  -- The run has done `done` of its `total` mails (CollectTab, once per mail
+  -- and on each list refresh: the same count twice is one comparison).
+  function UI.RunLineStep(done, total)
+    if RL.phase ~= "run" then return end
+    done, total = tonumber(done) or 0, tonumber(total) or 0
+    if total <= 0 then return end
+    if done > total then done = total end
+    if done == RL.done and total == RL.total then return end
+    local frac = done / total
+    if done > RL.done then
+      -- The pace: seconds a mail since the last step, smoothed.
+      local now = GetTime()
+      local each = (now - RL.at) / (done - RL.done)
+      RL.pace = RL.pace > 0 and (RL.pace + each) / 2 or each
+      RL.at = now
+      RL.Rate()
+    elseif RL.s > frac then
+      -- Fewer done than said before: the line is never ahead, not for a
+      -- frame.
+      RL.s, RL.v = frac, 0
+      RL.Draw(RL.alpha >= 0 and RL.alpha or 1)
+    end
+    RL.done, RL.total, RL.target = done, total, frac
+    RL.Arm()
+  end
+
+  -- The run ended, `done` of its `total` places passed (nil: where the line
+  -- was told last). `tone`: its words name something wrong, in that palette
+  -- token, and the line holds; `lasting`: those words never come down by
+  -- themselves (incomplete, slots kept free, the mailbox closed). Otherwise
+  -- a run that passed every place runs out to the end and glows, and one
+  -- that did not fades where it stands.
+  function UI.RunLineEnd(done, total, tone, lasting)
+    if RL.phase ~= "run" then return end
+    if done and total then UI.RunLineStep(done, total) end
+    local whole = RL.total > 0 and RL.done >= RL.total
+    if tone then
+      if not RL.thread then
+        local T = ns.Theme
+        if T and type(T.Ink) == "function" then
+          local r, g, b = T.Ink(tone, "strip")
+          RL.hr, RL.hg, RL.hb = r, g, b
+        end
+      end
+      RL.phase, RL.lasting = "hold", lasting and true or false
+    elseif whole then
+      -- The last mail is in: the line goes on to the end briskly (a
+      -- quicker rate still keeps it short of the end until it arrives).
+      if RL.k < 16 then RL.k = 16 end
+      RL.phase = "whole"
+    else
+      RL.phase = "fade"
+    end
+    RL.t, RL.e = 0, 0
+    RL.Arm()
+  end
+
+  -- A held line goes: its words did (another run or outcome). `now`: the
+  -- mailbox opened or closed, and the line goes at once whatever it was
+  -- doing.
+  function UI.RunLineDrop(now)
+    local ph = RL.phase
+    if not ph then return end
+    if now then return RL.Hide() end
+    if ph ~= "hold" and ph ~= "held" then return end
+    RL.phase, RL.t, RL.e = "leave", 0, 0
+    RL.from = RL.alpha > 0 and RL.alpha or 1
+    RL.Arm()
+  end
+
+  -- Every part of the outcome that comes down by itself has come down: a
+  -- line held for those parts goes.
+  function UI.RunLinePartsDown()
+    if (RL.phase == "hold" or RL.phase == "held") and not RL.lasting then UI.RunLineDrop() end
+  end
 end
 
 -------------------------------------------------------------

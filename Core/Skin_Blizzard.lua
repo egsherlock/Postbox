@@ -5398,6 +5398,18 @@ end
 -- new, the bug report): the same shell.
 Skin.ApplyWindow = Skin.Apply
 
+-- A run's line in this look (MailboxUI, 3b): a thread of the game's gold
+-- (the title's) with the cast bar's spark, where the rock begins under the
+-- metal title bar, between the metal's inner edges (EDGE, as the frame is
+-- seated above); held, it takes the game's red. -> units down, units in,
+-- the kind, the gold, the red.
+function Skin.RunLinePlace()
+  local _, edge = Parts.Metal()
+  local r, g, b = Parts.FontRGB("GameFontNormal", 1, 0.82, 0)
+  local hr, hg, hb = Parts.FontRGB("GameFontRed", 1, 0.125, 0.125)
+  return 22, edge or 4, "thread", r, g, b, hr, hg, hb
+end
+
 -------------------------------------------------------------
 -- Claim: only when the style choice asks for it
 -------------------------------------------------------------

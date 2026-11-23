@@ -13223,6 +13223,10 @@ end
 
 function CT.RefreshRunStatus()
   if not Run.active then return end
+  -- The line under the title bar: the mails done of the mails queued, the
+  -- count the words give (MailboxUI, 3b).
+  local UI = ns.MailboxUI
+  if UI and UI.RunLineStep then UI.RunLineStep(#Run.queue - Remaining(), #Run.queue) end
   -- While Blizzard asks about gold from a stranger, the line says so.
   if Mail().StrangerAsking and Mail().StrangerAsking() then
     StatusActivity(L()["STATUS_STRANGER_GOLD"], "warning")
@@ -13455,6 +13459,8 @@ local function FinishRun(left, stopReason)
   -- Mail All mail left for who sent it: no part of `left`, which is mail
   -- the run was stopped short of, and nothing the record below keeps.
   local others = Run.others or 0
+  -- For the line under the title bar: the places queued, and those given up on.
+  local queued, dropped = #Run.queue, Run.dropped or 0
   ResetRun()
 
   -- A bad ending is written down for next visit; a clean one erases the note.
@@ -13573,6 +13579,24 @@ local function FinishRun(left, stopReason)
     end
   end
 
+  -- The line under the title bar ends with the words (MailboxUI, 3b): a run
+  -- that took all it queued runs out to the end and glows; one whose words
+  -- name something wrong holds where it stopped, in their colour, for as
+  -- long as they say it.
+  -- The places it passed: all but those it was stopped short of; a place
+  -- given up on was passed.
+  local UI = ns.MailboxUI
+  if UI and UI.RunLineEnd then
+    local passed = queued - left + dropped
+    if left > 0 and stopReason ~= "bags" and stopReason ~= "keep" then
+      UI.RunLineEnd(passed, queued, "negative", true)
+    elseif stuck > 0 or waiting > 0 or stopReason == "keep" then
+      UI.RunLineEnd(passed, queued, "warning", stopReason == "keep")
+    else
+      UI.RunLineEnd(passed, queued)
+    end
+  end
+
   -- After the outcome, never instead of it: a stopped run's "3 left" is the line
   -- the player has to act on, and the money is context under it.
   ReportRunMoney(earned, spent)
@@ -13589,6 +13613,9 @@ local function StopRun()
   local earned, spent = Run.earned, Run.spent
   ResetRun()
   StatusMailboxClosed()
+  -- The line holds where the run was, in the words' warning tone.
+  local UI = ns.MailboxUI
+  if UI and UI.RunLineEnd then UI.RunLineEnd(nil, nil, "warning", true) end
   ReportRunMoney(earned, spent)
   RequestRefresh(panel)
 end
@@ -13819,6 +13846,10 @@ local function BeginRun(panel, queue, ids, subset, others)
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
   RV.FanClose(true)
+  -- The line under the title bar, for a run of three mails or more
+  -- (MailboxUI, 3b).
+  local UI = ns.MailboxUI
+  if UI and UI.RunLineBegin then UI.RunLineBegin(#Run.queue) end
   CT.RefreshRunStatus()
   RunStep()
 end

@@ -1985,6 +1985,22 @@ local function SeatTitleBar(frame)
   end
 end
 
+-- Where a run's line lies (MailboxUI, 3b): on the seam under the strip, and
+-- inside the keyline as PaintWindow lays it (none, the one-pixel Edge, Thin
+-- or Thick). -> units down from the window's top, units in from each side.
+function Skin.RunLinePlace(frame)
+  local strip = frame and frame.__pbShell and frame.__pbShell.strip
+  local top = strip and tonumber((strip:GetHeight())) or P.stripHeight
+  local border = Skin.GetBorderStyle()
+  if border == "none" then return top, 0 end
+  if border == "edge" then
+    local T = ns.Theme
+    return top, (T and T.OnePixel and T.OnePixel(frame)) or Hairline(frame)
+  end
+  local unit = Hairline(frame)
+  return top, unit + ((border == "thick") and 2 * unit or unit)
+end
+
 -- The house X, the close colour at three quarters and full under the pointer:
 -- the client's close atlas where it has one, else two rotated bars of the
 -- white tile. Kept, so a palette change repaints it.
