@@ -454,6 +454,18 @@ local function IsCODArmed(panel)
   return (panel and panel.CODCheck and panel.CODCheck:GetChecked()) and true or false
 end
 
+-- Whether the game takes C.O.D. mail just now. Forever's client asks
+-- C_Mail.IsCODEnabled and grays its own C.O.D. button while the server has
+-- it switched off, saying COD_DISABLED ("Cash on Delivery is currently
+-- disabled."); a send that tries anyway is answered "Internal mail database
+-- error.". Retail has no such switch: there it is always on.
+function ST.CODAllowed()
+  local api = C_Mail
+  if type(api) ~= "table" or type(api.IsCODEnabled) ~= "function" then return true end
+  local ok, on = pcall(api.IsCODEnabled)
+  return not ok or on ~= false
+end
+
 -- Zero the send frame's money/C.O.D. state.
 --
 -- Blizzard's send frame keeps whatever C.O.D. and attached-money values were
@@ -566,6 +578,22 @@ local function Invalidate(panel, what)
   panel._drainScheduled = true
   -- One drain per frame, one closure per drain.
   C_Timer.After(0, function() Drain(panel) end)
+end
+
+-- The C.O.D. box follows the game's switch (ST.CODAllowed): grayed, and
+-- unticked, while the game has C.O.D. off, as the game's own button is.
+-- Asked when the box is made and each time the tab shows; the press asks
+-- again (DoSendMail).
+function ST.SyncCOD(panel)
+  local cod = panel and panel.CODCheck
+  if not cod then return end
+  local allowed = ST.CODAllowed()
+  if not allowed and cod:GetChecked() then
+    cod:SetChecked(false)
+    Invalidate(panel, "guidance")
+  end
+  cod:SetEnabled(allowed)
+  if cod.text then cod.text:SetAlpha(allowed and 1 or 0.5) end
 end
 
 -------------------------------------------------------------
@@ -1796,6 +1824,13 @@ local function DoSendMail(panel, confirmed)
   -- along on this one. The unused field is zeroed first, which is the order
   -- Blizzard's own send frame uses.
   if cod then
+    -- The game has C.O.D. switched off (Forever): the box is grayed now,
+    -- and the press says the game's own reason and sends nothing.
+    if not ST.CODAllowed() then
+      ST.SyncCOD(panel)
+      if type(COD_DISABLED) == "string" then PopupNotice(COD_DISABLED) end
+      return
+    end
     if attachments <= 0 then
       PopupNotice(L["ERR_COD_NO_ATTACHMENT"])
       return
@@ -8255,10 +8290,16 @@ local function BuildMoneyRow(panel)
   if Theme.OnWindow then Theme.OnWindow(cod.text, "window") end
   cod.__postboxCheck = true
   cod.__label = cod.text
+  -- Grayed while the game has C.O.D. switched off (ST.SyncCOD), and its
+  -- tooltip still shows then, with the game's own reason.
+  cod:SetMotionScriptsWhileDisabled(true)
   cod:SetScript("OnEnter", function(self)
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["TOOLTIP_COD_TITLE"])
     Theme.TipLine(L["TOOLTIP_COD_DESC"])
+    if not ST.CODAllowed() and type(COD_DISABLED) == "string" then
+      Theme.TipLine(Theme.TipTone("warning", COD_DISABLED))
+    end
     GameTooltip:Show()
   end)
   cod:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -8267,6 +8308,7 @@ local function BuildMoneyRow(panel)
   -- changes what the money field MEANS, so the guidance line has to follow.
   cod:HookScript("OnClick", function() Invalidate(panel, "guidance") end)
   panel.CODCheck = cod
+  ST.SyncCOD(panel)
 
   -- Postage. `secondary`, never red: red in this window means an error that has
   -- already happened, and postage is not one.
@@ -8437,6 +8479,7 @@ local function InstallEvents(panel)
       ns.MailRules.Invalidate()
     end
     ST.RefreshAttachmentSlots(self)
+    ST.SyncCOD(self)
     ST.UpdateSendCost(self)
     ST.SyncSentClock(self)
     ST.UpdateSendGuidance(self)
