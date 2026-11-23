@@ -48,6 +48,9 @@
 
 ### Fixed
 
+- Send tab, Forever: while the game has C.O.D. switched off, the C.O.D.
+  box is grayed with the game's own reason in its tooltip, as the game's
+  own button is, instead of letting a C.O.D. mail go and fail.
 - Send tab: a C.O.D. above the game's limit of 10,000 gold now stops at
   Send with that reason, as the game's own Send button does.
 - Mail tab: Delete on an opened mail that still holds something asks with
