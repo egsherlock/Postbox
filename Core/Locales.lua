@@ -1217,7 +1217,7 @@ L["TOOLTIP_COD_DESC"]          = "Nothing is handed over until the recipient pay
 -- place of the description: who turned it off, then the game's own reason
 -- (COD_DISABLED, the game's translation) quoted.
 L["TOOLTIP_COD_OFF"]           = "Blizzard has turned off C.O.D. for now."
-L["TOOLTIP_COD_GAME_SAYS"]     = "The game says: “%s”"
+L["TOOLTIP_COD_GAME_SAYS"]     = "The game says: \"%s\""
 
 -- Send guidance (Core/MailRules.lua picks which of these applies).
 --
