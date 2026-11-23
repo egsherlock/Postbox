@@ -1523,6 +1523,15 @@ local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 -- choices as a select's long list does (Scroller), its action rows kept in
 -- the foot under them; it opens at its top. Without it a menu grows to its
 -- rows, as every menu here always has.
+-- A menu whose choices change from one open to the next (the Send tab's
+-- kinds of materials): opts.caption(item) -> the words that choice's row
+-- shows now, asked of every choice each time the menu opens, before it is
+-- measured; nil puts the row away for this open, and the menu ends under
+-- the last row left showing (a row keeps its place, so the rows put away
+-- are the last ones). :Repaint() asks for the words again and leaves the
+-- rows that show as they are, so nothing moves under the pointer. The rows
+-- are made once, on the first open: a list that changes makes no frames.
+-- Not for a menu that scrolls.
 local ACTION = { H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
 
 function ACTION.Paint(row)
@@ -1621,6 +1630,7 @@ function Dropdown.Menu(owner, items, opts)
   local disabled = type(opts.disabled) == "function" and opts.disabled or nil
   local flipped = type(opts.flipped) == "function" and opts.flipped or nil
   local ascending = type(opts.ascending) == "function" and opts.ascending or nil
+  local caption = type(opts.caption) == "function" and opts.caption or nil
 
   -- A two-way row's words and its turn mark, as the choice stands now. A
   -- mark is turned while out of sight where `still` (the menu opening), so
@@ -1843,12 +1853,36 @@ function Dropdown.Menu(owner, items, opts)
     if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, owner) end
   end
 
+  -- Each choice's words as its owner writes them now (opts.caption). With
+  -- `fit`, as the menu opens: a choice with no words is put away, its row
+  -- emptied so it measures nothing, and the menu is as tall as the rows left
+  -- showing. Without it, the words alone.
+  local function Captions(fit)
+    local height = LIST_PADDING
+    for i = 1, #rows do
+      local row = rows[i]
+      local item = row.item
+      if item and item.id ~= nil and not item.heading and not item.action then
+        local words = caption(item)
+        if words then
+          if row.Text:GetText() ~= words then row.Text:SetText(words) end
+        elseif fit then
+          row.Text:SetText("")
+        end
+        if fit then row:SetShown(words ~= nil) end
+      end
+      if row:IsShown() then height = height + (row:GetHeight() or 0) end
+    end
+    if fit and not list._scroll then list:SetHeight(height + LIST_PADDING) end
+  end
+
   -- As wide as its widest caption in the face it wears now, and under the
   -- button, left edges lined up, as the selects' lists open (PlaceList);
   -- over it only where the room under it is too short for the menu and the
   -- room over it is longer (a button near the foot of the screen). Kept on
   -- the screen whatever else.
   local function Place()
+    if caption then Captions(true) end
     local widest, room = 0, 0
     for i = 1, #rows do
       local row = rows[i]
@@ -1928,7 +1962,9 @@ function Dropdown.Menu(owner, items, opts)
   end
 
   function menu:Repaint()
-    if list and list:IsShown() then PaintMarks() end
+    if not (list and list:IsShown()) then return end
+    if caption then Captions(false) end
+    PaintMarks()
   end
 
   return menu
