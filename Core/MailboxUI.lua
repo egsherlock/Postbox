@@ -3425,7 +3425,16 @@ do
       RL.fill:SetShown(on)
       RL.shade:SetShown(on)
       RL.head:SetShown(on)
-      RL.ramp:SetShown(on and not RL.thread and RL.c1 ~= nil)
+    end
+    -- The lit ramp lies over the fill's last units. Opaque, the two read as
+    -- one; while the line fades in or out the overlap shows through twice
+    -- and reads as a brighter stub behind the head (his note of 11-23). So
+    -- the ramp is drawn only at full strength and while the head is lit,
+    -- which is the only time it differs from the fill at all.
+    local ramp = on and not RL.thread and RL.c1 ~= nil and alpha >= 1 and RL.lit ~= false
+    if ramp ~= RL.rampOn then
+      RL.rampOn = ramp
+      RL.ramp:SetShown(ramp)
     end
     if not on then return end
     RL.fill:SetWidth(fw)
@@ -3441,6 +3450,7 @@ do
   -- Colours: the held colour as far as it has come, the glow's light over
   -- it, the head's light at `head`, the glow above and below at `flash`.
   function RL.Paint(head, flash)
+    RL.lit = head > 0
     local w = RL.warn
     local r, g, b = Mix(RL.r, RL.hr, w), Mix(RL.g, RL.hg, w), Mix(RL.b, RL.hb, w)
     if flash > 0 then
@@ -3630,7 +3640,7 @@ do
     RL.pace, RL.at, RL.k = 0, GetTime(), 16
     RL.born, RL.t, RL.e, RL.warn, RL.lasting = 0, 0, 0, 0, false
     RL.phase = "run"
-    RL.on, RL.alpha, RL.rw = nil, -1, -1
+    RL.on, RL.alpha, RL.rw, RL.rampOn = nil, -1, -1, nil
     RL.Paint(1, 0)
     RL.Draw(0)
     f:Show()
