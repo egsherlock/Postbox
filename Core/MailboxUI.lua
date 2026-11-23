@@ -139,12 +139,6 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
-  -- Return and Delete from a mail's row, with Alt (CollectTab, RV.Marks):
-  -- held, a player's mail that can go back shows its return arrow in the
-  -- read dot's place; a double-tap keeps them on. On: a feature nobody can
-  -- find switched off does not exist. Off for a player whose Alt is busy
-  -- (push-to-talk): Alt then does nothing on the list.
-  rowMarks        = true,
   -- Mail Memory (Core/MailMemory.lua): every character's last-seen mailbox,
   -- in its own window and in this one. On: the feature is capture-light and
   -- idle when unused, and a feature nobody can find switched off does not

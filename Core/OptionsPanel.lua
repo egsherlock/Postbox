@@ -8572,19 +8572,6 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetOption("previewOnClick") end,
     set = function(on) ns.MailboxUI.SetOption("previewOnClick", on) end,
   })
-  -- What a click on a row does with Alt (CollectTab, RV.Marks): read at
-  -- each press of Alt; switched off with the marks up, they go at once.
-  -- This page is the window's tallest, so the row makes every page 28
-  -- taller (744 to 772 in the stub's measure).
-  Rows.Check(col, {
-    title = L["OPT_ROW_MARKS_TITLE"], text = L["OPT_ROW_MARKS_DESC"],
-    get = function() return ns.MailboxUI.GetOption("rowMarks") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("rowMarks", on)
-      local collect = ns.CollectTab
-      if collect and collect.MarksChanged then collect.MarksChanged() end
-    end,
-  })
   -- Whether each list keeps its order between visits (on, the default) or
   -- opens newest first again after the mailbox closes (MailboxUI's
   -- LetGoListSort). Read at the close, so nothing to refresh now.

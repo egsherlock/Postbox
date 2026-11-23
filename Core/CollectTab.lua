@@ -4604,12 +4604,14 @@ do
     RV.TipWhy(row.tipKind)
 
     -- The gestures beyond the plain click, as the active mapping has them;
-    -- a finished mail has none (every button opens it). While Alt's marks
-    -- stand on the rows a click on a row does nothing, so none; otherwise,
-    -- on a mail that can go back, holding Alt shows its Return (RV.Marks).
-    if not row.mailDone and RV.Marks.goal ~= 1 then
+    -- a finished mail has none (every button opens it). While Alt is held
+    -- over the marks a click on a row does nothing, so none (kept on by a
+    -- double-tap, the row's clicks are today's and so are its hints); with
+    -- no marks up, on a mail that can go back, holding Alt shows its Return
+    -- (RV.Marks).
+    if not row.mailDone and not RV.Marks.Holding() then
       T.TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
-      if RV.Marks.Wanted() and RV.Offers(index, cod > 0, money > 0 or (tonumber(itemCount) or 0) > 0, wasRead) then
+      if RV.Marks.goal ~= 1 and RV.Offers(index, cod > 0, money > 0 or (tonumber(itemCount) or 0) > 0, wasRead) then
         T.TipNote(RawKey("HINT_ROW_HOLD_ALT"))
       end
     end
@@ -7442,9 +7444,9 @@ local function ActivateRow(row, button)
   -- under it (Core/Arrange.lua lays a cover of its own over the list), and
   -- nothing that reaches a row may collect or open a mail.
   if RV.Arranging(panel) then return end
-  -- While Return and Delete stand on the rows (Alt held or kept on), only
-  -- a mark acts: a near miss on the row or its icon collects nothing and
-  -- opens nothing (RV.Marks).
+  -- While Alt is held over Return and Delete on the rows, only a mark acts:
+  -- a near miss on the row or its icon collects nothing and opens nothing.
+  -- Kept on by a double-tap, the row's clicks are today's (RV.Marks).
   if RV.Marks.Blocks() then return end
 
   -- A modified left-click is a selection gesture, under either mapping and
@@ -8649,8 +8651,8 @@ end
 -- plate, AR.BuildLitKey) says so: one tap, a click on that key, or the
 -- list going away ends it (the mailbox closing, Send, History, the Done
 -- tab, another character's box, a mail opened to read, a run, the arrange
--- mode, the switch in Options). A return or delete, scrolling, searching
--- and sorting do not.
+-- mode). A return or delete, scrolling, searching and sorting do not.
+-- Always on: there is no switch for it.
 --
 -- Which mail gets which: the reading view's own rule (RV.Offers), so a row
 -- offers Return exactly where the reading view does. Return goes as the
@@ -8662,10 +8664,13 @@ end
 -- stands, so it moves with it; with the dot's column hidden it stands over
 -- the icon, which gives way while the marks show (or at the row's lead with
 -- no icon either); on a stuck mail it takes the warning triangle's place,
--- which comes back when the marks go. While the marks show, a click on a
--- row or its icon collects nothing and opens nothing: only a mark acts
--- (ActivateRow), and the arrow takes the pointer from the row's left edge
--- to just past the dot where the dot leads the row.
+-- which comes back when the marks go. While Alt is HELD, a click on a row
+-- or its icon collects nothing and opens nothing, nor selects, and the fan
+-- does not open: only a mark acts (ActivateRow, Fan.Allowed; f50 R01's
+-- near miss with Alt down). KEPT ON by a double-tap, a row's clicks are
+-- what they are today (f43 C01): only a click on a mark returns or
+-- deletes. The arrow takes the pointer from the row's left edge to just
+-- past the dot where the dot leads the row.
 --
 -- Built inside the house rules: the game's MODIFIER_STATE_CHANGED is
 -- registered only while the inbox's list is on screen at a mailbox, and
@@ -8732,13 +8737,6 @@ do
     Mail().ReturnMail(index, function(status) RV.Returned(panel, status) end, fingerprint, stamp, item)
   end
 
-  -- Whether the player wants the marks at all (Options, Mail tab).
-  function M.Wanted()
-    local UI = ns.MailboxUI
-    if not (UI and UI.GetOption) then return true end
-    return UI.GetOption("rowMarks") and true or false
-  end
-
   -- Whether Alt is down now; `fallback` where the client cannot say.
   function M.AltDown(fallback)
     if type(IsAltKeyDown) == "function" then return IsAltKeyDown() and true or false end
@@ -8748,7 +8746,7 @@ do
   -- panel -> whether its own inbox list is what is on screen, at a
   -- mailbox, with nothing else owning the rows.
   function M.Eligible(panel)
-    if not panel or panel._preview or not M.Wanted() then return false end
+    if not panel or panel._preview then return false end
     if not panel:IsVisible() then return false end
     local area = panel.MailListArea
     if not (area and area:IsShown()) then return false end
@@ -8844,11 +8842,17 @@ do
     if M.held then M.used = true end
   end
 
-  -- Whether a click on a row is held back: the marks are showing.
+  -- Whether Alt is held over the marks now (kept on alone is not).
+  function M.Holding()
+    return M.goal == 1 and M.held
+  end
+
+  -- Whether a click on a row is held back: Alt is held over the marks
+  -- (read again, so a lost release lets go first). Kept on, it is not.
   function M.Blocks()
-    if M.goal ~= 1 then return false end
+    if not M.Holding() then return false end
     M.Check()
-    return M.goal == 1
+    return M.Holding()
   end
 
   -- The marks toward on (true) or off; `instant` with no fade (the list
@@ -9234,7 +9238,7 @@ do
     self.hover = true
     ns.Arrange.PaintLit(self, true)
     T.TipBegin(self, "ANCHOR_RIGHT")
-    T.TipTitle(L()["OPT_ROW_MARKS_TITLE"])
+    T.TipTitle(L()["MARKS_KEY_TITLE"])
     T.TipLine(L()["MARKS_KEY_TIP"])
     T.TipHint(L()["MARKS_KEY_HINT"])
     GameTooltip:Show()
@@ -9251,17 +9255,6 @@ do
     self.hover = nil
     M.latched = false
     M.Aim(M.held)
-  end
-
-  -- The Options switch moved: the marks follow at once.
-  function CT.MarksChanged()
-    local panel = M.panel
-    if not panel then
-      local UI = ns.MailboxUI
-      local frame = UI and UI._frame
-      panel = frame and frame.Tabs and frame.Tabs.collect
-    end
-    if panel then M.Sync(panel) end
   end
 end
 
@@ -18294,8 +18287,9 @@ do
     local panel = row.panel
     if not panel or panel._preview or Run.active then return false end
     if RV.Arranging(panel) then return false end
-    -- Nor while Alt's marks stand on the rows: only a mark acts then.
-    if RV.Marks.goal == 1 then return false end
+    -- Nor while Alt is held over the marks: only a mark acts then. Kept on
+    -- by a double-tap, the fan is as it is today.
+    if RV.Marks.Holding() then return false end
     local detail = panel.Detail
     if detail and detail:IsShown() then return false end
     return true
