@@ -2175,6 +2175,40 @@ do
     return "Inbox senders: " .. List(out, "none")
   end
 
+  -- Who the inbox's mail is from, as "All mail takes" tells it
+  -- (MailService's Mail.SenderKind), while a mailbox is open: how many of
+  -- each kind, and for the first few that are not the auction house's or
+  -- the player's own characters', what the client says of each. No names:
+  -- what the mail holds (g gold, i items, c a C.O.D.; - nothing), what
+  -- becomes of it when it expires, whether it can be answered, whether it
+  -- is a game master's or was sent back, and whether it names a sender.
+  function NameProbe.Senders()
+    local UI, M = ns.MailboxUI, ns.MailService
+    local open = UI and type(UI.IsMailboxOpen) == "function" and UI.IsMailboxOpen()
+    if not open then return "Sender kinds: no mailbox open" end
+    if not (M and type(M.SenderKind) == "function") then return "Sender kinds: n/a" end
+    local shown = tonumber((Call(1, GetInboxNumItems))) or 0
+    local count, out = { ah = 0, game = 0, own = 0, players = 0 }, {}
+    for i = 1, shown do
+      local kind = Call(1, M.SenderKind, i)
+      if count[kind] then count[kind] = count[kind] + 1 end
+      if (kind == "game" or kind == "players") and #out < 2 * SHOW then
+        -- ok, then the header: sender 4, money 6, C.O.D. 7, items 9, sent
+        -- back 11, can reply 13, game master 14.
+        local _, h = Pack(pcall(GetInboxHeaderInfo, i))
+        if h[1] then
+          local holds = ((tonumber(h[6]) or 0) > 0 and "g" or "") .. ((tonumber(h[9]) or 0) > 0 and "i" or "")
+            .. ((tonumber(h[7]) or 0) > 0 and "c" or "")
+          out[#out + 1] = string.format("%s (holds %s; expires %s; reply %s; GM %s; sent back %s; sender %s)", kind,
+            holds ~= "" and holds or "-", tostring((Call(1, M.ExpiryFate, i))), YesNo(h[13]), YesNo(h[14]),
+            YesNo(h[11]), h[4] ~= nil and "yes" or "none")
+        end
+      end
+    end
+    return string.format("Sender kinds: ah %d, game %d, own %d, players %d | %s", count.ah, count.game,
+      count.own, count.players, List(out, "none to tell"))
+  end
+
   function NameProbe.Friends()
     local FL = C_FriendList
     if type(FL) ~= "table" then return "Friends: n/a" end
@@ -2244,7 +2278,8 @@ do
     return "Battle.net: " .. List(out, "none in WoW")
   end
 
-  local PARTS = { "Client", "Rules", "Realms", "Me", "Postbox", "Inbox", "Friends", "Guild", "AutoComplete", "BattleNet" }
+  local PARTS = { "Client", "Rules", "Realms", "Me", "Postbox", "Inbox", "Senders", "Friends", "Guild", "AutoComplete",
+    "BattleNet" }
 
   -- Each line, or the part's name and "error" where one fails: the report
   -- goes on either way.
