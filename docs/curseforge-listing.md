@@ -64,7 +64,7 @@
 <li><strong><span style="color:#e5e5e5">The last 7 days:</span></strong> gold earned and spent by mail, for all your characters or the one you're on (Options &gt; General).</li>
 <li><strong><span style="color:#e5e5e5">A search in the options</span></strong> that finds any setting and takes you to it.</li>
 <li><strong><span style="color:#e5e5e5">A sold auction</span></strong> wears the icon of the item that sold.</li>
-<li><strong><span style="color:#e5e5e5">All mail takes:</span></strong> All mail can leave other players' mail in your mailbox for you to take yourself (Options &gt; Mail tab &gt; Collecting).</li>
+<li><strong><span style="color:#e5e5e5">All mail takes:</span></strong> tick the kinds of mail All mail takes (auction house, the game, your characters, other players); what you untick stays in your mailbox for you to take yourself (Options &gt; Mail tab &gt; Collecting).</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Ready for WoW Forever</h2>

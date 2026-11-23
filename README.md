@@ -95,12 +95,14 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   to keep them on (a lit Alt key says so); one tap ends it. A run of three mails
   or more draws a thin line under the title bar as it goes; if it stops
   early, the line stays where it stopped, in the color of the words beside it.
-- **All mail takes** (Options > Mail tab > Collecting) is **Every mail**
-  unless you choose **Auction house, game and my characters**. All mail
-  then leaves mail from other players in your mailbox, unread, for you to
-  take yourself, and the title bar says how many it left. Your characters
-  are the ones you have logged into with Postbox installed. Collect shown,
-  the other buttons and a click on a mail take what they always do.
+- **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
+  mail All mail takes: **Auction house**, **The game**, **My characters**
+  and **Other players**, all four by default (**Every mail**). What you
+  untick stays in your mailbox, unread, for you to take yourself, and the
+  title bar says how many it left; one kind always stays ticked. Your
+  characters are the ones you have logged into with Postbox installed.
+  Collect shown, the other buttons and a click on a mail take what they
+  always do.
 - **Sort and filter:** the button at the end of the search box sorts by
   date, time left, gold or sender (click again to reverse) and can show only
   unread mail, mail with gold or mail with items, several at once. Each
@@ -250,7 +252,7 @@ Most mail, Name or Last played.
   until the next mailbox visit lists the mail itself.
 - **One count everywhere:** Mail Memory, the character list, the minimap
   icon and its tooltip give the same number for a mailbox, the mail the
-  server holds beyond what the mailbox lists included.
+  game has not listed yet included.
 - **Warnings** name any character with mail holding gold or items (or a
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
@@ -366,8 +368,9 @@ icon steps aside.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first: **Waiting to collect**
-  with its senders, **Held back by the server** for the part of it the
-  mailbox has not listed yet, and **Last seen**. Then each of your other
+  with its senders, **Not listed by the game yet** for the part of it
+  past the 100 mails the game lists at a time, and **Last seen**. Then
+  each of your other
   characters with mail. Click for Mail Memory, right-click for the options.
 - Under EllesmereUI's minimap it restyles *their* mail button in place, and
   EllesmereUI keeps its size, place and its own Hide Mail setting.

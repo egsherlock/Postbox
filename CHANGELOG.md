@@ -4,12 +4,13 @@
 
 ### New
 
-- **All mail can leave other players' mail for you** (Options > Mail tab >
-  Collecting > All mail takes): Every mail, as before, or Auction house,
-  game and my characters. With the second, mail from anyone else stays in
-  your mailbox, unread, for you to take yourself, and the title bar says
-  how many were left. Only All mail follows the choice: Collect shown, the
-  other buttons and a click on a mail take what they always did.
+- **All mail can leave the kinds of mail you untick** (Options > Mail tab >
+  Collecting > All mail takes): its list ticks Auction house, The game, My
+  characters and Other players, all four by default (Every mail). What you
+  untick stays in your mailbox, unread, for you to take yourself, and the
+  title bar says how many were left. Only All mail follows the choice:
+  Collect shown, the other buttons and a click on a mail take what they
+  always did.
 - **Mail tab: a progress line while All mail works.** A run of three
   mails or more draws a thin line in your accent under the title bar (a
   gold thread in the Blizzard look), filling as each mail comes out. If
@@ -42,14 +43,14 @@
 
 - **One mail count everywhere:** Mail Memory, the minimap icon, its
   tooltip and the character list (Mail tab > Inbox) give the same number
-  for a mailbox. It includes the mail the server holds beyond what the
-  mailbox lists, which only Mail Memory used to count.
+  for a mailbox. It includes the mail the game has not listed yet, which
+  only Mail Memory used to count.
 - **Minimap icon: the count is always the plain number** (Count on icon).
   A long one gets smaller to fit, where it could read 99+, and at a
   mailbox it follows as you collect.
 - **Minimap icon's tooltip:** Waiting to collect is counted as everywhere
-  else, and a new line under its senders, Held back by the server, says
-  how much of it the mailbox has not listed yet.
+  else, and a new line under its senders, Not listed by the game yet,
+  counts the mail past the 100 the game lists at a time.
 
 ### WoW Forever
 
