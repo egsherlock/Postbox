@@ -14266,10 +14266,14 @@ local function FinishRun(left, stopReason)
         local full = Tinted("warning", format(L()["STATUS_BAGS_FULL"], waiting))
         problem = problem and (problem .. JOIN .. full) or full
       end
-      -- Stopped by "Keep bag slots free": the bags state's wording, for a
-      -- stop the player asked for. Not a state -- the next run goes as far.
+      -- Stopped by "Keep bag slots free": the run did what was asked, so
+      -- "Kept free: 6 slots" is said in the line's own colour, as the mail
+      -- left for who sent it is (below), and shaped "word: what" so a
+      -- narrow line keeps "Kept free" (MailboxUI, 3a). Not a state -- the
+      -- next run goes as far. Last, where it is what stayed behind and why;
+      -- the tooltip says how many mails wait and where the setting is.
       if stopReason == "keep" then
-        local kept = Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree))
+        local kept = ns.Plural("STATUS_KEPT_FREE", keepFree)
         problem = problem and (problem .. JOIN .. kept) or kept
       end
       -- The mail left for who sent it is said after what came out and
@@ -14313,14 +14317,17 @@ local function FinishRun(left, stopReason)
     if stopReason == "bags" then
       ns.Print(ns.Plural("MSG_COLLECT_STOPPED_BAGS", left))
     elseif stopReason == "keep" then
-      ns.Print(ns.Plural("MSG_COLLECT_STOPPED_KEEP", left, ns.Plural("COUNT_SLOTS", keepFree)))
+      -- The chat's sentence, and the words' tooltip under the whole line.
+      local said = ns.Plural("MSG_COLLECT_STOPPED_KEEP", left, ns.Plural("COUNT_SLOTS", keepFree))
+      ns.Print(said)
+      if UI and type(UI.TagStatusKept) == "function" then UI.TagStatusKept(said) end
     end
   end
 
   -- The line under the title bar ends with the words (MailboxUI, 3b): a run
   -- that took all it queued runs out to the end and glows; one whose words
-  -- name something holds a beat where it stopped, in the colour they wear,
-  -- then fades.
+  -- name something holds a beat where it stopped, in the colour they wear
+  -- (its own for the kept slots alone, which wear none), then fades.
   -- The places it passed: all but those it was stopped short of; a place
   -- given up on was passed.
   local UI = ns.MailboxUI
@@ -14328,8 +14335,10 @@ local function FinishRun(left, stopReason)
     local passed = queued - left + dropped
     if left > 0 and stopReason ~= "bags" and stopReason ~= "keep" then
       UI.RunLineEnd(passed, queued, true, "negative", true)
-    elseif stuck > 0 or waiting > 0 or stopReason == "keep" then
+    elseif stuck > 0 or waiting > 0 then
       UI.RunLineEnd(passed, queued, true, "warning", stopReason == "keep")
+    elseif stopReason == "keep" then
+      UI.RunLineEnd(passed, queued, true, nil, true)
     else
       UI.RunLineEnd(passed, queued)
     end
@@ -14704,9 +14713,14 @@ local function StartCategoryRun(panel, category)
       if fits <= 0 and usable < free then
         -- Nothing fits above the slots kept free, and there are free slots:
         -- no dialog about bag space the player can see is there, just the
-        -- run's own stop, before anything is marked read.
-        StatusOutcome(Th().Colorize("warning", ns.Plural("STATUS_KEPT_FREE", keep), "strip"))
-        ns.Print(ns.Plural("MSG_COLLECT_STOPPED_KEEP", #queue, ns.Plural("COUNT_SLOTS", keep)))
+        -- run's own stop, before anything is marked read. Said as a run
+        -- stopped by it says it ("Kept free: 6 slots", in the line's own
+        -- colour), with nothing collected before it and no run's line.
+        StatusOutcome(ns.Plural("STATUS_KEPT_FREE", keep))
+        local said = ns.Plural("MSG_COLLECT_STOPPED_KEEP", #queue, ns.Plural("COUNT_SLOTS", keep))
+        ns.Print(said)
+        local UI = ns.MailboxUI
+        if UI and type(UI.TagStatusKept) == "function" then UI.TagStatusKept(said) end
         RequestRefresh(panel)
         return
       end

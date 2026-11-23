@@ -121,8 +121,9 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   only carry so many of gives you the largest first.
 - **Bags are checked before anything opens**, with an offer to collect what
   fits. **Keep bag slots free** (1 to 12) leaves room for loot; gold still
-  comes out. If the bags fill anyway, the run stops and the title bar says
-  how many mails are left. Nothing is collected behind your back.
+  comes out, and the title bar says `Kept free: 6 slots` when it stopped a
+  run. If the bags fill anyway, the run stops and the title bar says how
+  many mails are left. Nothing is collected behind your back.
 - **Stuck** means one mail's own problem: a small triangle, the game's own
   words, and `Stuck: N` in the title bar, which filters the list to those
   mails. It clears itself once the mail can come out (for example once you

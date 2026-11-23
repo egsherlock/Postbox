@@ -41,6 +41,10 @@
 
 - **Mail tab: the Inbox button says how many bag slots** the listed mail
   needs, as "Inbox (14) · 8 slots", where it fits.
+- **Mail tab: "Kept free: 6 slots" in the title bar when Keep bag slots
+  free stops a run**, in the title bar's own gray after what was
+  collected; the narrowest window still shows "Kept free". Point at the
+  words for how many mails wait and where the setting is.
 
 - **One mail count everywhere:** Mail Memory, the minimap icon, its
   tooltip and the character list (Mail tab > Inbox) give the same number

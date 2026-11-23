@@ -2651,6 +2651,10 @@ local status = {
   -- have. Read only while outcomeKind is set (UI.TagStatusOutcome).
   outcomeKind = nil, outcomeAfter = nil,
   outcomeKind2 = nil, outcomeAfter2 = nil, outcomeAfterBoth = nil,
+  -- The outcome names slots "Keep bag slots free" kept: the chat's sentence
+  -- for that stop, which the words' tooltip says under the whole line, with
+  -- where the setting is (UI.TagStatusKept). nil for any other outcome.
+  kept = nil,
   summary  = nil,
   -- The mails sent this visit (UI.NoteSent), and what the line says of
   -- them: after whatever else it says (sentTail), or on its own
@@ -2683,6 +2687,7 @@ local function AdoptForeignText()
   status.outcome = (shown ~= "" and shown) or nil
   status.outcomeTone = nil
   status.outcomeKind = nil
+  status.kept = nil
 end
 
 -------------------------------------------------------------
@@ -2714,9 +2719,9 @@ end
 --      "Sample mail." (". ", or the CJK full stop).
 --   4. One part left with no word to keep and wider than the room: the
 --      client cuts it at its end, as before. Measured in seven locales, the
---      one that can be is "Stopped to keep N bag slots free", near the
---      narrowest width in French and German (and in English and Spanish at
---      the larger text sizes).
+--      one that could be was "Stopped to keep N bag slots free", near the
+--      narrowest width in French and German; it is "Kept free: N slots"
+--      now, whose word stays (f54 B01, 11-23).
 --
 -- The parts are the line's own, joined by " — " (a run's outcome) and
 -- " · " (what was sent); a part's colour is kept on its word. The tooltip
@@ -2979,6 +2984,7 @@ function UI.SetStatusActivity(text, tone)
     -- A new run supersedes the previous run's verdict, and the line held
     -- under it goes with it (3b).
     status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+    status.kept = nil
     UI.RunLineDrop()
   else
     status.activity, status.activityTone = nil, nil
@@ -2992,7 +2998,7 @@ function UI.SetStatusOutcome(text, tone)
   AdoptForeignText()
   -- An outcome is a report on the activity it replaces, so the activity ends.
   status.activity, status.activityTone = nil, nil
-  status.outcomeKind = nil
+  status.outcomeKind, status.kept = nil, nil
   if type(text) == "string" and text ~= "" then
     status.outcome, status.outcomeTone = text, tone
   else
@@ -3015,6 +3021,16 @@ function UI.TagStatusOutcome(kind, after, kind2, after2, both)
   if not status.outcome then return end
   status.outcomeKind, status.outcomeAfter = kind, after
   status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = kind2, after2, both
+end
+
+-- The outcome just set names slots "Keep bag slots free" kept ("Kept free: 6
+-- slots"): `said` is the sentence the chat printed for that stop ("9 mails
+-- are still in your mailbox: ..."), which the words' tooltip says under the
+-- whole line, with where the setting is (section 3's hover). Called right
+-- after SetStatusOutcome; a later outcome, activity or clear forgets it.
+function UI.TagStatusKept(said)
+  if not status.outcome or type(said) ~= "string" or said == "" then return end
+  status.kept = said
 end
 
 -- The outcome about to be written holds a note (section 3a, rule 0): `text`
@@ -3062,7 +3078,7 @@ do
     status.outcomeAfterBoth = Swap(status.outcomeAfterBoth, old, new)
     if not status.outcome then
       status.outcomeTone, status.outcomeKind = nil, nil
-      status.outcomeKind2 = nil
+      status.outcomeKind2, status.kept = nil, nil
       UI.RunLineDrop()
     end
     RenderStatus()
@@ -3113,6 +3129,7 @@ end
 function UI.ClearStatus()
   status.activity, status.activityTone = nil, nil
   status.outcome, status.outcomeTone, status.outcomeKind = nil, nil, nil
+  status.kept = nil
   status.sent, status.sentTail, status.sentAlone = 0, nil, nil
   -- The run's line too, at once, whatever it was doing (3b).
   UI.RunLineDrop(true)
@@ -3275,8 +3292,9 @@ end
 -- short with nothing to say: it fades where it stands (0.1 s, then half a
 -- second). A run whose words name something (bags full, slots kept free,
 -- stuck mail, incomplete, the mailbox closed): it takes the colour those
--- words wear where it stopped -- its own where they wear none; the game's
--- red in the game's look where they wear a tone -- holds it a beat (1.5 s) and fades with the same half second (f54
+-- words wear where it stopped -- its own where they wear none, as "Kept
+-- free: 6 slots" does; the game's red in the game's look where they wear a
+-- tone -- holds it a beat (1.5 s) and fades with the same half second (f54
 -- A01, 11-23). The words stay (section 3); only the line goes. It goes
 -- sooner with its words, if they go first (another run or outcome, the
 -- parts that come down by themselves, UI.UpdateStatusSummary), and at once
@@ -3705,7 +3723,8 @@ do
   -- was told last). `said`: its words name something, and the line holds
   -- where it stopped for a beat, then fades: in `tone`, the palette token
   -- those words wear (the game's red in the game's look), or in its own
-  -- colour where they wear none (nil). `lasting`: those words never come down by themselves
+  -- colour where they wear none (nil: "Kept free: 6 slots", in the status
+  -- line's own gray). `lasting`: those words never come down by themselves
   -- (incomplete, slots kept free, the mailbox closed), so nothing but the
   -- beat ends the line before another run or outcome. Otherwise a run that
   -- passed every place runs out to the end and glows, and one that did not
@@ -5394,10 +5413,11 @@ local function BuildFrame()
       local short = text == status.rendered and status.full ~= text
       if short then text = status.full end
 
-      -- Three things worth a tooltip: a line said in part or cut (the whole
+      -- Four things worth a tooltip: a line said in part or cut (the whole
       -- text), full bags (what waits for room, and what brings it back),
-      -- and a stuck count (WHICH mails, one line each, in the same words
-      -- the row tooltips use). The details come from the registry's
+      -- a stuck count (WHICH mails, one line each, in the same words the
+      -- row tooltips use), and slots kept free (how many mails wait, and
+      -- where the setting is). The details come from the registry's
       -- validated read, so this list and the row triangles can never
       -- disagree.
       local mail = ns.MailService
@@ -5405,7 +5425,11 @@ local function BuildFrame()
         and mail.StuckDetails() or nil
       local full = mail and type(mail.BagsFull) == "function" and mail.BagsFull()
       local truncated = short or (label.IsTruncated and label:IsTruncated())
-      if not details and not full and not truncated then return end
+      -- The kept slots' sentence only under the outcome it was said for:
+      -- Test mail and the preview write their own line over it.
+      local kept = status.kept
+      if kept and (UI._state.preview or UI.IsTestMail()) then kept = nil end
+      if not details and not full and not truncated and not kept then return end
 
       -- The house's (Theme section 5b): what waits for room muted, as All
       -- mail's tooltip says it; each stuck mail's reason in the warning
@@ -5427,6 +5451,14 @@ local function BuildFrame()
             theme.TipLine(theme.TipTone("warning", LF("STUCK_LINE", d.reason)))
           end
         end
+      end
+      -- The kept slots: the chat's sentence, then where the setting is, a
+      -- footnote under it (Theme.TipNote: muted, a size under).
+      if kept then
+        theme.TipLine(kept)
+        theme.TipNote(L("STATUS_KEPT_FREE_WHERE"))
+      end
+      if details then
         local collect = ns.CollectTab
         local on = collect and collect.StuckFilterOn and collect.StuckFilterOn(CollectPanel())
         theme.TipHint(L(on and "STUCK_FILTER_OFF_TIP" or "STUCK_FILTER_ON_TIP"))
