@@ -3224,14 +3224,26 @@ do
     return math.ceil(n / stack)
   end
 
+  -- A name as the game wrote it, bare: no color, no texture or atlas (a
+  -- crafting reagent's name carries its quality's atlas in some of the
+  -- game's strings and not in others, "Light's Potential |A:...|a"), no
+  -- space at either end. Asked only when two names are compared.
+  local function Bare(name)
+    if type(name) ~= "string" then return nil end
+    name = name:gsub("|A:.-|a", ""):gsub("|T.-|t", ""):gsub("|c[nN].-:", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    name = name:match("^%s*(.-)%s*$")
+    if name == "" then return nil end
+    return name
+  end
+
   -- Whether an entry and a signal can be one auction's, by their items:
-  -- the ids where both have one, else the names where both have one; with
-  -- nothing to compare, nothing denies it.
+  -- the ids where both have one, else the names, bare, where both have
+  -- one; with nothing to compare, nothing denies it.
   local function SameItem(e, itemID, name)
     local id = tonumber(e.i)
     if itemID and id then return itemID == id end
     local item = A.Name(e)
-    if name and item then return name == item end
+    if name and item then return Bare(name) == Bare(item) end
     return true
   end
 
@@ -3456,8 +3468,12 @@ do
 
   -- The auction house's notice that an auction was won (by its id, for an
   -- item's) or a commodity bought (how many).
+  -- A name that is a whole link gives its item's id and the name in it.
   function A.Won(name, auctionID, quantity)
-    return Note("bought", SRC.notice, Num(auctionID), nil, Text(name), Num(quantity))
+    name = Text(name)
+    local itemID = name and tonumber((name:match("|Hitem:(%d+)"))) or nil
+    if itemID then name = LinkName(name) end
+    return Note("bought", SRC.notice, Num(auctionID), itemID, name, Num(quantity))
   end
 
   ---------------------------------------------------------
@@ -8104,8 +8120,13 @@ function MM.Diagnose()
     local watch = WatchFor(realm, name, false)
     local pending = watch and type(watch.pending) == "table" and watch.pending or nil
     local last = pending and pending[#pending]
-    parts[#parts + 1] = string.format("auctions noted %d%s%s", LivePendingCount(watch, time()),
+    -- And the one before it, with how long before: two entries for one
+    -- purchase show here as the same kind seconds apart.
+    local prior = pending and pending[#pending - 1]
+    parts[#parts + 1] = string.format("auctions noted %d%s%s%s", LivePendingCount(watch, time()),
       last and string.format(" (last %s, signals %s, id %s)", tostring(last.k), tostring(last.s), tostring(last.a)) or "",
+      (last and prior) and string.format(" (before it %s, signals %s, %ds earlier)", tostring(prior.k), tostring(prior.s),
+        (tonumber(last.t) or 0) - (tonumber(prior.t) or 0)) or "",
       (watch and type(watch.unlisted) == "table") and string.format(", %d known unlisted", #watch.unlisted) or "")
   end
   -- The two structural tells: a stranded live capture means a close signal
