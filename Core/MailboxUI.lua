@@ -1782,6 +1782,59 @@ function UI.SetKeepFreeSlots(n)
   if profile then profile.keepFreeSlots = (n > 0) and n or nil end
 end
 
+-- What All mail takes, by who sent it (Options > Mail tab, "All mail
+-- takes"): nil, the default, for every mail, or the sender kinds it takes
+-- as a set (kind -> true; MailService's Mail.SenderKind tells them apart),
+-- mail of any other kind staying in the box for the player's own hand.
+-- Stored as the kinds taken, in UI.SENDER_KINDS' order with commas between
+-- ("ah,game,own"), and only when that is not every kind. So a profile that
+-- is reset takes every mail again, and a kind a later version adds is one
+-- no stored choice names: it is left until the player says otherwise. A
+-- stored word that is not a kind is passed over. The options' row is two
+-- choices today; a list of ticks would hand over the same set.
+-- The set is made once per stored value and is the caller's to read, never
+-- to write: the list walk asks on every refresh and gets the same table, or
+-- nil.
+UI.SENDER_KINDS = { "ah", "game", "own", "players" }
+do
+  local madeFrom, made = nil, nil
+  function UI.GetAllMailTakes()
+    local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.allMailTakes")
+    if type(stored) ~= "string" then return nil end
+    if stored == madeFrom then return made end
+    local kinds = UI.SENDER_KINDS
+    local set, n = {}, 0
+    for word in stored:gmatch("[^,%s]+") do
+      for i = 1, #kinds do
+        if kinds[i] == word and not set[word] then
+          set[word] = true
+          n = n + 1
+        end
+      end
+    end
+    madeFrom, made = stored, (n < #kinds) and set or nil
+    return made
+  end
+  -- takes: the kinds as a set (kind -> true), or nil for every mail.
+  function UI.SetAllMailTakes(takes)
+    local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
+    if not profile then return end
+    local text = nil
+    if type(takes) == "table" then
+      local kinds, parts = UI.SENDER_KINDS, {}
+      for i = 1, #kinds do
+        if takes[kinds[i]] then parts[#parts + 1] = kinds[i] end
+      end
+      if #parts < #kinds then text = table.concat(parts, ",") end
+    end
+    profile.allMailTakes = text
+    -- All mail's count on the Mail tab is of what it takes: counted again
+    -- where a mailbox is open (the list's own coalesced refresh).
+    local collect = ns.CollectTab
+    if collect and type(collect.RequestRefresh) == "function" then collect.RequestRefresh(CollectPanel()) end
+  end
+end
+
 -- Performance recording for the bug report (Postbox.lua, 5b): "off" (the
 -- default), "on" or "detail". Saved, because the open a report is wanted for
 -- is often the first after a /reload. This pair only reads and stores: the
@@ -2641,6 +2694,12 @@ end
 -- piece at a time, each candidate measured on the label itself, in the face
 -- it is drawn in, and never cut inside a part:
 --
+--   0. A note with a part after it goes whole, first. A note is a part the
+--      line names as one (UI.SetStatusNote): what a run left for who sent
+--      it, "3 left from other players", said before what went wrong. The
+--      line is then what it was before there were notes ("Collected: 19 —
+--      Stuck: 1") and gives way from there as below. A note the line ends
+--      on is a part like any other: it is what stayed behind.
 --   1. A part that says "word: what" -- a count ("Bags full: 1 left",
 --      "Stuck: 2", "Collected: 21"), or what happened ("Cut short: the
 --      mailbox closed") -- keeps its word and drops the rest, the line's
@@ -2679,6 +2738,8 @@ local StatusFit = {
   -- The line in parts, the join before each, each part's word and the parts
   -- as a candidate has them: m of each, kept from the last line built.
   parts = {}, seps = {}, words = {}, cur = {}, buf = {}, m = 0,
+  -- The part that is a note (rule 0), as written into the line, or nil.
+  note = nil,
 }
 
 do
@@ -2732,6 +2793,17 @@ do
   local function Build()
     SF.built = true
     local text, parts, seps = SF.text, SF.parts, SF.seps
+    -- 0. The note, where it is a whole part with another after it: the
+    -- line without it, and the rest is made from that.
+    local note = SF.note
+    if note then
+      local at, to = text:find(note, 1, true)
+      if at and text:sub(to + 1, to + #JOIN) == JOIN
+          and (at == 1 or (at > #JOIN and text:sub(at - #JOIN, at - 1) == JOIN)) then
+        text = text:sub(1, at - 1) .. text:sub(to + #JOIN + 1)
+        Add(text)
+      end
+    end
     local count, pos = 0, 1
     while true do
       local j = text:find(JOIN, pos, true)
@@ -2937,6 +3009,58 @@ function UI.TagStatusOutcome(kind, after, kind2, after2, both)
   if not status.outcome then return end
   status.outcomeKind, status.outcomeAfter = kind, after
   status.outcomeKind2, status.outcomeAfter2, status.outcomeAfterBoth = kind2, after2, both
+end
+
+-- The outcome about to be written holds a note (section 3a, rule 0): `text`
+-- is that part as it is written into the line, nil for none. Only a change
+-- is acted on: the line's shorter forms are then made again when next
+-- wanted. A run with nothing to note leaves everything as it was.
+function UI.SetStatusNote(text)
+  if type(text) ~= "string" or text == "" then text = nil end
+  if StatusFit.note == text then return end
+  StatusFit.note, StatusFit.text = text, nil
+end
+
+-- One part of the outcome says something else now, or is no longer so:
+-- `old`, the part exactly as it was written into the line, becomes `new`,
+-- or with nil goes with its dash. In the line and in what the line reads
+-- once a tagged part has come down (above), so the two never disagree. For
+-- a part that follows the inbox without being a state of its own: a run's
+-- "3 left from other players", counted down as the player takes them
+-- (CollectTab's RV.OthersFollow). An outcome that does not hold the part is
+-- left as it is, and the answer is false.
+do
+  local JOIN = " \226\128\148 "
+  local function Swap(text, old, new)
+    if type(text) ~= "string" then return text end
+    local at, to = text:find(old, 1, true)
+    if not at then return text end
+    if new then return text:sub(1, at - 1) .. new .. text:sub(to + 1) end
+    -- With the dash after it, or the one before it where it ends the line.
+    if text:sub(to + 1, to + #JOIN) == JOIN then
+      to = to + #JOIN
+    elseif at > #JOIN and text:sub(at - #JOIN, at - 1) == JOIN then
+      at = at - #JOIN
+    end
+    text = text:sub(1, at - 1) .. text:sub(to + 1)
+    return text ~= "" and text or nil
+  end
+  function UI.SwapStatusPart(old, new)
+    if type(old) ~= "string" or old == "" or not status.outcome then return false end
+    if not status.outcome:find(old, 1, true) then return false end
+    -- The note, where this part is it, is the part as it now reads.
+    if StatusFit.note == old then StatusFit.note = new end
+    status.outcome = Swap(status.outcome, old, new)
+    status.outcomeAfter = Swap(status.outcomeAfter, old, new)
+    status.outcomeAfter2 = Swap(status.outcomeAfter2, old, new)
+    status.outcomeAfterBoth = Swap(status.outcomeAfterBoth, old, new)
+    if not status.outcome then
+      status.outcomeTone, status.outcomeKind = nil, nil
+      status.outcomeKind2 = nil
+    end
+    RenderStatus()
+    return true
+  end
 end
 
 -- What the outcome reports as `kind` is no longer so: its part comes down,
@@ -5456,6 +5580,19 @@ function UI.DiagnoseOptions()
   Named("characterOrder", UI.GetCharacterOrder(), "warnings")
   Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   Named("keepFree", UI.GetKeepFreeSlots(), "0")
+  -- All mail takes: the kinds as stored, "all" for every mail.
+  do
+    local takes = UI.GetAllMailTakes()
+    local said = "all"
+    if takes then
+      said = ""
+      for i = 1, #UI.SENDER_KINDS do
+        if takes[UI.SENDER_KINDS[i]] then said = said .. (said ~= "" and "+" or "") .. UI.SENDER_KINDS[i] end
+      end
+      if said == "" then said = "none" end
+    end
+    Named("allMailTakes", said, "all")
+  end
   -- Each arrangement's own choices: the one-line rows' under the names
   -- they had while they were everyone's.
   Named("gold", UI.GetGoldMode("rows"), "both")

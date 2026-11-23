@@ -380,6 +380,9 @@ end
 --   skippedCOD  matching mails held back because they are C.O.D.
 --   heldBack    matching mails left for now (Mail.HeldBack): stuck, or
 --               holding items while the bags are full
+--   left        mails All mail leaves where they are because of who sent
+--               them ("All mail takes", Mail.SenderKind): 0 for every other
+--               queue, and for All mail while it takes every mail
 -- The player's own characters, as recipient keys: Postbox.lua's census,
 -- account-wide, every realm. Read-only to every caller. Kept between calls
 -- -- it was rebuilt on every list refresh, ten string operations per alt --
@@ -470,6 +473,61 @@ function Mail.SenderSet(category)
   return type(set) == "table" and set or NO_SENDERS
 end
 
+-------------------------------------------------------------
+-- Who a mail is from, as one of four kinds
+--
+-- "All mail takes" (Options, Mail tab) lets All mail leave the mail of some
+-- senders in the box. The kinds, and what tells them apart:
+--
+--   own      one of the player's own characters: the sender's key is in the
+--            census (Mail.OwnCharacterKeys). Asked first, so their mail is
+--            theirs whatever else is true of it.
+--   players  another player. A mail holding gold or items says so itself:
+--            the client knows whether the server would send it back to its
+--            sender when it expires (Mail.ExpiryFate, "back"), which it does
+--            for a player's mail and for no other. A subject or a name is
+--            never taken for it, so a mail titled like an auction's is
+--            still a player's.
+--   ah       the auction house: a mail the server would delete ("gone")
+--            that is classified as an auction's or signed by the house.
+--   game     the game's own mail with something in it: any other mail the
+--            server would delete rather than send back (the postmaster, a
+--            quest's or a holiday's reward, a crafting order).
+--
+-- What cannot be told reads as a player's, so that it is left: a mail
+-- holding nothing (a letter from one of the game's characters reads like a
+-- player's), unless the auction house signed it or it carries an invoice;
+-- a mail that was sent back (it would be deleted now, as the game's own
+-- is, and is from whoever returned it); a mail from a game master, which
+-- Blizzard's own Open All leaves for the player's hand too; and any mail
+-- on a client that cannot say what becomes of it. One header read and at
+-- most one question to the client; nothing is built.
+-------------------------------------------------------------
+
+-- index [, kind [, keys]] -> "own", "players", "ah" or "game". `kind` is
+-- Mail.ClassifyMail's answer where the caller has it, `keys` the census.
+function Mail.SenderKind(index, kind, keys)
+  local _, _, sender, _, money, _, _, itemCount, _, wasReturned, _, _, isGM = GetInboxHeaderInfo(index)
+  local key = SenderKeyOf(sender)
+  if key ~= nil and (keys or Mail.OwnCharacterKeys())[key] == true then return "own" end
+  if isGM then return "players" end
+  local H = ns.Helpers
+  local house = H ~= nil and type(H.IsAuctionHouse) == "function" and H.IsAuctionHouse(sender) == true
+  if (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0 then
+    if wasReturned then return "players" end
+    local fate = Mail.ExpiryFate(index)
+    if fate == "back" then return "players" end
+    if fate == "gone" then
+      if kind == nil then kind = Mail.ClassifyMail(index) end
+      return (kind ~= "other" or house) and "ah" or "game"
+    end
+    -- The client cannot say: only the server's own invoice vouches for it.
+    return InvoiceCategory(index) and "ah" or "players"
+  end
+  if house or InvoiceCategory(index) then return "ah" end
+  return "players"
+end
+
 -- One inbox index, tested against the queue's rules and either taken or
 -- accounted for in `info`. Shared by both builders below so they cannot
 -- disagree about what a collectable mail is.
@@ -497,6 +555,10 @@ local function Consider(index, category, queue, info)
       if hasCOD then
         -- Bulk collection must never spend the player's money.
         info.skippedCOD = info.skippedCOD + 1
+      elseif info.takes and not info.takes[Mail.SenderKind(index, kind, info.altKeys)] then
+        -- All mail, told to leave this sender's mail ("All mail takes"): it
+        -- stays as it is, unread where it was unread, for the player's hand.
+        info.left = info.left + 1
       elseif not info.picked and Mail.HeldBack(index) then
         -- Stuck, or waiting for bag room: a sweep that took it would only
         -- meet the same refusal again. The player's own picks are tried.
@@ -526,7 +588,12 @@ local function ConsiderEach(indices, category, queue, info)
   end
 end
 
-function Mail.BuildQueue(category, order)
+-- `takes`, for All mail alone: the sender kinds it takes, kind -> true
+-- (MailboxUI.GetAllMailTakes), or nil where it takes every mail. A mail of
+-- any other kind is counted in info.left and not queued. No other queue is
+-- given one: a sweep by kind or by sender, the rows on screen and the
+-- player's picks are named choices, and take what they name.
+function Mail.BuildQueue(category, order, takes)
   -- A new run: gold left from a stranger is asked about again.
   for fingerprint in pairs(stranger.declined) do stranger.declined[fingerprint] = nil end
   local numItems, totalItems = GetInboxNumItems()
@@ -541,10 +608,14 @@ function Mail.BuildQueue(category, order)
     unloaded = 0,
     skippedCOD = 0,
     heldBack = 0,
+    left = 0,
   }
 
   if category == "alts" or category == "other" then info.altKeys = Mail.OwnCharacterKeys() end
   info.senders = Mail.SenderSet(category)
+  if category == "all" and type(takes) == "table" then
+    info.takes, info.altKeys = takes, Mail.OwnCharacterKeys()
+  end
 
   -- GetInboxNumItems returns 0 between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE, so an empty result here means "nothing to do OR nothing
@@ -585,6 +656,7 @@ function Mail.BuildQueueFor(indices, category, picked)
     unloaded = 0,
     skippedCOD = 0,
     heldBack = 0,
+    left = 0,
     picked = picked and true or nil,
   }
 

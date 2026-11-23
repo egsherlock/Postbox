@@ -12333,6 +12333,13 @@ function CT.RefreshMailList(panel)
   -- what it does not show is not listed, counted or swept. Never on the
   -- Done tab, whose read mail none of them would show.
   local show = (view ~= VIEW_DONE) and RV.ShowOf(panel, "inbox") or nil
+  -- "All mail takes" (Options, Mail tab): the sender kinds All mail takes
+  -- over the whole box, nil for every mail -- and while a search, the stuck
+  -- filter or the menu's filter narrows the list, where the button is
+  -- "Collect shown" and takes what is shown. A mail it leaves is not in its
+  -- count, and is counted apart for the run's line (RV.OthersFollow).
+  local takes, others = nil, 0
+  if query == "" and not stuckOnly and not show then takes = RV.AllTakes() end
 
   for index = 1, numItems do
     -- "Read" alone will not do: collecting marks every mail read as a side
@@ -12383,8 +12390,14 @@ function CT.RefreshMailList(panel)
       -- What each sweep would take: unfinished, never C.O.D., and not held
       -- back -- stuck, or holding items while the bags are full -- the rules
       -- the queue builder applies, so a count is a promise the button keeps.
+      -- A mail All mail leaves for who sent it: counted for the run's line,
+      -- held back or not, as the queue builder counts it (MailService,
+      -- Consider), and not in All mail's count. The sweeps count it as ever.
+      local stays = takes ~= nil and not finished and not hasCOD
+        and not takes[Mail().SenderKind(index, kind, altKeys)]
+      if stays then others = others + 1 end
       if not finished and not hasCOD and not Mail().HeldBack(index, tonumber(itemCount) or 0) then
-        counts.all = (counts.all or 0) + 1
+        if not stays then counts.all = (counts.all or 0) + 1 end
         -- From alts and Other split the non-auction mail between them.
         if Mail().FromOwnCharacter(index, altKeys) then
           counts.alts = (counts.alts or 0) + 1
@@ -12567,6 +12580,9 @@ function CT.RefreshMailList(panel)
   -- The stuck registry can have changed under this refresh, so the idle line is
   -- re-rendered rather than left showing whatever the last inbox event computed.
   RefreshIdleSummary()
+  -- What a run said All mail left from other senders, counted down as the
+  -- player takes them. Not while the list is narrowed: that walk counts none.
+  if query == "" and not stuckOnly and not show then RV.OthersFollow(others) end
 
   -- A run owns the status line for its whole duration. Re-asserting it here
   -- means nothing else can leave a stale idle summary on screen mid-run.
@@ -13064,6 +13080,9 @@ local Run = {
   spent = 0,
   reason = nil,
   reasonMixed = false,
+  -- Mails the run left where they are because of who sent them ("All mail
+  -- takes"; BeginRun): said in the outcome, never counted as left behind.
+  others = 0,
   -- Handed to every CollectMail of the run: { keepFree = N, moves = true }
   -- (BeginRun).
   opts = {},
@@ -13267,6 +13286,7 @@ local function ResetRun()
   Run.spent = 0
   Run.reason = nil
   Run.reasonMixed = false
+  Run.others = 0
 end
 
 -- One line, at the end of a run, for the money that changed hands during it.
@@ -13432,6 +13452,9 @@ local function FinishRun(left, stopReason)
   local earned, spent = Run.earned, Run.spent
   local panel = Run.panel
   local keepFree = Run.opts.keepFree or 0
+  -- Mail All mail left for who sent it: no part of `left`, which is mail
+  -- the run was stopped short of, and nothing the record below keeps.
+  local others = Run.others or 0
   ResetRun()
 
   -- A bad ending is written down for next visit; a clean one erases the note.
@@ -13479,10 +13502,14 @@ local function FinishRun(left, stopReason)
   local waiting = (M.BagsFull and M.BagsFull() and M.BagsWaiting and M.BagsWaiting()) or 0
 
   if left > 0 and stopReason ~= "bags" and stopReason ~= "keep" then
+    RV.OthersSay(0)
     StatusOutcome(WithCollected(
       Tinted("negative", format(L()["STATUS_INCOMPLETE"], left))))
     ns.Print(ns.Plural("MSG_COLLECT_INCOMPLETE", left))
   else
+    -- What All mail left from other senders ("All mail takes"), in words:
+    -- "3 left from other players", or nil.
+    local note = RV.OthersSay(others)
     -- What stayed behind, by mail: the stuck ones, then the ones waiting for
     -- room, then a stop to keep slots free. Any of them, or none. `stuckPart`
     -- and `bagsPart` say whether the line still names those two: each can
@@ -13500,6 +13527,15 @@ local function FinishRun(left, stopReason)
       if stopReason == "keep" then
         local kept = Tinted("warning", ns.Plural("STATUS_KEPT_FREE", keepFree))
         problem = problem and (problem .. JOIN .. kept) or kept
+      end
+      -- The mail left for who sent it is said after what came out and
+      -- before what went wrong: in the line's own colour, since nothing is
+      -- wrong with it, and where a line too long for its room keeps the
+      -- problem longest (MailboxUI, 3a). Alone when nothing came out.
+      if note then
+        local said = note
+        if got > 0 then said = Tinted("positive", format(L()["STATUS_COLLECTED"], got)) .. JOIN .. note end
+        return problem and (said .. JOIN .. problem) or said
       end
       if problem then return WithCollected(problem) end
       return Tinted("positive", format(L()["STATUS_COLLECTED"], got))
@@ -13759,11 +13795,13 @@ function Run.Next()
 end
 
 -- `subset`: the queue is mail the player picked or searched for, not a
--- whole kind (Run.Find).
-local function BeginRun(panel, queue, ids, subset)
+-- whole kind (Run.Find). `others`: how many mails the queue's builder left
+-- out for who sent them (All mail's, info.left), for the outcome.
+local function BeginRun(panel, queue, ids, subset, others)
   ResetRun()
   Run.Load(queue, ids)
   Run.subset = subset and true or false
+  Run.others = tonumber(others) or 0
   -- What a question described has all gone while it waited: nothing to run.
   if ids and not Run.AnyHere() then
     ResetRun()
@@ -13832,7 +13870,9 @@ local function StartCategoryRun(panel, category)
     queue, info = Mail().BuildQueueFor(order or panel._filtered, category,
       StuckOnly(panel) and category == "all")
   else
-    queue, info = Mail().BuildQueue(category, order)
+    -- All mail over the whole box takes what "All mail takes" names
+    -- (RV.AllTakes: nil for every mail). A sweep takes its own kind.
+    queue, info = Mail().BuildQueue(category, order, category == "all" and RV.AllTakes() or nil)
   end
   if not order then RV.SortAsListed(queue) end
 
@@ -13861,6 +13901,10 @@ local function StartCategoryRun(panel, category)
     -- and the status line already says which.
     if (info.heldBack or 0) > 0 then
       RefreshIdleSummary()
+    elseif (info.left or 0) > 0 then
+      -- Nothing for All mail to take, and mail it leaves for who sent it
+      -- ("All mail takes"): the line says how many, not "Done".
+      StatusOutcome(RV.OthersSay(info.left))
     else
       StatusOutcome(L()["STATUS_DONE"], "positive")
     end
@@ -13924,13 +13968,13 @@ local function StartCategoryRun(panel, category)
           -- that has gone is passed over. Another run or take started in the
           -- meantime keeps the channel; the answer then starts nothing.
           if Run.active or Mail().IsBusy() then return end
-          BeginRun(panel, planned, ids, subset)
+          BeginRun(panel, planned, ids, subset, info.left)
         end)
       return
     end
   end
 
-  BeginRun(panel, queue, nil, subset)
+  BeginRun(panel, queue, nil, subset, info.left)
 end
 -- For a sweep drawn outside this file: a character group's button starts its
 -- run here with the token "group:<id>" (Core/CharacterGroups.lua).
@@ -15353,6 +15397,51 @@ function RV.KeepFreeSlots()
   return tonumber(n) or 0
 end
 
+-- "All mail takes" (Options, Mail tab): the sender kinds All mail takes as
+-- a set (kind -> true), or nil when it takes every mail, the default. The
+-- shell keeps the set (MailboxUI.GetAllMailTakes): asked on every list
+-- refresh, it builds nothing. Whether a narrowing sets it aside is each
+-- caller's to know: the list walk, the run's start and All mail's tooltip.
+function RV.AllTakes()
+  local UI = ns.MailboxUI
+  if UI and type(UI.GetAllMailTakes) == "function" then return UI.GetAllMailTakes() end
+  return nil
+end
+
+-- n -> what a run's outcome says of the mail All mail left for who sent it,
+-- "3 left from other players", or nil for none. The words are kept, so the
+-- line can follow the inbox (RV.OthersFollow), and named to the shell as
+-- the line's note, the part a title bar too narrow for the whole line lets
+-- go before it shortens what went wrong (MailboxUI, 3a). Called before the
+-- outcome is written.
+function RV.OthersSay(n)
+  n = tonumber(n) or 0
+  local text = nil
+  if n > 0 then text = ns.Plural("STATUS_LEFT_OTHERS", n) else n = 0 end
+  RV.othersText, RV.othersN = text, n
+  local UI = ns.MailboxUI
+  if UI and type(UI.SetStatusNote) == "function" then UI.SetStatusNote(text) end
+  return text
+end
+
+-- n: how many mails All mail would leave as the inbox now stands (the list
+-- walk's count). Fewer than the line says -- the player took some by hand,
+-- or they went -- and the line says the new number, or lets the part go at
+-- none. One comparison on a refresh where nothing changed; a line that no
+-- longer holds the words is no longer followed.
+function RV.OthersFollow(n)
+  local said = RV.othersText
+  if not said or n >= (RV.othersN or 0) then return end
+  local UI = ns.MailboxUI
+  local now = (n > 0) and ns.Plural("STATUS_LEFT_OTHERS", n) or nil
+  local swapped = UI and type(UI.SwapStatusPart) == "function" and UI.SwapStatusPart(said, now)
+  if swapped and now then
+    RV.othersText, RV.othersN = now, n
+  else
+    RV.othersText, RV.othersN = nil, 0
+  end
+end
+
 -- The general slots a run may fill: the free ones less those it keeps free.
 -- " (+2 kept free)", or "", for the messages that quote the room.
 function RV.KeptExtra(free, keep)
@@ -15376,8 +15465,15 @@ function RV.AllMailRoom(panel, tooltip)
     -- of samples (Preview mail) holds no mail to ask about.
     local list, done, retry = panel._filtered, panel._filteredDone, StuckOnly(panel)
     if panel._preview then list = RV.NONE end
+    -- Over the whole box, not the mail it leaves for who sent it ("All
+    -- mail takes"): its items are not its sweep's to find room for.
+    local takes = nil
+    if not (retry or Searching(panel) or RV.Filtering(panel)) then takes = RV.AllTakes() end
     for i = 1, #list do
-      if done[i] == false and type(list[i]) == "number" then items = items + RV.RoomItems(list[i], retry) end
+      local index = list[i]
+      if done[i] == false and type(index) == "number" and not (takes and not takes[M.SenderKind(index)]) then
+        items = items + RV.RoomItems(index, retry)
+      end
     end
   end
   local text = ns.Plural("ROOM_FREE", free)

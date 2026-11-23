@@ -8588,6 +8588,31 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
     set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
   })
+  -- What All mail takes, by who sent it: every mail (the default), or the
+  -- auction house's, the game's own and the player's characters', mail from
+  -- anyone else staying in the box for the player's hand. The setting is a
+  -- set of sender kinds (MailboxUI.GetAllMailTakes); these two choices are
+  -- two of its values, and any other set reads as the second. Read at the
+  -- start of each run and by the Mail tab's list, whose count on All mail
+  -- follows the choice at once (the setter asks for it).
+  do
+    local OURS = { ah = true, game = true, own = true }
+    Rows.Dropdown(col, {
+      title = L["OPT_ALL_TAKES_TITLE"], text = L["OPT_ALL_TAKES_DESC"],
+      items = {
+        { id = "every", name = L["OPT_ALL_TAKES_EVERY"] },
+        { id = "ours",  name = L["OPT_ALL_TAKES_OURS"] },
+      },
+      get = function()
+        local UI = ns.MailboxUI
+        return (UI.GetAllMailTakes and UI.GetAllMailTakes()) and "ours" or "every"
+      end,
+      set = function(id)
+        local UI = ns.MailboxUI
+        if UI.SetAllMailTakes then UI.SetAllMailTakes(id == "ours" and OURS or nil) end
+      end,
+    })
+  end
   -- Finished mail, a group of its own: where it goes, and the bar over it.
   -- Collecting keeps the rows about a collect run and its History.
   Rows.Group(col, L["OPT_FINISHED_HEADING"])
