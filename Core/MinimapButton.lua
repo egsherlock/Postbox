@@ -1994,6 +1994,10 @@ local TIP = {
   ARRIVALS = 5,        -- arrivals listed by item
   CHARACTERS = 6,      -- characters listed before "and N more"
   INDENT = "   ",
+  -- The line under mail the game has not listed yet, "The game lists 100
+  -- mails at a time.": units further from that line than the game spaces
+  -- its lines (negative: closer). 0: as the game spaces them.
+  UNLISTED_GAP = 0,
   seen = {},           -- the one-field snapshot MailMemory.AgeText reads
   mode = "any",        -- Warn about, read as each showing begins (TIP.WarningText)
 }
@@ -2195,9 +2199,10 @@ ShowTooltip = function(button, hostMode)
     -- The number the icon wears (MailMemory's tally), less the stuck mail
     -- said apart below: the mail in the record still waiting, by sender
     -- (the auctions noted since in the auction house's count), then the
-    -- mail the server held past what the visit listed. With "+" where more
-    -- came than can be counted (MailMemory.CountText): the icon itself
-    -- never wears one.
+    -- mail the game has not listed yet (past the 100 it lists at a time),
+    -- with a footnote under it that says why. With "+" where more came
+    -- than can be counted (MailMemory.CountText): the icon itself never
+    -- wears one.
     local waiting = tonumber(state.waiting) or 0
     if waiting > 0 or state.stuckGroups then
       if waiting > 0 then
@@ -2207,6 +2212,9 @@ ShowTooltip = function(button, hostMode)
         if unlisted > 0 then
           local m = TIP.MUTED
           GameTooltip:AddDoubleLine(TIP.INDENT .. L["MINIMAP_TIP_UNLISTED"], "x" .. unlisted, m, m, m, m, m, m)
+          -- Muted, a size under the facts, indented under the name it
+          -- explains (Theme.TipNote).
+          ns.Theme.TipNote(TIP.INDENT .. TIP.INDENT .. L["MINIMAP_TIP_UNLISTED_WHY"], TIP.UNLISTED_GAP)
         end
       end
       -- In the orange a refusal wears everywhere else in the addon, and

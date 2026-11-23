@@ -4088,8 +4088,31 @@ local function HintFont()
   return font
 end
 
+-- A footnote set further from (or closer to) the line above it than the
+-- game spaces its lines (Theme.TipNote's `gap`): one line a tooltip, its
+-- anchor as the game set it kept here, and the room it added at the
+-- tooltip's foot, so it is put back with the hint fonts. `fs` false: none.
+local tipGap = { fs = false, point = false, rel = false, relPoint = false, x = 0, y = 0, pad = 0 }
+Theme._tipGap = tipGap
+
+local function RestoreGap()
+  local fs = tipGap.fs
+  if not fs then return end
+  tipGap.fs = false
+  fs:SetPoint(tipGap.point, tipGap.rel, tipGap.relPoint, tipGap.x, tipGap.y)
+  local pad = tipGap.pad
+  tipGap.pad = 0
+  -- The game clears the padding as the tooltip hides; a tooltip begun
+  -- again while shown still carries the room this line added.
+  if pad > 0 and type(GameTooltip.GetPadding) == "function" then
+    local r, b, l, t = GameTooltip:GetPadding()
+    if type(b) == "number" and b >= pad then GameTooltip:SetPadding(r or 0, b - pad, l or 0, t or 0) end
+  end
+end
+
 -- Puts every line the hint font was set on back to its own font.
 local function RestoreHintLines()
+  RestoreGap()
   local from, to = tipHint.from, tipHint.to
   if to == 0 then return end
   tipHint.from, tipHint.to = 0, 0
@@ -4135,6 +4158,18 @@ local function HintParts(text)
 end
 Theme._HintParts = HintParts
 
+-- What the tooltip is lent (hint fonts, a footnote's gap) is put back when
+-- it hides, whoever hides it.
+local function WatchTip()
+  local watch = tipHint.watch
+  if not watch then
+    watch = CreateFrame("Frame", nil, GameTooltip)
+    watch:SetScript("OnHide", RestoreHintLines)
+    tipHint.watch = watch
+  end
+  watch:Show()
+end
+
 -- One gesture on a line of its own, muted, in the hint font.
 local function AddHintLine(text)
   GameTooltip:AddLine(text, TIP_MUTED, TIP_MUTED, TIP_MUTED, true)
@@ -4152,14 +4187,31 @@ local function AddHintLine(text)
   fs:SetFontObject(font)
   if tipHint.to == 0 or n < tipHint.from then tipHint.from = n end
   if n > tipHint.to then tipHint.to = n end
-  -- Put back when the tooltip hides, whoever hides it.
-  local watch = tipHint.watch
-  if not watch then
-    watch = CreateFrame("Frame", nil, GameTooltip)
-    watch:SetScript("OnHide", RestoreHintLines)
-    tipHint.watch = watch
+  WatchTip()
+end
+
+-- The tooltip's last line set `gap` units further from the line above it
+-- than the game sets it (negative: closer), and the tooltip that much
+-- taller where it is further. Asked of a footnote alone; nothing for 0.
+local function GapLastLine(gap)
+  gap = tonumber(gap) or 0
+  if gap == 0 or tipGap.fs then return end
+  local n = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines() or 0
+  local fs = n > 1 and TipLineString(n) or nil
+  if not (fs and type(fs.GetPoint) == "function") then return end
+  local point, rel, relPoint, x, y = fs:GetPoint(1)
+  if not point then return end
+  tipGap.fs, tipGap.point, tipGap.rel, tipGap.relPoint = fs, point, rel, relPoint
+  tipGap.x, tipGap.y = tonumber(x) or 0, tonumber(y) or 0
+  fs:SetPoint(point, rel, relPoint, tipGap.x, tipGap.y - gap)
+  -- The game sizes a tooltip by its lines, not by where they stand: the
+  -- room a line is moved down by is added at the foot.
+  if gap > 0 and type(GameTooltip.GetPadding) == "function" and type(GameTooltip.SetPadding) == "function" then
+    local r, b, l, t = GameTooltip:GetPadding()
+    GameTooltip:SetPadding(r or 0, (tonumber(b) or 0) + gap, l or 0, t or 0)
+    tipGap.pad = gap
   end
-  watch:Show()
+  WatchTip()
 end
 
 -- owner [, anchor] -> GameTooltip, owned and cleared: the start of every
@@ -4254,10 +4306,13 @@ end
 -- A footnote under a tooltip's facts: one muted wrapped line in the hint
 -- font, a step under the facts, with no blank line before it and not cut
 -- at the gestures' separator (the options' 7-day tooltips' "count from
--- Postbox 2.0" lines).
-function Theme.TipNote(text)
+-- Postbox 2.0" lines). `gap`, in units: that much further from the line
+-- above than the game spaces its lines (negative: closer); 0 or nil, as
+-- the game spaces them.
+function Theme.TipNote(text, gap)
   if not text or text == "" then return end
   AddHintLine(text)
+  if gap and gap ~= 0 then GapLastLine(gap) end
 end
 
 -------------------------------------------------------------
