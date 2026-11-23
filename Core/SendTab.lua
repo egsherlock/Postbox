@@ -6531,7 +6531,8 @@ end
 -------------------------------------------------------------
 -- 18b. Attach by kind
 --
--- A small key at the end of the Attachments caption opens a menu of the
+-- A small key at the end of the Attachments caption, a "+" on a lit plate
+-- (Kind.Build), opens a menu of the
 -- kinds of materials in the bags, as the game itself classes them: one line
 -- for each subclass of its Trade Goods class that has something to take,
 -- the kind's name as the client writes it and how many stacks. A pick
@@ -6570,11 +6571,12 @@ do
     CLASS = (type(Enum) == "table" and type(Enum.ItemClass) == "table"
       and tonumber(Enum.ItemClass.Tradegoods)) or 7,
     OTHER = 11,
-    -- The key: its width (as tall as the caption's line), its room from the
-    -- caption's last letter, its caret's size, and its ink at rest, pointed
-    -- at or open, and with nothing to take.
-    W = 16, GAP = 3, GLYPH = 6,
-    REST = 0.7, LIT = 1, DIM = 0.3,
+    -- The key, a "+" on a lit plate (Kind.Build): the plate as tall as the
+    -- caption's line and WIDER than that, GAP after the caption's last
+    -- letter; the "+" BAR thick, its arms half the plate's height, a touch
+    -- held back at rest (REST) and solid pointed at or open (LIT).
+    WIDER = 2, GAP = 6, BAR = 2,
+    REST = 0.8, LIT = 1,
     -- A line's tooltip lists this many items before "and N more".
     TIP_ITEMS = 12,
     -- The menu's rows, made for this many lines at least (Kind.Menu).
@@ -6861,16 +6863,79 @@ do
     return Kind.menu ~= nil and Kind.menu:IsShown()
   end
 
-  -- The key's ink: the window's own text ink, stronger while pointed at or
-  -- open, faint with nothing to take.
+  -- The key's state, on the house's own plate states, so every look draws
+  -- it as it draws its segments: lit (selected) while there is something to
+  -- take, the "+" a touch held back at rest and solid pointed at or open,
+  -- with the plate's own lift under the pointer, held while the menu is
+  -- open (the client's highlight, where a look has one); with nothing to
+  -- take, the plate unlit and the "+" in the look's disabled ink, as an
+  -- empty tile's caption (Theme.EmptyTile). The "+" takes its colour from
+  -- the plate's paint (Kind.Mirror).
   function Kind.Ink(key)
-    local icon = key.Icon
-    icon:SetVertexColor(Theme.InkFor(1, 1, 1, "window"))
-    if key.none then
-      icon:SetAlpha(Kind.DIM)
-    else
-      icon:SetAlpha((key.hover or Kind.Open()) and Kind.LIT or Kind.REST)
+    local lit = not key.none
+    local open = Kind.Open()
+    key._empty = not lit
+    if lit and open then key:LockHighlight() else key:UnlockHighlight() end
+    Theme.SetPlateHover(key, key.hover and true or false)
+    Theme.SetPlateSelected(key, lit)
+    local a = (lit and not (key.hover or open)) and Kind.REST or Kind.LIT
+    local plus = key.Plus
+    plus[1]:SetAlpha(a)
+    plus[2]:SetAlpha(a)
+  end
+
+  -- The plate's caption is empty; every paint of it, in every look and on
+  -- every path (Theme's PaintPlate, an accent or palette repaint, the
+  -- Blizzard look's own paint), ends in its SetTextColor, which is this on
+  -- the key's caption: the client's own, then the "+" painted with it, so
+  -- it follows the plate wherever it is repainted from, with nothing else
+  -- listening. On a lit plate Postbox paints, the "+" is the accent as a
+  -- solid mark wears it (the mark tone, Theme.SetColor's rule for the
+  -- accent on a texture): the caption's gold, as the mockup draws it, and
+  -- the underline's. Unlit, and wherever a skin owns the plate's look (the
+  -- Blizzard look: the game's white on its selected art, its gray on an
+  -- empty one), the "+" is the plate's caption in that look and state.
+  function Kind.Mirror(fs, r, g, b, a)
+    Kind.TextColor(fs, r, g, b, a)
+    local plus = fs.__pbPlus
+    if not plus then return end
+    local key = plus.key
+    if key and key.isSelected and not key.__setSelectedOverride then
+      r, g, b = Theme.GetAccentTone("mark")
+      a = 1
     end
+    plus[1]:SetVertexColor(r, g, b, a or 1)
+    plus[2]:SetVertexColor(r, g, b, a or 1)
+  end
+
+  -- The plate and its "+" sized for the caption's line, `h` tall: the
+  -- plate h + WIDER wide; the "+" with arms half of h (an even number of
+  -- units, so its bars stand on whole units: 6 on the 12 a caption has at
+  -- 100%, 8 on 16), centred across, and down the plate where a lit plate's
+  -- underline leaves it a clear unit above it (the line is two units, a
+  -- unit up: Theme.CreatePlate), else centred (the Blizzard look's plate,
+  -- which has none). Only when the height or the look moved.
+  function Kind.Fit(key, h)
+    local blizz = key.__pbBlizzSeg and true or false
+    if key.fitH == h and key.fitB == blizz then return end
+    key.fitH, key.fitB = h, blizz
+    local p = max(Kind.BAR + 2, floor(h / 4 + 0.5) * 2)
+    local t = Kind.BAR
+    -- As wide as the "+" needs to stand in its middle on whole units (a
+    -- caption's line can be an odd number of units at another Text size).
+    local w = h + Kind.WIDER
+    if (w - p) % 2 == 1 then w = w + 1 end
+    key.w = w
+    key:SetSize(w, h)
+    local x, y = floor((w - p) / 2), floor((h - p) / 2)
+    if not blizz then y = max(1, min(y, h - 4 - p)) end
+    local plus = key.Plus
+    plus[1]:ClearAllPoints()
+    plus[1]:SetPoint("TOPLEFT", key, "TOPLEFT", x, -(y + (p - t) / 2))
+    plus[1]:SetSize(p, t)
+    plus[2]:ClearAllPoints()
+    plus[2]:SetPoint("TOPLEFT", key, "TOPLEFT", x + (p - t) / 2, -y)
+    plus[2]:SetSize(t, p)
   end
 
   function Kind.Tip(key)
@@ -6954,39 +7019,65 @@ do
   function Kind.Place(panel)
     local key, label = panel.KindKey, panel.AttachLabel
     if not (key and label) then return end
+    -- The key as tall as the caption's line (the height the caption's box
+    -- was given, LabelHeight), so it is exactly as far from the slots under
+    -- it and the message box over it as the caption is.
+    local h = floor((tonumber((label:GetHeight())) or 0) + 0.5)
+    if h < 8 then h = LabelHeight() end
+    Kind.Fit(key, h)
+    local kw = key.w
     local w
     if label.GetUnboundedStringWidth then w = label:GetUnboundedStringWidth() else w = label:GetStringWidth() end
     w = ceil(tonumber(w) or 0)
-    local room = K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X - M.gap - Kind.GAP - Kind.W
+    local room = K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X - M.gap - Kind.GAP - kw
     local cut = w > room
     if cut then w = max(0, room) end
-    if key.at == w and key.cut == cut then return end
-    key.at, key.cut = w, cut
-    label:SetWidth(cut and w or (w + Kind.GAP + Kind.W))
+    if key.at == w and key.cut == cut and key.atW == kw then return end
+    key.at, key.cut, key.atW = w, cut, kw
+    label:SetWidth(cut and w or (w + Kind.GAP + kw))
     key:ClearAllPoints()
     key:SetPoint("LEFT", label, "LEFT", w + Kind.GAP, 0)
   end
 
   -- Built with the attachment area, where this client can tell a material
-  -- (Kind.Ready) and the house caret can be drawn; else the caption is left
-  -- exactly as it was.
+  -- (Kind.Ready); else the caption is left exactly as it was.
+  --
+  -- The key is the house's segment plate (Theme.CreatePlate, as the Send
+  -- tab's Manage Recipients key and the Mail tab's keys are), lit, with a
+  -- "+" on it drawn as two bars of Postbox's own white tile: no new art.
+  -- A plate carries no skin tag, so every look dresses it as it dresses
+  -- its segments: Postbox paints it under the Postbox style, EllesmereUI and
+  -- ElvUI (their accent through Theme), Theme.RepaintPlates sweeps it with
+  -- the window, and the Blizzard look lays the game's own small button on
+  -- it (its selected art lit, its normal art unlit; Skin_Blizzard's
+  -- Parts.Seg). The "+" is painted with the plate in each of them
+  -- (Kind.Mirror). Its scripts are its own, and paint the plate's hover
+  -- themselves (Kind.Ink).
   function Kind.Build(panel, area, label)
-    if not (Kind.Ready() and Theme.Glyph) then return end
-    local key = CreateFrame("Button", nil, area)
-    local icon = Theme.Glyph(key, "caret", Kind.GLYPH, "ARTWORK")
-    if not icon then
-      key:Hide()
-      return
+    if not (Kind.Ready() and Theme.CreatePlate) then return end
+    local key = Theme.CreatePlate(area, "segment")
+    key:SetText("")
+    local plus = { key = key }
+    for i = 1, 2 do
+      local bar = key:CreateTexture(nil, "OVERLAY")
+      bar:SetTexture("Interface\\AddOns\\Postbox\\Media\\white8x8.tga")
+      if bar.SetSnapToPixelGrid then bar:SetSnapToPixelGrid(true) end
+      if bar.SetTexelSnappingBias then bar:SetTexelSnappingBias(0) end
+      plus[i] = bar
     end
-    key:SetSize(Kind.W, LabelHeight())
+    key.Plus = plus
+    local fs = key.Text
+    if fs then
+      Kind.TextColor = Kind.TextColor or fs.SetTextColor
+      fs.__pbPlus = plus
+      fs.SetTextColor = Kind.Mirror
+      -- In the ink the plate's caption wears now.
+      local r, g, b, a = fs:GetTextColor()
+      Kind.Mirror(fs, r or 1, g or 1, b or 1, a)
+    end
     local under = panel.AttachHit or area
     key:SetFrameLevel((under:GetFrameLevel() or 0) + 1)
-    icon:SetPoint("CENTER", key, "CENTER", 0, 0)
-    -- Pointing down, the way its menu opens, and still: the art drawn the
-    -- other way up, as the options' Reset to defaults draws its caret.
-    local art = icon.__pbSpec
-    if art then icon:SetTexCoord(art.l, art.r, art.b, art.t) end
-    key.Icon, key.panel = icon, panel
+    key.panel = panel
     key:SetScript("OnClick", Kind.Click)
     key:SetScript("OnEnter", Kind.Enter)
     key:SetScript("OnLeave", Kind.Leave)
