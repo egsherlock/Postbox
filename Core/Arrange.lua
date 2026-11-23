@@ -73,7 +73,8 @@ AR.COLUMNS = {
   age     = { title = "COL_AGE",        desc = "COL_AGE_DESC",        choice = "age", head = "history" },
 }
 -- World of Warcraft: Forever's names are two, and the Sender column can
--- write the first alone (AR.Choices): a choice of its own there only.
+-- write the first alone, or the last (AR.Choices): a choice of its own
+-- there only.
 if ns.IsForever then AR.COLUMNS.sender.choice = "sender" end
 
 -- The cog key (section 4): the cog's size at rest; lit, a check and Done on
@@ -4714,10 +4715,12 @@ function AR.Choices(kind)
         { id = "number", name = tostring(4) },
       }
     elseif kind == "sender" then
-      -- World of Warcraft: Forever's: the whole name, or the first alone.
+      -- World of Warcraft: Forever's: the whole name, the first alone, or
+      -- the last alone.
       list = {
         { id = "full",  name = L()["ARRANGE_SENDER_FULL"] },
         { id = "first", name = L()["ARRANGE_SENDER_FIRST"] },
+        { id = "last",  name = L()["ARRANGE_SENDER_LAST"] },
       }
     else
       list = {
@@ -6857,8 +6860,8 @@ local function FillColumn(id, y)
     for i = 1, #choices do
       y = PutRadio(i, choices[i], choices[i].id == current, shown and true or false, y)
     end
-    -- The sender's (World of Warcraft: Forever): what a first name two
-    -- senders share does, in one quiet line under the answers.
+    -- The sender's (World of Warcraft: Forever): what a first or last name
+    -- two senders share does, in one quiet line under the answers.
     if spec.choice == "sender" then y = PutText(insp.LayoutNote, L()["ARRANGE_SENDER_SHARED"], y, "note") end
     -- The gold's: then how its sums are written, under a kicker of its own,
     -- its answers after the first choice's.

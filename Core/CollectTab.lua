@@ -2308,31 +2308,37 @@ local function DisplaySender(sender)
   return sender
 end
 
--- World of Warcraft: Forever: first names in the Sender column. A Forever
--- character is "First Surname", and only the two together are unique. The
--- Sender column can write the first name alone (MailboxUI.GetSenderName,
--- one per arrangement, offered on Forever only): "Abla" for "Abla Stone",
--- unless another sender in the list as shown has that first name too, when
--- each keeps its full name, so two people never look like one. Display
--- only, and mail rows only: the row's tooltip names the sender whole (its
--- tipShort), and the column is still measured on the full names, so its
--- width never moves. Nothing here is asked on retail.
+-- World of Warcraft: Forever: first or last names in the Sender column. A
+-- Forever character is "First Surname", and only the two together are
+-- unique. The Sender column can write one of the two alone
+-- (MailboxUI.GetSenderName, one per arrangement, offered on Forever only):
+-- "Abla" or "Stone" for "Abla Stone", unless another sender in the list as
+-- shown has that first name, or that surname, too, when each keeps its
+-- full name, so two people never look like one. Display only, and mail
+-- rows only: the row's tooltip names the sender whole (its tipShort), and
+-- the column is still measured on the full names, so its width never moves
+-- and no surname sizes it. Nothing here is asked on retail.
 --
--- A name's first name is made once and kept (`first`, up to MAX, a
--- History's worth, let go whole where a build starts once full); a name that is not two names of letters -- an NPC's, the auction
--- house's, a system sender's -- has none, and is never shortened. Which
--- first names a list shares is kept on the list's owner and made again only
--- when that list is built again.
+-- A name's half is made once and kept (`first` and `last`, each up to MAX,
+-- a History's worth, let go whole where a build starts once full; only the
+-- half the rows write is ever made); a name that is not two names of
+-- letters -- an NPC's, the auction house's, a system sender's -- has
+-- neither, and is never shortened. Which halves a list shares is kept on
+-- the list's owner, under [0] the half it was noted for (no name's half is
+-- a number), and made again only when that list is built again or the half
+-- its rows write changes.
 do
-  local FN = { first = {}, n = 0, MAX = 1024, to = {}, toN = 0 }
+  local FN = { first = {}, n = 0, last = {}, lastN = 0, MAX = 1024, to = {}, toN = 0 }
   RV.Firsts = FN
 
-  -- Whether the rows of `arrangement` ("rows", "large", "history") write
-  -- first names.
+  -- Which half of a name the rows of `arrangement` ("rows", "large",
+  -- "history") write: "first" or "last"; false where they write the name
+  -- whole.
   function FN.On(arrangement)
     if not ns.IsForever then return false end
     local UI = ns.MailboxUI
-    return UI ~= nil and UI.GetSenderName ~= nil and UI.GetSenderName(arrangement) == "first"
+    local name = UI ~= nil and UI.GetSenderName ~= nil and UI.GetSenderName(arrangement)
+    return (name == "first" or name == "last") and name
   end
 
   -- One of a name's two halves: letters only, 2 to 12 of them, as the
@@ -2343,65 +2349,83 @@ do
     return n >= 2 and n <= 12
   end
 
-  -- name (as DisplaySender gives it) -> its first name, or nil.
-  function FN.Of(name)
+  -- name (as DisplaySender gives it), half ("last"; anything else, the
+  -- first) -> that half of it, or nil. One rule says whether a name has
+  -- halves at all, so a name the first is not written for has no last
+  -- either.
+  function FN.Of(name, half)
     if type(name) ~= "string" or name == "" then return nil end
-    local known = FN.first[name]
+    local last = half == "last"
+    local kept = last and FN.last or FN.first
+    local known = kept[name]
     if known ~= nil then return known or nil end
-    local first = false
+    local part = false
     local sep = Helpers().NameSeparator()
     local at = name:find(sep, 1, true)
     if at and at > 1 and not name:find(sep, at + #sep, true)
         and name ~= _G.AUCTION_HOUSE and name ~= L()["MEMORY_FROM_AH"] then
       local a = name:sub(1, at - 1)
-      if FN.Part(a) and FN.Part(name:sub(at + #sep)) then
-        first = a
+      local b = FN.Part(a) and name:sub(at + #sep)
+      if b and FN.Part(b) then
+        part = last and b or a
         -- "The Postmaster": a first word that is an NPC's article.
         for i = 1, #NPC_ARTICLES do
-          if NPC_ARTICLES[i] == a .. " " then first = false end
+          if NPC_ARTICLES[i] == a .. " " then part = false end
         end
       end
     end
     -- Full, the answer is given without being kept: emptied only where a
     -- list's build starts (RV.TrimCaches), never in the middle of one.
-    if FN.n < FN.MAX then
-      FN.first[name] = first
+    if last then
+      if FN.lastN < FN.MAX then
+        FN.last[name] = part
+        FN.lastN = FN.lastN + 1
+      end
+    elseif FN.n < FN.MAX then
+      FN.first[name] = part
       FN.n = FN.n + 1
     end
-    return first or nil
+    return part or nil
   end
 
   -- At the start of a list's build: let the names go if the last ones
-  -- filled the record.
+  -- filled the record, each half's on its own.
   function FN.Trim()
-    if FN.n < FN.MAX then return end
-    for k in pairs(FN.first) do FN.first[k] = nil end
-    FN.n = 0
-  end
-
-  -- A list's own record, `owners`: for each first name, the one name in
-  -- the list that has it, or false where two share it. Emptied, then each
-  -- sender the list shows noted.
-  function FN.Begin(owners)
-    for k in pairs(owners) do owners[k] = nil end
-  end
-
-  function FN.Note(owners, name)
-    local first = FN.Of(name)
-    if not first then return end
-    local had = owners[first]
-    if had == nil then
-      owners[first] = name
-    elseif had ~= name then
-      owners[first] = false
+    if FN.n >= FN.MAX then
+      for k in pairs(FN.first) do FN.first[k] = nil end
+      FN.n = 0
+    end
+    if FN.lastN >= FN.MAX then
+      for k in pairs(FN.last) do FN.last[k] = nil end
+      FN.lastN = 0
     end
   end
 
-  -- What a row writes for `name`: its first name where the list gives it
-  -- that first name alone; the name otherwise.
+  -- A list's own record, `owners`: for each first name (or each surname,
+  -- where `half` is "last"), the one name in the list that has it, or
+  -- false where two share it. Emptied, the half it is for kept under [0],
+  -- then each sender the list shows noted.
+  function FN.Begin(owners, half)
+    for k in pairs(owners) do owners[k] = nil end
+    owners[0] = half
+  end
+
+  function FN.Note(owners, name)
+    local part = FN.Of(name, owners[0])
+    if not part then return end
+    local had = owners[part]
+    if had == nil then
+      owners[part] = name
+    elseif had ~= name then
+      owners[part] = false
+    end
+  end
+
+  -- What a row writes for `name`: the half the record is for where the
+  -- list gives it that half alone; the name otherwise.
   function FN.Pick(owners, name)
-    local first = owners and FN.Of(name)
-    if first and owners[first] == name then return first end
+    local part = owners and FN.Of(name, owners[0])
+    if part and owners[part] == name then return part end
     return name
   end
 
@@ -2411,16 +2435,18 @@ do
   -- switch between the inbox and the sample mail. `shown` is the row's
   -- name as DisplaySender gives it.
   function FN.Inbox(panel, S, layout, shown)
-    if not FN.On(layout.arrangement) then return shown end
+    local half = FN.On(layout.arrangement)
+    if not half then return shown end
     local owners = panel._firsts
     if not owners then
       owners = {}
       panel._firsts = owners
     end
     local list = panel._filtered
-    if panel._firstsPass ~= panel._measurePass or panel._firstsS ~= S or panel._firstsN ~= #list then
+    if panel._firstsPass ~= panel._measurePass or panel._firstsS ~= S or panel._firstsN ~= #list
+        or owners[0] ~= half then
       panel._firstsPass, panel._firstsS, panel._firstsN = panel._measurePass, S, #list
-      FN.Begin(owners)
+      FN.Begin(owners, half)
       for i = 1, #list do
         local index = list[i]
         if type(index) == "number" then
@@ -2434,19 +2460,21 @@ do
 
   -- History's rows (HV.BindHistoryRow), Received or Sent: the list as it
   -- was built (`panel._history`, its characters' headings passed over),
-  -- noted again once per build. -> the first name the row writes, or nil
-  -- where it writes the name as before.
+  -- noted again once per build. -> the half of the name the row writes, or
+  -- nil where it writes the name as before.
   function FN.History(panel, named, sent)
-    if not FN.On("history") then return nil end
+    local half = FN.On("history")
+    if not half then return nil end
     local owners = panel._hfirsts
     if not owners then
       owners = {}
       panel._hfirsts = owners
     end
     local list = panel._history
-    if panel._hfirstsPass ~= panel._measurePass or panel._hfirstsSent ~= sent or panel._hfirstsN ~= #list then
+    if panel._hfirstsPass ~= panel._measurePass or panel._hfirstsSent ~= sent or panel._hfirstsN ~= #list
+        or owners[0] ~= half then
       panel._hfirstsPass, panel._hfirstsSent, panel._hfirstsN = panel._measurePass, sent, #list
-      FN.Begin(owners)
+      FN.Begin(owners, half)
       for i = 1, #list do
         local entry = list[i]
         if not entry.header and type(entry.s) == "string" and entry.s ~= "" then
@@ -2460,8 +2488,9 @@ do
     return shown
   end
 
-  -- A Sent row's "to" and a first name, made once per first name (as
-  -- HV.SentWho keeps its own), and made again when the dim's ink changes.
+  -- A Sent row's "to" and the half of a name it writes (`first`, either
+  -- half), made once per half (as HV.SentWho keeps its own), and made again
+  -- when the dim's ink changes.
   function FN.SentTo(first)
     local prefix = Th().Colorize("textSecondary", L()["SENT_ROW_TO"], ns.Theme.ROW)
     if FN.toPrefix ~= prefix or FN.toN >= FN.MAX then
@@ -4264,7 +4293,7 @@ CT.RowRules = {
   Shows = RowShows,
   MoneyShown = MoneyShown,
   DisplaySender = DisplaySender,
-  -- Forever's first names in the Sender column (RV.Firsts).
+  -- Forever's first or last names in the Sender column (RV.Firsts).
   Firsts = RV.Firsts,
   MoneyText = MoneyText,
   Measure = MeasureWith,
@@ -8692,8 +8721,8 @@ local function BindRow(panel, row, index, position, compact, done)
     expiry = nil
   end
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
-  -- On Forever, the first name alone where the arrangement asks for it and
-  -- no other sender listed shares it (RV.Firsts).
+  -- On Forever, the first name alone, or the last, where the arrangement
+  -- asks for it and no other sender listed shares it (RV.Firsts).
   if ns.IsForever and sender and not AUCTION_OUTCOME[kind] then
     senderText = RV.Firsts.Inbox(panel, S, layout, senderText)
   end
@@ -9177,9 +9206,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   text.age = HV.EntryAge(entry, now, style)
   local outcome = R.OutcomeSender(entry.k, T.ROW)
   text.sender = outcome or (sent and HV.SentWho(entry)) or R.DisplaySender(named) or L()["SENDER_UNKNOWN"]
-  -- On Forever, the first name alone where History's arrangement asks for
-  -- it and no other name listed shares it (RV.Firsts); a Sent row's after
-  -- its "to".
+  -- On Forever, the first name alone, or the last, where History's
+  -- arrangement asks for it and no other name listed shares it
+  -- (RV.Firsts); a Sent row's after its "to".
   local firstName = ns.IsForever and named and not outcome and RV.Firsts.History(panel, named, sent) or nil
   if firstName then text.sender = sent and RV.Firsts.SentTo(firstName) or firstName end
   -- Coloured by the class it has on the realm its record is from (`realm`:

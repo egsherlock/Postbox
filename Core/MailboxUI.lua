@@ -1138,23 +1138,25 @@ do
   end
 
   -- World of Warcraft: Forever: what the Sender column writes for a
-  -- character, "full" ("Abla Stone", the default) or "first" ("Abla"; a
-  -- first name another sender in the list shares keeps the full name,
-  -- CollectTab's RV.Firsts). One per arrangement, as how the gold is
-  -- written: rowSenderName, largeSenderName, historySenderName; stored only
-  -- as "first". nil sets the default. Asked only on Forever.
+  -- character, "full" ("Abla Stone", the default), "first" ("Abla") or
+  -- "last" ("Stone"); a first name, or a surname, another sender in the
+  -- list shares keeps the full name (CollectTab's RV.Firsts). One per
+  -- arrangement, as how the gold is written: rowSenderName,
+  -- largeSenderName, historySenderName; stored only as "first" or "last".
+  -- nil sets the default. Asked only on Forever.
   local NAME_KEY = { rows = "rowSenderName", large = "largeSenderName", history = "historySenderName" }
   function UI.GetSenderName(arrangement)
     local key = NAME_KEY[arrangement] or NAME_KEY.rows
     local memo = Settings().gold
     local name = memo[key]
     if name then return name end
-    name = (Stored(key) == "first") and "first" or "full"
+    name = Stored(key)
+    if name ~= "first" and name ~= "last" then name = "full" end
     memo[key] = name
     return name
   end
   function UI.SetSenderName(name, arrangement)
-    if name ~= nil and name ~= "full" and name ~= "first" then return end
+    if name ~= nil and name ~= "full" and name ~= "first" and name ~= "last" then return end
     Keep(NAME_KEY[arrangement] or NAME_KEY.rows, nil, name or "full", "full")
   end
 
