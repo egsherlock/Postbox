@@ -37,13 +37,13 @@
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/finished.gif" width="672" alt="Scrolling down to the island at the list's foot: it opens into the bar over the read mail, and Delete all turns red under the pointer"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Sending made easy</h2>
-<p style="text-align:center">Names complete as you type, favorites first. Right-click attaches; Alt-right-click attaches every stack.</p>
+<p style="text-align:center">Names complete as you type, favorites first. Right-click attaches; Alt-right-click attaches every stack, and the arrow after Attachments every stack of one kind of material.</p>
 <p style="text-align:center">Manage Recipients lists every name in one table: favorite, hide or add a note to any of them.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/send.gif" width="770" alt="A name completing as it is typed, then one click attaching every stack"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Every alt's mail, at a glance</h2>
 <p style="text-align:center">The minimap icon's tooltip lists every character with mail waiting. Mail Memory remembers each character's box at your last visit, to search from anywhere.</p>
-<p style="text-align:center">Mail you send your other characters shows in their box before they log in.</p>
+<p style="text-align:center">Mail you send your other characters shows in their box before they log in, and auctions you win, sell or cancel are counted as they happen.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/minimap.gif" width="708" alt="The minimap icon's tooltip, then Mail Memory"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Arrange it your way</h2>
@@ -64,12 +64,13 @@
 <li><strong><span style="color:#e5e5e5">The last 7 days:</span></strong> gold earned and spent by mail, for all your characters or the one you're on (Options &gt; General).</li>
 <li><strong><span style="color:#e5e5e5">A search in the options</span></strong> that finds any setting and takes you to it.</li>
 <li><strong><span style="color:#e5e5e5">A sold auction</span></strong> wears the icon of the item that sold.</li>
+<li><strong><span style="color:#e5e5e5">All mail takes:</span></strong> All mail can leave other players' mail in your mailbox for you to take yourself (Options &gt; Mail tab &gt; Collecting).</li>
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Ready for WoW Forever</h2>
 <p style="text-align:center">The same download runs in World of Warcraft: Forever. CurseForge lists it under WoW Forever, WowUp offers it for a Forever install, and Forever keeps settings of its own.</p>
 <ul style="display:flex;flex-wrap:wrap;gap:16px 24px;padding-left:0">
-<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Full names:</span></strong> write "Abla Stone" or "Abla-Stone". Postbox uses the full name everywhere, so two of your characters with the same first name never get mixed up.</li>
+<li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Full names:</span></strong> write "Abla Stone" or "Abla-Stone". Postbox uses the full name everywhere, so two of your characters with the same first name never get mixed up. Mail rows can show first or last names alone (Arrange &gt; Sender column).</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Forever's mail rules:</span></strong> your characters filed by ruleset, a warning before mail to another ruleset or to a first name alone, and no Warband bank.</li>
 <li style="display:block;flex:1;min-width:230px"><strong><span style="color:#e5e5e5">Your answer, always:</span></strong> gold from a stranger waits while you answer the game's question, and a slow send is waited for, never called failed.</li>
 </ul>

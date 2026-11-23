@@ -1,5 +1,61 @@
 # Changelog
 
+## 2.1.0
+
+### New
+
+- **All mail can leave other players' mail for you** (Options > Mail tab >
+  Collecting > All mail takes): Every mail, as before, or Auction house,
+  game and my characters. With the second, mail from anyone else stays in
+  your mailbox, unread, for you to take yourself, and the title bar says
+  how many were left. Only All mail follows the choice: Collect shown, the
+  other buttons and a click on a mail take what they always did.
+- **Send tab: attach every stack of one kind of material.** The small
+  arrow after Attachments lists the kinds in your bags in the game's own
+  words (Cloth, Herb, Metal & Stone), each with how many stacks it would
+  add. Pick one and they are all attached; what is past twelve waits in
+  the queue and goes as the next mail. A line's tooltip lists the items
+  it would add, and bound and quest items are left out.
+- **Mail Memory: auctions are counted as they happen.** Each auction you
+  win, sell, cancel or let run out is a row at once, with its item and,
+  where the game gives it, its price, and adds one to that character's
+  mail count.
+
+### Improved
+
+- **One mail count everywhere:** Mail Memory, the minimap icon, its
+  tooltip and the character list (Mail tab > Inbox) give the same number
+  for a mailbox. It includes the mail the server holds beyond what the
+  mailbox lists, which only Mail Memory used to count.
+- **Minimap icon: the count is always the plain number** (Count on icon).
+  A long one gets smaller to fit, where it could read 99+, and at a
+  mailbox it follows as you collect.
+- **Minimap icon's tooltip:** Waiting to collect is counted as everywhere
+  else, and a new line under its senders, Held back by the server, says
+  how much of it the mailbox has not listed yet.
+
+### WoW Forever
+
+- **Mail rows can show senders by last name** (Arrange > Sender column >
+  Show > Last name): characters that share a first name read apart, as
+  "Ironfoot" and "Stormwind". Two senders who share a last name keep
+  their full names, and the row's tooltip names the sender whole.
+
+### Fixed
+
+- Mail tab: Delete on an opened mail that still holds something asks with
+  the mail's contents named, in the game's own words: its items and how
+  many of each, then its gold. The name was missing from the question.
+- Send tab: on a character with a pinned name, the next mailbox visit
+  after a send opens with the pinned name, also when After sending, keep
+  is Recipient or Recipient and subject. A mail you were still writing
+  comes back as you left it.
+- Send tab: a stack the game will not attach no longer holds up the
+  stacks queued behind it after an Alt-right-click on a bag item. It is
+  named in chat and stays in your bags.
+- Mail Memory: Last seen at the window's foot and in the minimap icon's
+  tooltip give the same age.
+
 ## 2.0.0
 
 *Restart the game once after updating (a /reload is not enough).*

@@ -23,7 +23,7 @@
 | **Mail tab** | One-click collection in the order your list shows, search, sort and filter, row selection, buttons by kind (three on by default) and for your own character groups, finished mail under one quiet bar, and a History of what you collected and sent. |
 | **Arrange** | Drag, hide and set up every column and button right in the window; each list keeps its own layout. |
 | **Mail Memory** | Every character's last-seen mailbox, from anywhere, searchable across characters, with warnings before mail is lost. |
-| **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, and more than twelve items go out in one press. |
+| **Send tab** | Names complete as you type, a line says what a send will do, gold always asks first, every stack of an item or of a kind of material attaches at once, and more than twelve items go out in one press. |
 | **Minimap icon** | Optional: two dozen hand-painted styles, a count of what's waiting, and a marker for mail about to expire. |
 | **Looks** | Follows EllesmereUI or ElvUI; on the game's own UI, wears the Blizzard look (the default: the game's frames, buttons and letter paper) or the Postbox style in Dark or Light. |
 | **Options** | Five tabs, General first with every character's mail and your last 7 days at a glance, a search that finds any setting, and a panel that explains and previews whatever you point at. |
@@ -57,6 +57,11 @@ Forever keeps its own settings, separate from retail's.
 - **Gold from strangers.** The game asks before you take gold from someone
   it doesn't know, and Postbox waits for your answer. You answer the game's
   question; Postbox never answers it for you.
+- **First or last names in the Sender column.** Mail rows can write a
+  sender's **First name** or **Last name** in place of the **Full name**
+  (Arrange > Sender column > Show), so characters that share one half read
+  apart by the other. Two senders who share the half you chose keep their
+  full names, and a row's tooltip always names the sender whole.
 - **Reload and controller.** After a style change, **Reload now** reloads;
   in combat it asks you to type `/reload`. With the Gamepad interface style
   you get Blizzard's own mailbox, and a style change made with the mailbox
@@ -83,6 +88,12 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
   collects your picks. C.O.D. mail is never swept.
+- **All mail takes** (Options > Mail tab > Collecting) is **Every mail**
+  unless you choose **Auction house, game and my characters**. All mail
+  then leaves mail from other players in your mailbox, unread, for you to
+  take yourself, and the title bar says how many it left. Your characters
+  are the ones you have logged into with Postbox installed. Collect shown,
+  the other buttons and a click on a mail take what they always do.
 - **Sort and filter:** the button at the end of the search box sorts by
   date, time left, gold or sender (click again to reverse) and can show only
   unread mail, mail with gold or mail with items, several at once. Each
@@ -226,6 +237,13 @@ Most mail, Name or Last played.
 
 - **Arrivals are detected, not guessed:** the game's new-mail signal, the
   unread flag, and the auction house's own sold / expired / bought notices.
+- **Auctions are counted as they happen:** each auction a character wins,
+  sells, cancels or lets run out is a row in its box at once, with its
+  item and, where the game gives it, its price, and counts as one mail
+  until the next mailbox visit lists the mail itself.
+- **One count everywhere:** Mail Memory, the character list, the minimap
+  icon and its tooltip give the same number for a mailbox, the mail the
+  server holds beyond what the mailbox lists included.
 - **Warnings** name any character with mail holding gold or items (or a
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
@@ -261,14 +279,24 @@ Most mail, Name or Last played.
   hide it; the star at its end favorites it.
 - **Pin a name** with the small pin in the Recipient box and that
   character starts every mailbox with it: a miner that always mails your
-  banker. Click the pin again to unpin; your other characters are left
-  alone. **Recipient pin** (Options > Send tab) turns the pin off.
+  banker. The visit after a send to someone else opens with it too, and a
+  mail you were still writing comes back as you left it. Click the pin
+  again to unpin; your other characters are left alone. **Recipient pin**
+  (Options > Send tab) turns the pin off.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
 - **Past twelve items**, right-clicks keep queuing; one press sends the rest
-  as further mails to the same person, after one confirmation. Alt+right-click
-  attaches every stack of an item; right-click "Attachments" clears them all.
+  as further mails to the same person, after one confirmation. Right-click
+  "Attachments" clears them all.
+- **Every stack at once:** Alt-right-click a bag item and every stack of
+  it is attached. The small arrow after "Attachments" does the same for a
+  kind of material: it lists the kinds in your bags in the game's own
+  words (Cloth, Herb, Metal & Stone), each with how many stacks it would
+  add, and a line's tooltip lists the items. Bound and quest items are
+  left out of a kind. Either way, what is past twelve waits in the queue
+  and goes as the next mail, and a stack the game will not attach is
+  named in chat and leaves the rest to go on.
 - **Gold asks first**, and asks again if the name, the amount, C.O.D. or the
   number of mails changes before you answer.
 - **Ctrl+Enter sends** from any box (a setting, on by default; the Send button
@@ -316,7 +344,8 @@ icon steps aside.
   **Offset X** and **Offset Y**. On **Always** it stays on the map while the
   icon is hidden, the same size and in the same place; **Larger when alone**
   makes it bigger there.
-- **Count on icon** (this character or all), shadow, glow and pulse, with a
+- **Count on icon** (this character or all; always the plain number, a
+  long one drawn smaller to fit), shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.
@@ -328,7 +357,9 @@ icon steps aside.
   out while it is off, and the marker's look also while Warn about expiring mail is Off.
 - Two dozen hand-painted styles from 16 to 40 px, on the minimap's rim or
   anywhere on screen (Shift-drag; Alt-click locks it).
-- **Its tooltip** shows your own mailbox first, then each of your other
+- **Its tooltip** shows your own mailbox first: **Waiting to collect**
+  with its senders, **Held back by the server** for the part of it the
+  mailbox has not listed yet, and **Last seen**. Then each of your other
   characters with mail. Click for Mail Memory, right-click for the options.
 - Under EllesmereUI's minimap it restyles *their* mail button in place, and
   EllesmereUI keeps its size, place and its own Hide Mail setting.
@@ -360,7 +391,10 @@ whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that
 window as it moves or resizes, so you can watch a setting reshape it; drag
-them and they stay where you put them. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
+them and they stay where you put them. The mail window itself opens beside
+the game's other windows while **Dock beside game windows** (Options >
+Window) is on, and goes back there at the next mailbox if you drag it
+away; switch it off and it stays wherever you leave it. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
 settings** (your recipients, groups, Mail Memory and History are kept) or
 **Reset everything**, each saying what it clears before it asks. **What's
 new?** in the footer shows the last three releases. It never opens by
@@ -420,7 +454,8 @@ you open the options, and one on What's new? stays until you read it.
   own profiler split into Postbox, other addons and the game.
 - **Safe by design.** One C.O.D. confirmation pays once, for the mail you
   chose; deleting in bulk only ever removes finished mail you chose, a mail
-  that still holds something asks before it goes, and every delete is
+  that still holds something asks before it goes and names what it
+  holds, and every delete is
   re-checked right before it happens; every take follows its mail as the
   inbox moves.
 - **One skin contract.** A look claims the window at login and answers
