@@ -5755,7 +5755,10 @@ end
 -- the client refused is not locked; an item it took is. (This test was
 -- taken out once while a different bug -- the GUID lookup -- was making
 -- every item look refused; it was never the culprit.)
-function Q.Enqueue(panel, bag, slot)
+--
+-- `swept`: the item is one of a sweep's (every stack of an item:
+-- Q.AttachMatching), marked so for the pass that attaches it (Q.Resume).
+function Q.Enqueue(panel, bag, slot, swept)
   local info = Q.ContainerInfo(bag, slot)
   if not info then return false, "empty" end
   if info.isLocked then return false, "attached" end
@@ -5780,6 +5783,7 @@ function Q.Enqueue(panel, bag, slot)
     -- Known now, so the tooltip can say which items the client will ask
     -- about before their turn comes.
     asks = Q.WillAsk(bag, slot),
+    swept = swept and true or nil,
   }
   RefreshQueueLabel(panel)
   return true
@@ -5897,6 +5901,14 @@ end
 -- cancelled: the item is forgotten, not retried, and the pass runs on) or
 -- "refused" (no dialog came: the item goes back to the front and the pass
 -- stops, as whatever refused this one will refuse the next).
+--
+-- An item of a sweep that is refused is the exception: one of many stacks
+-- the player never clicked one by one, with the rest of the sweep waiting
+-- behind it. Kept at the front it was tried first by every later pass, and
+-- nothing behind it moved until the player took it out of the queue. It is
+-- let go as a declined one is, told in chat, and the pass runs on. Only
+-- once between two attaches: a second refusal with nothing attached since
+-- is not about the item, and ends the pass as before.
 function Q.Resume(state, outcome)
   if Q.fillState ~= state then return end
   local pending = state.pending
@@ -5911,7 +5923,8 @@ function Q.Resume(state, outcome)
   if outcome == "attached" then
     state.attached = state.attached + 1
     state.slotIndex = pending.slotIndex + 1
-  elseif outcome == "declined" then
+  elseif outcome == "declined" or (pending.entry.swept and state.refusedAt ~= state.attached) then
+    if outcome ~= "declined" then state.refusedAt = state.attached end
     if type(ClearCursor) == "function" then ClearCursor() end
     ns.Print(L("MSG_QUEUE_DECLINED", pending.entry.link or "?"))
   else
@@ -6250,9 +6263,9 @@ function Q.QueueOpen()
   return panel
 end
 
-function Q.TryEnqueue(panel, bag, slot)
+function Q.TryEnqueue(panel, bag, slot, swept)
   if type(bag) ~= "number" or type(slot) ~= "number" then return end
-  local ok, reason = Q.Enqueue(panel, bag, slot)
+  local ok, reason = Q.Enqueue(panel, bag, slot, swept)
   if ok then
     Q.stats.queued = Q.stats.queued + 1
   else
@@ -6469,28 +6482,44 @@ function Q.AttachAll(panel, bag, slot)
   local info = Q.ContainerInfo(bag, slot)
   local itemID = info and info.itemID
   if not itemID then return end
-  local limit = IsCODArmed(panel) and (K.SEND_SLOT_COUNT - AttachmentCount()) or nil
-  local added = 0
-  local function Take(b, s)
-    if limit and added >= limit then return end
-    if Q.TryEnqueue(panel, b, s) then added = added + 1 end
-  end
   -- The clicked stack first, then the rest in bag order.
-  Take(bag, slot)
-  for b = 0, Q.LAST_BAG do
-    local ok, count = pcall(C_Container.GetContainerNumSlots, b)
-    for s = 1, (ok and tonumber(count)) or 0 do
-      if b ~= bag or s ~= slot then
-        local other = Q.ContainerInfo(b, s)
-        if other and other.itemID == itemID then Take(b, s) end
-      end
-    end
-  end
+  local added = Q.AttachMatching(panel, Q.SameItem, itemID, bag, slot)
   if added == 0 then return end
   Q.stats.all = (Q.stats.all or 0) + 1
   -- Into whatever slots are free now; the rest waits in the queue.
   TopUpFromQueue(panel)
   ns.Print(ns.Plural("MSG_ATTACH_ALL", added, info.hyperlink or ""))
+end
+
+-- bag, slot, itemID -> whether that bag slot holds that item: the test of
+-- Alt+right-click's sweep.
+function Q.SameItem(bag, slot, itemID)
+  local other = Q.ContainerInfo(bag, slot)
+  return other ~= nil and other.itemID == itemID
+end
+
+-- The loop every sweep runs: each bag slot `test(bag, slot, arg)` passes is
+-- queued in bag order (bag 0 to Q.LAST_BAG, the reagent bag with them, never
+-- the bank), after the slot the player clicked where there is one. Each
+-- goes through Q.TryEnqueue, marked as a sweep's (Q.Resume). Under a C.O.D.
+-- it stops at the free slots. -> how many were queued. The caller moves
+-- them into the slots (TopUpFromQueue) and says what was added.
+function Q.AttachMatching(panel, test, arg, firstBag, firstSlot)
+  local limit = IsCODArmed(panel) and (K.SEND_SLOT_COUNT - AttachmentCount()) or nil
+  local added = 0
+  if firstBag and not (limit and added >= limit) and Q.TryEnqueue(panel, firstBag, firstSlot, true) then
+    added = 1
+  end
+  for b = 0, Q.LAST_BAG do
+    local ok, count = pcall(C_Container.GetContainerNumSlots, b)
+    for s = 1, (ok and tonumber(count)) or 0 do
+      if limit and added >= limit then return added end
+      if (b ~= firstBag or s ~= firstSlot) and test(b, s, arg) and Q.TryEnqueue(panel, b, s, true) then
+        added = added + 1
+      end
+    end
+  end
+  return added
 end
 
 -- A press anywhere but on the open contact picker, or on a key of the bar
