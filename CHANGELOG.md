@@ -48,9 +48,12 @@
 
 ### Fixed
 
-- Send tab, Forever: while the game has C.O.D. switched off, the C.O.D.
-  box is grayed with the game's own reason in its tooltip, as the game's
-  own button is, instead of letting a C.O.D. mail go and fail.
+- Send tab, Forever: while Blizzard has C.O.D. switched off, the C.O.D.
+  box shows a lock and a gray label, and its tooltip says Blizzard has
+  turned it off, with the game's own words, instead of letting a C.O.D.
+  mail go and fail.
+- Mail tab: an auction mail the game sent without a title says so in its
+  tooltip, in the game's own words for the missing title.
 - Send tab: a C.O.D. above the game's limit of 10,000 gold now stops at
   Send with that reason, as the game's own Send button does.
 - Mail tab: Delete on an opened mail that still holds something asks with
