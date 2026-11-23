@@ -5343,9 +5343,11 @@ function Arrivals.Row(p, gen)
   if not row then
     row = { pending = true, auction = true, sender = "", subject = "", read = false, stuck = false,
       kind = false, icon = false, count = false, items = 0, money = 0, cod = 0, paid = false, asked = false,
-      link = false, id = false }
+      link = false, id = false, at = false }
     Arrivals.rowOf[p] = row
   end
+  -- When the notice came: what Mail Memory's wash reads (MM.Wash).
+  row.at = tonumber(p.t) or false
   local A = MM.Auctions
   local item = A and A.Name(p) or p.item
   local n = tonumber(p.n)
@@ -5383,19 +5385,24 @@ local function PendingRows(watch, arrived, from, snap)
     -- The auction house, where the client names it among the senders: the
     -- name the row that stands for an unnamed arrival then takes.
     local house
+    -- When such mail came, as far as the watch knows: the first arrival
+    -- since the visit, or the last one nothing named, whichever is later
+    -- (false where neither was noted). What the wash reads (MM.Wash).
+    local at = watch and math.max(tonumber(watch.newAt) or 0, tonumber(watch.uncountedAt) or 0) or 0
+    if at <= 0 then at = false end
     if type(from) == "table" then
       for i = 1, #from do
         local sender = from[i]
         if not house and ns.Helpers.IsAuctionHouse(sender) then house = sender end
         if Arrivals.Named(sender, snap, named) then
           out[#out + 1] = { pending = true, sender = sender, subject = L["MEMORY_NEW_UNOPENED"],
-            icon = "Interface\\Icons\\INV_Letter_02" }
+            icon = "Interface\\Icons\\INV_Letter_02", at = at }
         end
       end
     end
     if #out == 0 then
       out[1] = { pending = true, sender = house or L["MEMORY_SENDER_UNKNOWN"], subject = L["MEMORY_NEW_UNOPENED"],
-        icon = "Interface\\Icons\\INV_Letter_02" }
+        icon = "Interface\\Icons\\INV_Letter_02", at = at }
     end
   end
   return out
@@ -7366,6 +7373,146 @@ local function PaintWho(frame, info, picking)
   MM.PaintPlateCount(plate)
 end
 
+-------------------------------------------------------------
+-- 3f. New since Mail Memory was last open
+--
+-- The rows of mail that came since this window was last open wear a soft
+-- wash across the whole row as it opens: held a moment, then eased out,
+-- and nothing is left behind. Which rows: an arrival (a row that says
+-- "New") whose notice came after the stamp kept for the character
+-- (`lookedAt`, beside the arrival watch in mailWatch). The stamp is written
+-- once the window has been open for the hold, as the fade begins; a window
+-- shut sooner leaves the rows new for next time.
+--
+-- One texture on a row of the window's own pool, made the first time that
+-- row is lit and kept, and one animation on it, played once at the open: a
+-- hold, then the fade, whose end hides the texture. Nothing of Postbox's
+-- runs to drive it, nothing is left running once it ends, and nothing at
+-- all when no row is new. A row bound to other mail (a scroll past it, a
+-- search, a sort) or the window shut ends every mark at once.
+-------------------------------------------------------------
+MM.Wash = { HOLD = 0.8, FADE = 2.0, ALPHA = 0.20, lit = {}, n = 0 }
+do
+  local W = MM.Wash
+  -- On the game's parchment (the Blizzard look's Row texture) the accent
+  -- would be lost on the paper: a warm gold laid over it, as a highlighter
+  -- marks a page.
+  local PAPER_R, PAPER_G, PAPER_B, PAPER_A = 0.91, 0.74, 0.26, 0.5
+
+  -- The hold ended on a lit row: the rows lit at this open are seen. The
+  -- first of the rows to get here writes it; the rest find it written.
+  local function Held()
+    local at = W.at
+    if not at then return end
+    W.at = nil
+    local watch = WatchFor(W.realm, W.name, false)
+    if watch then watch.lookedAt = at end
+  end
+
+  -- A row's fade ended: its wash goes. The last one lets the list go.
+  local function Faded(group)
+    group.__pbTex:Hide()
+    W.left = W.left - 1
+    if W.left <= 0 then W.Stop() end
+  end
+
+  local function Mark(row)
+    local tex = row.__pbWash
+    if not tex then
+      tex = row:CreateTexture(nil, "BORDER", nil, -8)
+      tex:SetAllPoints(row)
+      local group = tex:CreateAnimationGroup()
+      local hold = group:CreateAnimation("Alpha")
+      hold:SetFromAlpha(1)
+      hold:SetToAlpha(1)
+      hold:SetDuration(W.HOLD)
+      hold:SetOrder(1)
+      hold:SetScript("OnFinished", Held)
+      local fade = group:CreateAnimation("Alpha")
+      fade:SetFromAlpha(1)
+      fade:SetToAlpha(0)
+      fade:SetDuration(W.FADE)
+      fade:SetOrder(2)
+      fade:SetSmoothing("IN_OUT")
+      group:SetScript("OnFinished", Faded)
+      group.__pbTex = tex
+      tex.__pbGroup = group
+      row.__pbWash = tex
+    end
+    -- The accent, or on the parchment the gold: read at each open, so it
+    -- follows a host UI's accent and the look's Row texture.
+    if row.__pbPaperOn then
+      tex:SetColorTexture(PAPER_R, PAPER_G, PAPER_B, PAPER_A)
+    else
+      local r, g, b = ns.Theme.GetAccent()
+      tex:SetColorTexture(r, g, b, W.ALPHA)
+    end
+    tex:SetAlpha(1)
+    tex:Show()
+    return tex
+  end
+
+  -- Every mark ends now, the stamp unwritten if the hold had not ended.
+  function W.Stop()
+    local lit = W.lit
+    for i = 1, W.n do
+      local row = lit[i]
+      lit[i] = nil
+      local tex = row.__pbWash
+      if tex then
+        tex.__pbGroup:Stop()
+        tex:Hide()
+      end
+      row.__pbWashMail = nil
+    end
+    W.n, W.left, W.at, W.frame = 0, 0, nil, nil
+  end
+
+  -- The window just opened on the character being played (MM.Toggle): the
+  -- arrivals on screen that came after its stamp are lit.
+  function W.Start(frame)
+    if W.n > 0 then W.Stop() end
+    local info = frame._info
+    if not info or frame._preview or info.matched then return end
+    local watch = WatchFor(info.realm, info.name, false)
+    if not watch then return end
+    local seen = tonumber(watch.lookedAt) or 0
+    local lit, n = W.lit, 0
+    local rows = frame.Rows
+    for i = 1, #rows do
+      local row = rows[i]
+      local mail = row:IsShown() and row.mail
+      local at = mail and mail.pending and tonumber(mail.at)
+      if at and at > seen then
+        n = n + 1
+        lit[n] = row
+        row.__pbWashMail = mail
+        Mark(row)
+      end
+    end
+    if n == 0 then return end
+    W.n, W.left, W.frame = n, n, frame
+    W.realm, W.name, W.at = info.realm, info.name, time()
+    for i = 1, n do lit[i].__pbWash.__pbGroup:Play() end
+  end
+
+  -- After each bind of `frame`'s rows: a lit row that holds other mail now,
+  -- or none, ends every mark (BindRows). Compares only.
+  function W.Check(frame)
+    if W.frame ~= frame then return end
+    local lit = W.lit
+    for i = 1, W.n do
+      local row = lit[i]
+      local was, mail = row.__pbWashMail, row.mail
+      if not row:IsShown() or not mail or (mail ~= was and not (mail.pending and was.pending
+          and mail.at == was.at and mail.sender == was.sender and mail.subject == was.subject)) then
+        W.Stop()
+        return
+      end
+    end
+  end
+end
+
 -- A search across every box lists each character under a heading; a click
 -- on one opens that character's box.
 -- The rows the viewport can show, bound and placed by position -- the Mail
@@ -7419,6 +7566,8 @@ local function BindRows(frame)
     MM.FillRow(row, rows[i], now, frame._cols or {}, i, onHeader, realm, name)
   end
   for i = used + 1, #frame.Rows do frame.Rows[i]:Hide() end
+  -- A wash still on (MM.Wash) stays only on the mail it lit.
+  if MM.Wash.n > 0 then MM.Wash.Check(frame) end
   if arranging and A.ListPlaced then A.ListPlaced(frame) end
   -- An open fan stays only while its row still shows its mail.
   local R = Rules()
@@ -7842,6 +7991,8 @@ local function Build()
   end
   frame:HookScript("OnHide", function()
     MM.ClosePicker()
+    -- The wash over new mail ends with the window (MM.Wash).
+    MM.Wash.Stop()
     -- A fan open over the window's rows goes with it.
     local R = Rules()
     if R and R.FanGone then R.FanGone(frame.Scroll) end
@@ -8009,6 +8160,8 @@ function MM.Toggle()
   frame:Show()
   frame:Raise()
   if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, frame) end
+  -- The mail that came since it was last open, lit for a moment (MM.Wash).
+  MM.Wash.Start(frame)
 end
 
 -- Everything the minimap tooltip needs to describe the mailbox in one read,
