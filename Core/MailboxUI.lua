@@ -3454,9 +3454,11 @@ do
       RL.head:SetAlpha(head)
       return
     end
-    -- The light a touch under the drawing's (0.5 of its 0.6), the ramp to
+    -- The light at the drawing's 0.6 (his note of 11-23: the head as the
+    -- mockup has it), on a texture drawn wider than the drawing's 22 x 12
+    -- (below) because it falls off faster than its soft ellipse; the ramp to
     -- nine tenths of the lit tone.
-    RL.head:SetAlpha(0.5 * head)
+    RL.head:SetAlpha(0.6 * head)
     if RL.c1 then
       local t = 0.9 * head
       RL.c1:SetRGBA(r, g, b, 1)
@@ -3596,10 +3598,11 @@ do
       end
       head:SetPoint("CENTER", RL.fill, "RIGHT", 0, 0)
       RL.shade:SetVertexColor(0, 0, 0, 0.3)
+      -- The end glow as tall and as strong over the line as under it.
       RL.up:SetHeight(3)
-      RL.down:SetHeight(4)
-      Band(RL.up, 0.3, false)
-      Band(RL.down, 0.3, true)
+      RL.down:SetHeight(3)
+      Band(RL.up, 0.25, false)
+      Band(RL.down, 0.25, true)
     else
       -- The accent as a mark, and its lit tone (the open tab's caption).
       local T = ns.Theme
@@ -3613,13 +3616,15 @@ do
       head:SetTexture(LIGHT)
       head:SetTexCoord(0, 1, 0, 1)
       head:SetVertexColor(RL.br, RL.bg, RL.bb, 1)
-      head:SetSize(22, 12)
+      head:SetSize(38, 22)
       head:SetPoint("CENTER", RL.fill, "RIGHT", -1, 0)
       RL.shade:SetVertexColor(0, 0, 0, 0.5)
+      -- The end glow as tall and as strong over the line as under it, and
+      -- a touch softer than the drawing's 0.34 under (his note of 11-23).
       RL.up:SetHeight(4)
-      RL.down:SetHeight(6)
-      Band(RL.up, 0.2, false)
-      Band(RL.down, 0.34, true)
+      RL.down:SetHeight(4)
+      Band(RL.up, 0.22, false)
+      Band(RL.down, 0.22, true)
     end
     RL.s, RL.v, RL.target, RL.done, RL.total = 0, 0, 0, 0, total
     RL.pace, RL.at, RL.k = 0, GetTime(), 16
