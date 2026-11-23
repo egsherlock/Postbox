@@ -231,7 +231,7 @@ right in the Mail tab (right-click it to come back to your own). **Search
 every character** looks through all of them at once. Every box says how
 long ago it was seen; it never pretends to be live. Mail you sent or
 returned to one of your characters since then is listed on top, so you
-know what is waiting there. Hover a mail to see what it holds. A character you no longer play can be hidden (right-click
+know what is waiting there. Mail that came since you last looked glows softly as the window opens, then fades. Hover a mail to see what it holds. A character you no longer play can be hidden (right-click
 it in the list, or tick it under Options > General > Characters > **Hidden
 characters**), and **Character order** above it sets the list's order:
 Warnings first (while Warn about expiring mail is on), Expiring soonest,
@@ -347,7 +347,8 @@ icon steps aside.
   icon is hidden, the same size and in the same place; **Larger when alone**
   makes it bigger there.
 - **Count on icon** (this character or all; always the plain number, a
-  long one drawn smaller to fit), shadow, glow and pulse, with a
+  long one drawn smaller to fit) in a **Count size** of Small, Normal or
+  Large, shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.

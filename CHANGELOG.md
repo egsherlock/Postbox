@@ -25,8 +25,15 @@
   win, sell, cancel or let run out is a row at once, with its item and,
   where the game gives it, its price, and adds one to that character's
   mail count.
+- **Mail Memory: mail that came since you last looked glows softly** in
+  your accent as the window opens, then fades.
+- **Options > Minimap: Count size** (Small, Normal, Large) for the count
+  on the icon.
 
 ### Improved
+
+- **Mail tab: the Inbox button says how many bag slots** the listed mail
+  needs, as "Inbox (14) · 8 slots", where it fits.
 
 - **One mail count everywhere:** Mail Memory, the minimap icon, its
   tooltip and the character list (Mail tab > Inbox) give the same number
