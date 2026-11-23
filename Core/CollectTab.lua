@@ -1606,13 +1606,16 @@ local counts = { toCollect = 0, done = 0, total = 0, server = 0, gone = 0, known
 -- more once it passes what the client will list at a time. `gone` of those are
 -- on their way out (RV.Leaving), and neither number counts them: the next
 -- update will not list them either.
-local function RecordCounts(toCollect, done, total, server, gone)
+-- `slots`: the item slots the listed mail holds, those on their way out
+-- left out (CT.InboxSlots).
+local function RecordCounts(toCollect, done, total, server, gone, slots)
   gone = tonumber(gone) or 0
   counts.toCollect = toCollect
   counts.done = done
   counts.total = total - gone
   counts.server = math.max((tonumber(server) or total) - gone, total - gone)
   counts.gone = gone
+  counts.slots = tonumber(slots) or 0
   counts.known = true
 end
 
@@ -1620,15 +1623,16 @@ local function WalkCounts()
   local total, server = 0, 0
   if type(GetInboxNumItems) == "function" then total, server = GetInboxNumItems() end
   total = tonumber(total) or 0
-  local done, gone = 0, 0
+  local done, gone, slots = 0, 0, 0
   for index = 1, total do
     if RV.Leaving(index) then
       gone = gone + 1
-    elseif Mail().IsReadPersistent(index) then
-      done = done + 1
+    else
+      if Mail().IsReadPersistent(index) then done = done + 1 end
+      slots = slots + (tonumber((select(8, GetInboxHeaderInfo(index)))) or 0)
     end
   end
-  RecordCounts(total - done - gone, done, total, server, gone)
+  RecordCounts(total - done - gone, done, total, server, gone, slots)
 end
 
 -- -> toCollect, done, total (listed), server (in the mailbox). While Test
@@ -1640,6 +1644,17 @@ function CT.InboxCounts()
   if pv then return pv.toCollect, pv.done, pv.total, pv.total end
   if not counts.known then WalkCounts() end
   return counts.toCollect, counts.done, counts.total, counts.server
+end
+
+-- -> the item slots the box's listed mail holds (each attachment one), and
+-- whether the server holds mail past what is listed, whose slots cannot be
+-- known (the figure then reads "N+"). The same walk as CT.InboxCounts; Test
+-- mail's samples while they are listed.
+function CT.InboxSlots()
+  local pv = counts.pv
+  if pv then return pv.slots or 0, false end
+  if not counts.known then WalkCounts() end
+  return counts.slots or 0, counts.server > counts.total
 end
 
 -- The inbox changed and no refresh has looked at it yet. Frozen: Core/MailboxUI.lua
@@ -6703,6 +6718,15 @@ local function LayoutViewToggle(panel)
     altW = Memory.FitPlate(alt, row - left - M.gap - right)
     least = least + alt.minW
   end
+  -- Inbox's slot figure (RV.PlaceFigure), in the room the row has left once
+  -- all else is laid: it widens Inbox alone, moves what follows it along,
+  -- and is no part of what the row needs (`least`, the window's floor).
+  local fig = RV.PlaceFigure(panel, shown, named and 0 or (row - left - M.gap - right))
+  if fig > 0 then
+    shown[1]:SetWidth(per + crest + fig)
+    crest = crest + fig
+    total = total + fig
+  end
 
   -- Placed: the name or the segments at the row's start, the rest after
   -- them. The container keeps its place (the list and the strip hang from
@@ -6809,6 +6833,53 @@ local function FormatCount(n)
   return tostring(n)
 end
 
+-- The item-slot figure beside Inbox's count: "Inbox (14) · 8 slots", the
+-- dot and the words in the third text gray (textDisabled), apart from the
+-- count whether the button is lit or not. The slots of every listed mail
+-- (CT.InboxSlots), "N+ slots" while the server holds mail past what is
+-- listed, whose slots cannot be known; none at all while there is no slot
+-- to tell of. Optional, as "N of M shown" is, and placed before it: drawn
+-- only where the row has room for it whole (RV.PlaceFigure), else the
+-- button is as it was, never cut short; it never makes the window wider.
+-- Its width is measured as the count's is (RV.SizeSegs), each digit the
+-- face's widest, so the row stands still while a run counts it down.
+RV.SLOT_DOT = " \194\183 "
+
+-- seg (Inbox's) -> the figure as drawn, or nil. The same figure makes the
+-- same strings, which Lua keeps once, so an unchanged one makes nothing; the
+-- shape it is measured by is made again only when its words change.
+function RV.SlotFigure(seg)
+  local slots, more = CT.InboxSlots()
+  if slots <= 0 and not more then return nil end
+  local words = ns.Plural(more and "COUNT_SLOTS_MORE" or "COUNT_SLOTS", slots)
+  if seg._figWords ~= words then
+    seg._figWords = words
+    seg._figShape, seg._figDigit = nil, nil
+  end
+  return Th().Colorize("textDisabled", RV.SLOT_DOT .. words)
+end
+
+-- panel, shown, room -> the units the figure adds to Inbox's button, 0
+-- where it is not drawn. Inbox's caption is written here, with the figure
+-- where `room` (what the row leaves once all else is laid) holds it whole.
+function RV.PlaceFigure(panel, shown, room)
+  local seg = shown[1]
+  if not seg or seg.segId == VIEW_DONE or not seg._plain then return 0 end
+  local fig, w = seg._fig, 0
+  if fig then
+    local digit = ns.MailMemory.WidestDigit(MeasureWith, panel, seg.Text)
+    if seg._figDigit ~= digit or not seg._figShape then
+      seg._figDigit = digit
+      seg._figShape = RV.SLOT_DOT .. (seg._figWords:gsub("%d", digit))
+    end
+    w = ceil(MeasureWith(panel, seg.Text, seg._figShape, true))
+    if w > room then w = 0 end
+  end
+  local text = (w > 0) and (seg._plain .. fig) or seg._plain
+  if seg:GetText() ~= text then seg:SetText(text) end
+  return w
+end
+
 -- panel -> nothing. The three numbers come from CT.InboxCounts and from nowhere
 -- else, which is what guarantees the arithmetic a reader will do on them --
 -- Collect + Done = All -- actually holds rather than merely tending to.
@@ -6840,12 +6911,17 @@ function CT.UpdateTabCounts(panel)
       else
         n = server
       end
-      seg:SetText(base .. " (" .. FormatCount(n) .. ")")
+      seg._plain = base .. " (" .. FormatCount(n) .. ")"
+      -- Inbox's slot figure, which the layout below writes with the
+      -- caption where it fits (RV.PlaceFigure).
+      seg._fig = (seg.segId ~= VIEW_DONE) and RV.SlotFigure(seg) or nil
+      if not seg._fig then seg:SetText(seg._plain) end
       -- The number, for its width's shape (RV.SizeSegs).
       seg._count = n
     else
       seg:SetText(base)
       seg._count = nil
+      seg._plain, seg._fig = nil, nil
     end
   end
 
@@ -8191,7 +8267,7 @@ do
       box = {}
       panel._pvCounts = box
     end
-    box.toCollect, box.done, box.total = 0, 0, 0
+    box.toCollect, box.done, box.total, box.slots = 0, 0, 0, 0
     local cat = panel._catCounts
     for key in pairs(cat) do cat[key] = nil end
     for i = 1, #mails do
@@ -8200,6 +8276,7 @@ do
       if not (finished and deleted) then
         box.total = box.total + 1
         if finished then box.done = box.done + 1 else box.toCollect = box.toCollect + 1 end
+        box.slots = box.slots + #m.items
       end
       -- Delete when done: not listed, so nothing of it is drawn, measured
       -- or totalled.
@@ -12268,7 +12345,9 @@ function CT.RefreshMailList(panel)
   -- mail, so a second walk cost a fifty-mail inbox some eight hundred redundant
   -- API calls on every single refresh. This walk is the one that records; see
   -- "The inbox counts".
-  local doneCount, toCollectCount, goneCount = 0, 0, 0
+  -- `slotCount`: the item slots the listed mail holds, for the figure beside
+  -- Inbox (CT.InboxSlots), whatever the search or the filter lists.
+  local doneCount, toCollectCount, goneCount, slotCount = 0, 0, 0, 0
   -- The search, folded once. Matched against each mail's haystack (RV.SearchHay:
   -- the sender, the outcome, the subject and the items' names); the counts
   -- above are deliberately NOT narrowed by it, because the segment captions
@@ -12368,6 +12447,11 @@ function CT.RefreshMailList(panel)
         listed = Helpers().SearchFinds(RV.SearchHay(index, sender, subject, itemCount), query)
       end
       if listed and show then listed = RV.Shows(show, money, itemCount, wasRead) end
+    end
+    -- Every mail's slots, listed or not (the header read once where the
+    -- stuck filter left it unread).
+    if not leaving then
+      slotCount = slotCount + (tonumber(itemCount or (select(8, GetInboxHeaderInfo(index)))) or 0)
     end
     if listed then
       if left then left[index] = RV.SortKey(order, daysLeft, money, sender) end
@@ -12570,7 +12654,7 @@ function CT.RefreshMailList(panel)
   -- three segment captions are readings of these two numbers, and `numItems` --
   -- what the client can actually address -- is the total they add up to and the
   -- number the all segment carries.
-  RecordCounts(toCollectCount, doneCount, numItems, totalItems, goneCount)
+  RecordCounts(toCollectCount, doneCount, numItems, totalItems, goneCount, slotCount)
   -- More mail on the server than the client lists: the primary stays live.
   panel._moreOnServer = totalItems > numItems
   -- Hint first, counts second: both change the width of something in the top
