@@ -12823,6 +12823,66 @@ function RV.Deleted(panel, status)
   RequestRefresh(panel)
 end
 
+-- index -> the reading view's question before a mail that still holds
+-- something is deleted, naming what the mail holds as the game's own
+-- question does: its items, each kind once with how many of it the mail
+-- holds ("Bismuth (200)", as its row writes it), then its gold, in the
+-- client's DELETE_MAIL_CONFIRMATION; gold alone after the client's
+-- DELETE_MONEY_CONFIRMATION, whose amount the game draws under its own
+-- question. Both are the client's words, translated for every locale it
+-- ships. Postbox's own question, which names nothing, stands wherever the
+-- mail's contents cannot all be named: an item the client has no name for
+-- yet, a header that counts more items than the mail shows, a mail that
+-- shows nothing and is still not finished, or a client without the
+-- strings. Asked once, at the click: the text it builds is the question's.
+function RV.DeleteQuestion(index)
+  local own = RawKey("CONFIRM_DELETE_MAIL") or DeleteLabel()
+  local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(index)
+  money = tonumber(money) or 0
+  local slots = Mail().MAX_ATTACHMENTS
+  local held, stacks = nil, 0
+  for slot = 1, slots do
+    local name, itemID, texture, count = GetInboxItem(index, slot)
+    if name ~= nil or itemID ~= nil or texture ~= nil then
+      stacks = stacks + 1
+      if type(name) ~= "string" or name == "" then return own end
+      -- Each kind once, at its first stack, with every stack's count.
+      local first, total = true, tonumber(count) or 0
+      for other = 1, slots do
+        if other ~= slot then
+          local otherName, otherID, _, otherCount = GetInboxItem(index, other)
+          if otherName == name and otherID == itemID then
+            if other < slot then
+              first = false
+              break
+            end
+            total = total + (tonumber(otherCount) or 0)
+          end
+        end
+      end
+      if first then
+        local said = RV.ItemSubject(name, total)
+        held = held and (held .. ", " .. said) or said
+      end
+    end
+  end
+  if stacks < (tonumber(itemCount) or 0) then return own end
+  if held then
+    if money > 0 then held = held .. ", " .. Helpers().FormatMoney(money) end
+    local native = _G["DELETE_MAIL_CONFIRMATION"]
+    if type(native) == "string" and native ~= "" then
+      local ok, said = pcall(format, native, held)
+      if ok and type(said) == "string" then return said end
+    end
+  elseif money > 0 then
+    local native = _G["DELETE_MONEY_CONFIRMATION"]
+    if type(native) == "string" and native ~= "" then
+      return native .. " " .. Helpers().FormatMoney(money)
+    end
+  end
+  return own
+end
+
 -------------------------------------------------------------
 -- Bulk delete
 --
@@ -14582,14 +14642,11 @@ local function BuildDetail(panel)
       -- What the mail holds as the question asks, for the answer to delete
       -- only that mail (DeleteOneMail).
       local item = Mail().FirstItem(index)
-      -- The client's own wording where it has one -- it is already translated
-      -- for every locale and says exactly the right thing.
-      local native = _G["DELETE_MAIL_CONFIRMATION"]
-      local message = (type(native) == "string" and native ~= "" and native)
-        or RawKey("CONFIRM_DELETE_MAIL")
-        or DeleteLabel()
+      -- The client's own wording where it has it -- already translated for
+      -- every locale -- naming what the mail holds as the game's own
+      -- question does (RV.DeleteQuestion).
       Confirm(POPUP_DELETE_ONE, DeleteLabel(), L()["COD_CONFIRM_CANCEL"],
-        message, function()
+        RV.DeleteQuestion(index), function()
           -- The mail the question was about, by the index, fingerprint and
           -- stamp read at the click, never whatever the overlay shows now:
           -- it can be turned to another mail while the dialog stands. The

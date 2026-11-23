@@ -709,6 +709,9 @@ function ST.RefreshAttachmentSlots(panel)
   if panel.AttachLabel then
     panel.AttachLabel:SetText(string.format("%s %d/%d", L["LABEL_ATTACHMENTS"], filled, K.SEND_SLOT_COUNT))
   end
+  -- The form since this visit's last send (19a): an item attached after
+  -- it is the next mail begun.
+  if panel._sentTo then ST.Pin.NoteSlots(panel, filled) end
 
   -- One full row by default, then one trailing empty slot as attachments grow,
   -- up to the client's limit: 6 boxes at 0-5 attached, 7 once the row fills,
@@ -983,6 +986,8 @@ local function SettleDraftAfterSuccess(panel)
   -- A To box the option left empty goes back to this character's pin
   -- (19a), before the line below reads the draft as it now stands.
   ST.Pin.Fill(panel)
+  -- What the send left in the form, for the next visit's start (19a).
+  ST.Pin.NoteSent(panel)
   ClearSendMailMoneyState()
   -- The guidance line says what went, from the draft as it now stands (8d).
   ST.SentSettled(panel)
@@ -6540,14 +6545,24 @@ local function StashDraft(panel)
     panel._draftStash = nil
     return
   end
-  panel._draftStash = { to = to, subject = subject, body = body }
+  -- `sent`: the form is still as this visit's last send left it, with
+  -- nothing of the player's in it since (19a, Pin.AsSent). Its name is the
+  -- one a pin takes the place of at the next visit; any other draft is the
+  -- player's own and comes back whole.
+  panel._draftStash = { to = to, subject = subject, body = body,
+    sent = ST.Pin.AsSent(panel, to, subject, body) }
 end
 
 local function RestoreDraft(panel)
   local stash = panel._draftStash
   panel._draftStash = nil
   if not stash then return end
-  if stash.to ~= "" then ST.SetRecipient(panel, stash.to) end
+  -- The name is put back, with one exception: the name the last send left
+  -- in a form not touched since (`sent`, StashDraft) stands aside on a
+  -- character whose visit starts with a pin (19a; ST.Reset fills the
+  -- pinned name next). A draft the player wrote keeps the name they gave
+  -- it, pin or no pin; the subject and message below come back as ever.
+  if stash.to ~= "" and not (stash.sent and ST.Pin.Starts()) then ST.SetRecipient(panel, stash.to) end
   panel.SubjectBox:SetText(stash.subject)
   panel.SubjectBox:SetCursorPosition(0)
   panel.BodyBox:SetText(stash.body)
@@ -6566,10 +6581,13 @@ function ST.Reset(panel, reason)
   -- What the last press sent was this visit's news (8d).
   ST.sent.line, ST.sent.press = nil, nil
   if reason == "close" then StashDraft(panel) end
+  -- What a send left in the form was that visit's (19a, Pin.NoteSent).
+  panel._sentTo, panel._sentSubject, panel._sentBare = nil, nil, nil
   ClearDraftFields(panel)
   if reason == "open" then
     RestoreDraft(panel)
-    -- A box still empty on a pinned character starts with its pin (19a).
+    -- A pinned character's visit starts with its pin (19a) wherever the
+    -- draft put back left the box empty (RestoreDraft).
     ST.Pin.Fill(panel)
     -- A new visit: the tab's first appearance in it refreshes the contact
     -- sources once more (the panel's OnShow, CS.RefreshForVisit).
@@ -6603,15 +6621,22 @@ end
 -------------------------------------------------------------
 -- 19a. The pin
 --
--- What an EMPTY Recipient box starts with on this character. "After
--- sending, keep" (Options > Send tab) says what stays in the form after a
--- send, for the whole account; the pin is this one character's name to
--- start from. Wherever the box would be left empty on a pinned character
--- it holds the pinned name instead: at each mailbox open, after an unsent
--- draft has been put back (a name the player was typing wins), and after a
--- send that left the box empty ("keep" Nothing). It goes in the way a
--- picked name does (ST.SetRecipient: no type-ahead list, no focus); the
--- subject and body are never the pin's, and it never sends or attaches.
+-- What the Recipient box starts with on this character. "After sending,
+-- keep" (Options > Send tab) says what stays in the form after a send, for
+-- the whole account; the pin is this one character's name to start from.
+-- A mailbox visit on a pinned character opens with the pinned name, as the
+-- pin's tooltip says, wherever the box would be empty or would hold only
+-- the name "keep" left after the last send: that name is not put back at
+-- the next visit while the form is still as the send left it (Pin.AsSent),
+-- though a subject "keep" left is. An unsent draft is the player's own: a
+-- form touched since the last send (a name, subject, message or gold
+-- typed, C.O.D. ticked, an item attached) comes back whole at the next
+-- visit, under the name it had, and the pin does not replace it. And
+-- after a send that left the box empty ("keep" Nothing) the box holds the
+-- pinned name again; a name "keep" left stands until the mailbox closes.
+-- It goes in the way a picked name does (ST.SetRecipient: no type-ahead
+-- list, no focus); the subject and body are never the pin's, and it never
+-- sends or attaches.
 -- The name is the player's own word: it fills whether or not it is hidden
 -- or deleted as a recipient, and pinning it adds it to no list.
 --
@@ -6868,6 +6893,59 @@ do
     local saved = Pin.Forms(true)
     if saved and FieldText(panel.ToBox) == "" then ST.SetRecipient(panel, saved) end
     Pin.Paint(panel, true)
+  end
+
+  -- Whether a mailbox visit on this character starts with a pinned name:
+  -- the pin offered, and a name saved (what Pin.Fill fills an empty box
+  -- with). The draft put back at the open asks, for its own name to stand
+  -- aside (RestoreDraft).
+  function Pin.Starts()
+    return Pin.On() and Pin.Saved() ~= nil
+  end
+
+  -- The form as a send has just left it (SettleDraftAfterSuccess, after
+  -- "keep" and the pin have had their say): the name and subject standing,
+  -- kept on the panel until the mailbox closes. `_sentBare` waits for the
+  -- sent mail's items to be seen gone from the slots (Pin.NoteSlots).
+  function Pin.NoteSent(panel)
+    panel._sentTo, panel._sentSubject = FieldText(panel.ToBox), FieldText(panel.SubjectBox)
+    panel._sentBare = nil
+  end
+
+  -- The attachment slots as just drawn, `filled` of them holding an item
+  -- (ST.RefreshAttachmentSlots, while a send's leavings are kept): an item
+  -- attached once the slots have been seen empty since the send is the
+  -- player's next mail begun, and the form is no longer as the send left
+  -- it. The sent mail's own items, still in the slots for a moment after
+  -- the server's answer, are not that.
+  function Pin.NoteSlots(panel, filled)
+    if filled == 0 then
+      panel._sentBare = true
+    elseif panel._sentBare then
+      panel._sentTo = nil
+    end
+  end
+
+  -- Whether the form being put aside as the mailbox closes (to, subject,
+  -- body as StashDraft read them) is still exactly what this visit's last
+  -- send left: the same name and subject, no message, no gold typed, no
+  -- C.O.D. ticked, nothing attached or queued. Read by comparing, at the
+  -- close, so no keystroke is watched; a form typed in and then put back
+  -- exactly as the send left it holds nothing of the player's either.
+  -- False with no send this visit. Any doubt answers false, and the draft
+  -- comes back whole.
+  function Pin.AsSent(panel, to, subject, body)
+    local sentTo = panel._sentTo
+    if not sentTo or to == "" or to ~= sentTo or subject ~= panel._sentSubject or body ~= "" then return false end
+    local gold, silver, copper = panel.GoldBox, panel.SilverBox, panel.CopperBox
+    if (gold and FieldText(gold) ~= "") or (silver and FieldText(silver) ~= "")
+       or (copper and FieldText(copper) ~= "") then
+      return false
+    end
+    if IsCODArmed(panel) or AttachmentCount() > 0 then return false end
+    local queue = panel._queue
+    if queue and #queue > 0 then return false end
+    return true
   end
 
   -- The key, inside the To box left of the Manage Recipients key, and the
