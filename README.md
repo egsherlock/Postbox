@@ -87,7 +87,12 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
-  collects your picks. C.O.D. mail is never swept. A run of three mails
+  collects your picks. C.O.D. mail is never swept.
+- **Hold Alt** to send back or delete from the list: a return arrow takes
+  the read dot's place on every mail that can go back, finished mail keeps
+  its x, and auction mail still holding something shows a faded x (it can
+  only be taken). While Alt is held only those marks act. Double-tap Alt
+  to keep them on (a lit Alt key says so); one tap ends it. A run of three mails
   or more draws a thin line under the title bar as it goes; if it stops
   early, the line stays where it stopped, in the color of the words beside it.
 - **All mail takes** (Options > Mail tab > Collecting) is **Every mail**

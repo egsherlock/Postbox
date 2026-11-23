@@ -25,6 +25,11 @@
   win, sell, cancel or let run out is a row at once, with its item and,
   where the game gives it, its price, and adds one to that character's
   mail count.
+- **Mail tab: send back or delete a mail from its row.** Hold Alt and a
+  return arrow shows in place of the read dot on every mail that can go
+  back, and finished mail keeps its x; click the arrow to send that mail
+  back. Auction mail that still holds something shows a faded x saying it
+  can only be taken. Double-tap Alt to keep the marks on; one tap ends it.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
