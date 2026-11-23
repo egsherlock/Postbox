@@ -3272,31 +3272,42 @@ end
 --
 -- How it ends. A run that took all it queued: the line reaches the end,
 -- glows along its length for a moment and fades (0.9 s). A run stopped
--- short, or one whose words name something wrong (bags full, slots kept
--- free, stuck mail, incomplete, the mailbox closed): it stays where it
--- stopped, in the colour those words wear (the game's red in the game's
--- look), and leaves when they do -- another run or outcome, the parts that
--- come down by themselves (UI.UpdateStatusSummary), the mailbox closing.
+-- short with nothing to say: it fades where it stands (0.1 s, then half a
+-- second). A run whose words name something (bags full, slots kept free,
+-- stuck mail, incomplete, the mailbox closed): it takes the colour those
+-- words wear where it stopped -- its own where they wear none; the game's
+-- red in the game's look where they wear a tone -- holds it a beat (1.5 s) and fades with the same half second (f54
+-- A01, 11-23). The words stay (section 3); only the line goes. It goes
+-- sooner with its words, if they go first (another run or outcome, the
+-- parts that come down by themselves, UI.UpdateStatusSummary), and at once
+-- with the mailbox.
 --
 -- Cost. One frame of six textures, made at the first run that draws it. Its
 -- OnUpdate is set only while it moves -- a step gliding in, the glow, a fade
 -- -- and taken off when that settles, as the fan's plate's is; a frame of it
--- is one exp() and a width. Nothing runs once a step has arrived, between
--- runs or away from a mailbox, and nothing is made per mail or per frame.
+-- is one exp() and a width. The beat is no motion: the held line is still,
+-- with no OnUpdate, and one C_Timer.After on a shared function ends it,
+-- told apart from an older one by the time it is due rather than by a
+-- closure (as the fan's dwell is). Nothing runs once a step has arrived,
+-- between runs or away from a mailbox, and nothing is made per mail or per
+-- frame.
 -------------------------------------------------------------
 do
   local MEDIA = "Interface\\AddOns\\Postbox\\Media\\"
   local WHITE, LIGHT = MEDIA .. "white8x8.tga", MEDIA .. "minimap-glow.tga"
   local SPARK = "ui-castingbar-pip"
   local exp, min, max = math.exp, math.min, math.max
+  -- How long a held line holds its colour, still, and how long it then
+  -- takes to fade: the plain stop's half second.
+  local BEAT, FADE = 1.5, 0.5
 
   local RL = {
     frame = nil,
     -- nil: not shown. "run": following a run. "whole": the run took all it
     -- queued: on to the end, the glow, the fade. "fade": stopped with
-    -- nothing said wrong: fades where it stands. "hold": settling where it
-    -- stopped into the held colour; "held": settled, still, no OnUpdate.
-    -- "leave": a held line going.
+    -- nothing to say: fades where it stands. "hold": settling where it
+    -- stopped into the held colour; "held": settled, still, no OnUpdate,
+    -- for the beat. "leave": a held line going.
     phase = nil,
     -- The fraction shown, its speed (fractions a second), the true one; the
     -- mails done and queued it is of.
@@ -3309,6 +3320,7 @@ do
     born = 0, t = 0, e = 0,
     warn = 0,           -- how far into the held colour
     lasting = false,    -- held for words that never come down by themselves
+    due = 0,            -- when a held line's beat is over (GetTime)
     from = 1,           -- the alpha a leaving line starts from
     moving = false,     -- its OnUpdate is set
     on = nil, alpha = -1, rw = -1,
@@ -3380,6 +3392,21 @@ do
     RL.phase = nil
     RL.Halt()
     if RL.frame then RL.frame:Hide() end
+  end
+
+  -- A held line goes: the half-second fade from where it stands.
+  function RL.Leave()
+    RL.phase, RL.t, RL.e = "leave", 0, 0
+    RL.from = RL.alpha > 0 and RL.alpha or 1
+    RL.Arm()
+  end
+
+  -- The beat is over (C_Timer.After, one per held line). Only for the line
+  -- it was set for: one dropped, taken over by a new run or held again
+  -- since is no longer "held", or is held to a later time.
+  function RL.Beat()
+    if RL.phase ~= "held" or GetTime() < RL.due - 0.05 then return end
+    RL.Leave()
   end
 
   -- The spring's rate from the pace: a step settles in about the time a
@@ -3525,15 +3552,18 @@ do
       head = max(0, 1 - RL.t / 0.25)
       if not gliding then RL.warn = min(1, e / 0.25) end
       if not gliding and RL.warn >= 1 and head <= 0 and alpha >= 1 then
-        RL.phase = "held"
+        -- In its colour: still for the beat, with nothing running, and
+        -- then it goes (RL.Beat).
+        RL.phase, RL.due = "held", GetTime() + BEAT
         RL.Paint(0, 0)
         RL.Draw(1)
         RL.Halt()
+        C_Timer.After(BEAT, RL.Beat)
         return
       end
     elseif ph == "leave" then
-      if RL.t >= 0.3 then return RL.Hide() end
-      head, alpha = 0, RL.from * (1 - RL.t / 0.3)
+      if RL.t >= FADE then return RL.Hide() end
+      head, alpha = 0, RL.from * (1 - RL.t / FADE)
     end
     RL.Paint(head, flash)
     RL.Draw(alpha)
@@ -3547,18 +3577,15 @@ do
     if RL.phase then RL.Draw(RL.alpha >= 0 and RL.alpha or 1) end
   end
 
-  -- Hidden with the window: whatever was moving settles where it was going,
-  -- with no OnUpdate left behind. A finished line's ending is over.
+  -- Hidden with the window: a run's line settles where it was going, with
+  -- no OnUpdate left behind. A finished line's ending is over, a held one's
+  -- beat included: it is gone, and the beat's timer finds nothing to end.
   function RL.Settle()
     local ph = RL.phase
     if not ph then return end
     RL.Halt()
     RL.s, RL.v = RL.target, 0
-    if ph == "run" or ph == "held" then
-      RL.Draw(1)
-    elseif ph == "hold" then
-      RL.phase, RL.warn = "held", 1
-      RL.Paint(0, 0)
+    if ph == "run" then
       RL.Draw(1)
     else
       RL.phase = nil
@@ -3675,17 +3702,22 @@ do
   end
 
   -- The run ended, `done` of its `total` places passed (nil: where the line
-  -- was told last). `tone`: its words name something wrong, in that palette
-  -- token, and the line holds; `lasting`: those words never come down by
-  -- themselves (incomplete, slots kept free, the mailbox closed). Otherwise
-  -- a run that passed every place runs out to the end and glows, and one
-  -- that did not fades where it stands.
-  function UI.RunLineEnd(done, total, tone, lasting)
+  -- was told last). `said`: its words name something, and the line holds
+  -- where it stopped for a beat, then fades: in `tone`, the palette token
+  -- those words wear (the game's red in the game's look), or in its own
+  -- colour where they wear none (nil). `lasting`: those words never come down by themselves
+  -- (incomplete, slots kept free, the mailbox closed), so nothing but the
+  -- beat ends the line before another run or outcome. Otherwise a run that
+  -- passed every place runs out to the end and glows, and one that did not
+  -- fades where it stands.
+  function UI.RunLineEnd(done, total, said, tone, lasting)
     if RL.phase ~= "run" then return end
     if done and total then UI.RunLineStep(done, total) end
     local whole = RL.total > 0 and RL.done >= RL.total
-    if tone then
-      if not RL.thread then
+    if said then
+      if not tone then
+        RL.hr, RL.hg, RL.hb = RL.r, RL.g, RL.b
+      elseif not RL.thread then
         local T = ns.Theme
         if T and type(T.Ink) == "function" then
           local r, g, b = T.Ink(tone, "strip")
@@ -3705,17 +3737,15 @@ do
     RL.Arm()
   end
 
-  -- A held line goes: its words did (another run or outcome). `now`: the
-  -- mailbox opened or closed, and the line goes at once whatever it was
-  -- doing.
+  -- A held line goes before its beat is over: its words did (another run
+  -- or outcome). `now`: the mailbox opened or closed, and the line goes at
+  -- once whatever it was doing.
   function UI.RunLineDrop(now)
     local ph = RL.phase
     if not ph then return end
     if now then return RL.Hide() end
     if ph ~= "hold" and ph ~= "held" then return end
-    RL.phase, RL.t, RL.e = "leave", 0, 0
-    RL.from = RL.alpha > 0 and RL.alpha or 1
-    RL.Arm()
+    RL.Leave()
   end
 
   -- Every part of the outcome that comes down by itself has come down: a

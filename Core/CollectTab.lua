@@ -14319,17 +14319,17 @@ local function FinishRun(left, stopReason)
 
   -- The line under the title bar ends with the words (MailboxUI, 3b): a run
   -- that took all it queued runs out to the end and glows; one whose words
-  -- name something wrong holds where it stopped, in their colour, for as
-  -- long as they say it.
+  -- name something holds a beat where it stopped, in the colour they wear,
+  -- then fades.
   -- The places it passed: all but those it was stopped short of; a place
   -- given up on was passed.
   local UI = ns.MailboxUI
   if UI and UI.RunLineEnd then
     local passed = queued - left + dropped
     if left > 0 and stopReason ~= "bags" and stopReason ~= "keep" then
-      UI.RunLineEnd(passed, queued, "negative", true)
+      UI.RunLineEnd(passed, queued, true, "negative", true)
     elseif stuck > 0 or waiting > 0 or stopReason == "keep" then
-      UI.RunLineEnd(passed, queued, "warning", stopReason == "keep")
+      UI.RunLineEnd(passed, queued, true, "warning", stopReason == "keep")
     else
       UI.RunLineEnd(passed, queued)
     end
@@ -14351,9 +14351,10 @@ local function StopRun()
   local earned, spent = Run.earned, Run.spent
   ResetRun()
   StatusMailboxClosed()
-  -- The line holds where the run was, in the words' warning tone.
+  -- The line holds where the run was, in the words' warning tone (the
+  -- window closes with the mailbox, and it with it).
   local UI = ns.MailboxUI
-  if UI and UI.RunLineEnd then UI.RunLineEnd(nil, nil, "warning", true) end
+  if UI and UI.RunLineEnd then UI.RunLineEnd(nil, nil, true, "warning", true) end
   ReportRunMoney(earned, spent)
   RequestRefresh(panel)
 end

@@ -94,7 +94,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   only be taken). While Alt is held only those marks act. Double-tap Alt
   to keep them on (a lit Alt key says so); one tap ends it. A run of three mails
   or more draws a thin line under the title bar as it goes; if it stops
-  early, the line stays where it stopped, in the color of the words beside it.
+  early, the line fades where it stopped, holding a moment first in the
+  color of the words beside it when they say why.
 - **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
   mail All mail takes: **Auction house**, **The game**, **My characters**
   and **Other players**, all four by default (**Every mail**). What you

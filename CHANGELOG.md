@@ -14,8 +14,9 @@
 - **Mail tab: a progress line while All mail works.** A run of three
   mails or more draws a thin line in your accent under the title bar (a
   gold thread in the Blizzard look), filling as each mail comes out. If
-  the run stops early, the line stays where it stopped, in the color of
-  the words beside it.
+  the run stops early, the line fades where it stopped; when the words
+  beside it say why, it holds a moment in their color first. The words
+  stay.
 - **Send tab: attach every stack of one kind of material.** The small
   + after Attachments lists the kinds in your bags in the game's own
   words (Cloth, Herb, Metal & Stone), each with how many stacks it would
