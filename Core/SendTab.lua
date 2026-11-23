@@ -1804,6 +1804,15 @@ local function DoSendMail(panel, confirmed)
       PopupNotice(L["ERR_COD_ZERO_PRICE"])
       return
     end
+    -- The game's own cap (MAX_COD_AMOUNT, in gold): its send frame will not
+    -- press Send past it, and the server answers a price over it with
+    -- "Internal mail database error." The guidance line already says so
+    -- (MailRules, rule 5); the press says it again and sends nothing.
+    local capGold = (type(MAX_COD_AMOUNT) == "number" and MAX_COD_AMOUNT > 0) and MAX_COD_AMOUNT or 10000
+    if totalCopper > capGold * 10000 then
+      PopupNotice(string.format(L["SEND_RULE_COD_CAP"], capGold))
+      return
+    end
     if type(SetSendMailCOD) ~= "function" then
       PopupNotice(L["ERR_COD_API_UNAVAILABLE"])
       return
