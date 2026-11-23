@@ -708,6 +708,9 @@ function ST.RefreshAttachmentSlots(panel)
   -- next right-click is to going to the queue instead.
   if panel.AttachLabel then
     panel.AttachLabel:SetText(string.format("%s %d/%d", L["LABEL_ATTACHMENTS"], filled, K.SEND_SLOT_COUNT))
+    -- The kinds key stands at the caption's end, which moves with the count
+    -- (section 18b).
+    if ST.Kind then ST.Kind.Place(panel) end
   end
   -- The form since this visit's last send (19a): an item attached after
   -- it is the next mail begun.
@@ -5732,6 +5735,8 @@ RefreshQueueLabel = function(panel)
   end
   Q.queuedGuids = guids
   Invalidate(panel, "bags")
+  -- What the bags can still add moved with the slots or the queue (18b).
+  if ST.Kind then ST.Kind.Stale(panel) end
 end
 
 -- Is the item in this bag slot waiting in the queue? Asked by the bag
@@ -5756,8 +5761,9 @@ end
 -- taken out once while a different bug -- the GUID lookup -- was making
 -- every item look refused; it was never the culprit.)
 --
--- `swept`: the item is one of a sweep's (every stack of an item:
--- Q.AttachMatching), marked so for the pass that attaches it (Q.Resume).
+-- `swept`: the item is one of a sweep's (every stack of an item, every stack
+-- of a kind: Q.AttachMatching), marked so for the pass that attaches it
+-- (Q.Resume).
 function Q.Enqueue(panel, bag, slot, swept)
   local info = Q.ContainerInfo(bag, slot)
   if not info then return false, "empty" end
@@ -6334,8 +6340,8 @@ function ST.Diagnose()
   end
   table.sort(declined)
   local trace = Q.stats.trace
-  local text = string.format("attach queue: click %d | use %d | alt %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
-    Q.stats.click, Q.stats.use, Q.stats.all or 0, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
+  local text = string.format("attach queue: click %d | use %d | alt %d | kind %d | refused %d | queued %d | asked %d | waiting %d | declined %s\n  pass trace: %s",
+    Q.stats.click, Q.stats.use, Q.stats.all or 0, Q.stats.kind or 0, Q.stats.refused, Q.stats.queued, Q.stats.asked or 0, waiting,
     (#declined > 0) and table.concat(declined, ", ") or "none",
     (trace and #trace > 0) and table.concat(trace, " ; ") or "none")
   -- What Blizzard's questions before a send did this session, where one
@@ -6520,6 +6526,480 @@ function Q.AttachMatching(panel, test, arg, firstBag, firstSlot)
     end
   end
   return added
+end
+
+-------------------------------------------------------------
+-- 18b. Attach by kind
+--
+-- A small key at the end of the Attachments caption opens a menu of the
+-- kinds of materials in the bags, as the game itself classes them: one line
+-- for each subclass of its Trade Goods class that has something to take,
+-- the kind's name as the client writes it and how many stacks. A pick
+-- attaches every stack of that kind -- the sweep Alt+right-click runs for
+-- one item (Q.AttachMatching) -- and what does not fit in the slots waits
+-- in the queue as that sweep's does.
+--
+-- Postbox keeps no list of kinds and no names. The class and subclass are
+-- the item's own (C_Item.GetItemInfoInstant: no server query, so it answers
+-- for every item), the name is the one the client gives with them, and the
+-- lines are whatever the bags report -- so a client that files every
+-- material under one subclass gets one true line. The one number written
+-- here is the subclass the game calls "Other", which is listed last; the
+-- rest stand A to Z, so a line keeps its place as the counts change.
+--
+-- A stack counts only where a pick would really take it: not locked (at a
+-- mailbox that is attached), not queued, not bound in any way, not a quest
+-- item. Bound is stricter than the padlock's verdict, which lets an
+-- account-bound item through for a mail to an alt: a sweep cannot know who
+-- the mail is for, and no tooltip is read to find out. Each line's tooltip
+-- lists the items it would add, so what a kind holds is seen before the
+-- click.
+--
+-- Nothing runs until the pointer is on the key. Resting on it or clicking
+-- it looks through the bags once: an item ID and its class for every filled
+-- slot, the slot's own record only for a material. The click reuses the
+-- look the pointer just made while nothing has changed since. The lines,
+-- their items and the menu's rows are kept and filled again, never made
+-- again. With nothing to take the key is dim and says so; a change to the
+-- bags, the slots or the queue forgets that, and the next look decides
+-- again.
+-------------------------------------------------------------
+do
+  ST.Kind = {
+    -- The game's class for materials, and its "Other" subclass.
+    CLASS = (type(Enum) == "table" and type(Enum.ItemClass) == "table"
+      and tonumber(Enum.ItemClass.Tradegoods)) or 7,
+    OTHER = 11,
+    -- The key: its width (as tall as the caption's line), its room from the
+    -- caption's last letter, its caret's size, and its ink at rest, pointed
+    -- at or open, and with nothing to take.
+    W = 16, GAP = 3, GLYPH = 6,
+    REST = 0.7, LIT = 1, DIM = 0.3,
+    -- A line's tooltip lists this many items before "and N more".
+    TIP_ITEMS = 12,
+    -- The menu's rows, made for this many lines at least (Kind.Menu).
+    ROWS = 8,
+    lines = {}, spare = {}, bySub = {},
+  }
+  local Kind = ST.Kind
+
+  -- Whether this client has what a look needs.
+  function Kind.Ready()
+    return (type(C_Container) == "table" and type(C_Container.GetContainerItemID) == "function"
+      and type(C_Container.GetContainerNumSlots) == "function"
+      and type(C_Item) == "table" and type(C_Item.GetItemInfoInstant) == "function") and true or false
+  end
+
+  -- While a mail is with the server, or a run of mails is between two of its
+  -- sends, the slots and the queue are that send's.
+  function Kind.Busy(panel)
+    return (pendingSend or panel._run) and true or false
+  end
+
+  -- bag, slot -> whether the item there is a quest item, or starts a quest.
+  function Kind.IsQuest(bag, slot)
+    local api = C_Container.GetContainerItemQuestInfo
+    if type(api) ~= "function" then return false end
+    local ok, quest, id = pcall(api, bag, slot)
+    if not ok then return false end
+    if type(quest) == "table" then quest, id = quest.isQuestItem, quest.questID end
+    return (quest or (tonumber(id) or 0) > 0) and true or false
+  end
+
+  -- bag, slot -> the GUID of the item there, as Q.GuidAt gives it, read
+  -- through one location kept and pointed again (a look asks it of every
+  -- material in the bags).
+  function Kind.Guid(bag, slot)
+    local location = Kind.location
+    if location == nil then
+      -- Made once; false where this client's locations cannot be pointed
+      -- again, and every GUID is then read as Q.GuidAt reads it.
+      location = false
+      if type(ItemLocation) == "table" and type(ItemLocation.CreateFromBagAndSlot) == "function"
+         and type(C_Item.GetItemGUID) == "function" then
+        local ok, made = pcall(ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
+        if ok and type(made) == "table" and type(made.SetBagAndSlot) == "function" then location = made end
+      end
+      Kind.location = location
+    end
+    if not location then return Q.GuidAt(bag, slot) end
+    if not pcall(location.SetBagAndSlot, location, bag, slot) then
+      Kind.location = false
+      return Q.GuidAt(bag, slot)
+    end
+    local ok, guid = pcall(C_Item.GetItemGUID, location)
+    return (ok and type(guid) == "string") and guid or nil
+  end
+
+  -- bag, slot [, sub] -> whether the slot holds a material a sweep takes
+  -- (of the kind `sub`, where one is asked for); then also its record, its
+  -- kind and the kind's name. The test a pick's sweep runs
+  -- (Q.AttachMatching), and the one a look counts by.
+  function Kind.At(bag, slot, sub)
+    local okID, id = pcall(C_Container.GetContainerItemID, bag, slot)
+    if not okID or not id then return false end
+    local ok, _, _, subName, _, _, classID, subID = pcall(C_Item.GetItemInfoInstant, id)
+    if not ok or classID ~= Kind.CLASS or subID == nil or (sub ~= nil and subID ~= sub) then return false end
+    local info = Q.ContainerInfo(bag, slot)
+    if not info or info.isLocked or info.isBound then return false end
+    if Kind.IsQuest(bag, slot) then return false end
+    local guid = Kind.Guid(bag, slot)
+    if not guid then return false end
+    local queued = Q.queuedGuids
+    if queued and queued[guid] then return false end
+    -- Nor the one a waiting pass has taken out of the queue to attach: the
+    -- client is asking about it, and it is in neither the queue nor a slot.
+    local pending = Q.fillState and Q.fillState.pending
+    if pending and pending.entry.guid == guid then return false end
+    return true, info, subID, subName
+  end
+
+  -- A line for the kind `sub`, from the spare ones: its tables are kept.
+  function Kind.Line(sub, name)
+    if type(name) ~= "string" or name == "" then
+      -- The item gave no name for its kind: the client's own for the pair.
+      -- A kind with no name at all has no line.
+      name = nil
+      local api = C_Item.GetItemSubClassInfo
+      if type(api) == "function" then
+        local ok, known = pcall(api, Kind.CLASS, sub)
+        if ok and type(known) == "string" and known ~= "" then name = known end
+      end
+      if not name then return nil end
+    end
+    local spare = Kind.spare
+    local line = spare[#spare]
+    if line then
+      spare[#spare] = nil
+    else
+      line = { items = {}, index = {} }
+    end
+    line.sub, line.name, line.text, line.off = sub, name, nil, false
+    Kind.Clear(line)
+    Kind.lines[#Kind.lines + 1] = line
+    Kind.bySub[sub] = line
+    return line
+  end
+
+  -- The line counts nothing: its item records stay, for the next count.
+  function Kind.Clear(line)
+    line.stacks, line.n, line.cut = 0, 0, false
+    for id in pairs(line.index) do line.index[id] = nil end
+  end
+
+  -- One more stack on the line: the item it is a stack of, its stacks and
+  -- how many of it they hold.
+  function Kind.Add(line, info)
+    line.stacks = line.stacks + 1
+    local id = info.itemID or info.hyperlink or "?"
+    local item = line.index[id]
+    if not item then
+      local n = line.n + 1
+      line.n = n
+      item = line.items[n]
+      if not item then
+        item = {}
+        line.items[n] = item
+      end
+      item.link, item.stacks, item.count = info.hyperlink, 0, 0
+      line.index[id] = item
+    end
+    item.stacks = item.stacks + 1
+    item.count = item.count + (tonumber(info.stackCount) or 1)
+  end
+
+  -- "Other" last, the rest by the client's names.
+  function Kind.Before(a, b)
+    local oa, ob = a.sub == Kind.OTHER, b.sub == Kind.OTHER
+    if oa ~= ob then return ob end
+    if a.name ~= b.name then return a.name < b.name end
+    return a.sub < b.sub
+  end
+
+  -- The free slots a sweep stops at under a C.O.D.; nil without one.
+  function Kind.Limit(panel)
+    return IsCODArmed(panel) and max(0, K.SEND_SLOT_COUNT - AttachmentCount()) or nil
+  end
+
+  -- One look through the bags: the lines, each with what a pick of it would
+  -- add. -> how many lines. `keep`: the lines stand as they are (the menu is
+  -- open on them) and are counted again in place; one with nothing left to
+  -- take keeps its words and is set aside (`off`).
+  function Kind.Look(panel, keep)
+    local lines, bySub = Kind.lines, Kind.bySub
+    if keep then
+      for i = 1, #lines do Kind.Clear(lines[i]) end
+    else
+      local spare = Kind.spare
+      for i = #lines, 1, -1 do
+        spare[#spare + 1] = lines[i]
+        lines[i] = nil
+      end
+      for sub in pairs(bySub) do bySub[sub] = nil end
+    end
+    local limit = Kind.Limit(panel)
+    Kind.limit, Kind.fresh = limit, not keep
+    if Kind.Ready() and not Kind.Busy(panel) and limit ~= 0 then
+      for bag = 0, Q.LAST_BAG do
+        local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
+        for slot = 1, (ok and tonumber(count)) or 0 do
+          local takes, info, sub, name = Kind.At(bag, slot)
+          if takes then
+            local line = bySub[sub]
+            if not line and not keep then line = Kind.Line(sub, name) end
+            if line then
+              -- Under a C.O.D. a pick stops at the free slots, and the line
+              -- counts what it would take.
+              if limit and line.stacks >= limit then line.cut = true else Kind.Add(line, info) end
+            end
+          end
+        end
+      end
+    end
+    for i = 1, #lines do
+      local line = lines[i]
+      line.off = line.stacks == 0
+      if not line.off then
+        line.text = line.name .. Theme.Colorize("textSecondary", " \194\183 " .. ns.Plural("COUNT_STACKS", line.stacks))
+      end
+    end
+    if not keep then table.sort(lines, Kind.Before) end
+    return #lines
+  end
+
+  -- The menu's hooks (Dropdown.Menu): a row is a place, the line standing
+  -- there now is what it shows.
+  function Kind.Caption(item)
+    local line = Kind.lines[item.id]
+    return line and line.text or nil
+  end
+
+  function Kind.Off(id)
+    local line = Kind.lines[id]
+    return not line or line.off
+  end
+
+  -- A line's tooltip: every item a pick would add, how many of it and in how
+  -- many stacks, in the order they would be attached.
+  function Kind.RowTip(row, item)
+    local line = Kind.lines[item.id]
+    if not line or line.off then return end
+    local muted = Theme.TIP_MUTED
+    Theme.TipBegin(row, "ANCHOR_RIGHT")
+    Theme.TipTitle(line.name)
+    local shown = min(line.n, Kind.TIP_ITEMS)
+    for i = 1, shown do
+      local it = line.items[i]
+      local left = it.link or "?"
+      if it.count > 1 then left = left .. " x" .. it.count end
+      GameTooltip:AddDoubleLine(left, ns.Plural("COUNT_STACKS", it.stacks), 1, 1, 1, muted, muted, muted)
+    end
+    if line.n > shown then
+      GameTooltip:AddLine(L("MEMORY_WAITING_MORE", line.n - shown), muted, muted, muted)
+    end
+    -- More of the kind than the free slots: why the count stops there.
+    if line.cut then Theme.TipLine(Theme.TipTone("muted", L["ERR_COD_QUEUE"])) end
+    GameTooltip:Show()
+  end
+
+  function Kind.RowLeave()
+    GameTooltip:Hide()
+  end
+
+  -- A line picked: every stack of its kind, through the sweep's loop and
+  -- the queue's own rules, into the free slots and the queue behind them.
+  -- The lines are then counted again where they stand.
+  function Kind.Pick(id)
+    local key = Kind.key
+    local panel = key and key.panel
+    local line = Kind.lines[id]
+    if not (panel and line) or line.off or Kind.Busy(panel) then return end
+    GameTooltip:Hide()
+    local added = Q.AttachMatching(panel, Kind.At, line.sub)
+    if added > 0 then
+      Q.stats.kind = (Q.stats.kind or 0) + 1
+      TopUpFromQueue(panel)
+      ns.Print(ns.Plural("MSG_ATTACH_KIND", added, line.name))
+    end
+    Kind.Look(panel, true)
+    if Kind.menu then Kind.menu:Repaint() end
+  end
+
+  function Kind.MenuMoved()
+    if Kind.key then Kind.Ink(Kind.key) end
+  end
+
+  -- The menu, with a row for each of `need` lines. Its rows are places the
+  -- lines are written into at each open, so one menu serves every look; it
+  -- is made again, larger, only when the bags hold more kinds than it has
+  -- rows (eight more each time: twice at most, for all the kinds the game
+  -- has).
+  function Kind.Menu(key, need)
+    local menu = Kind.menu
+    if menu and need <= #Kind.items then return menu end
+    local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
+    if not (D and type(D.Menu) == "function") then return nil end
+    if menu then menu:Close() end
+    local items = {}
+    for i = 1, max(need, (Kind.items and #Kind.items or 0) + Kind.ROWS) do items[i] = { id = i, name = "" } end
+    Kind.items = items
+    Kind.opts = Kind.opts or {
+      keepOpen = true,
+      caption = Kind.Caption,
+      disabled = Kind.Off,
+      onPick = Kind.Pick,
+      onEnter = Kind.RowTip,
+      onLeave = Kind.RowLeave,
+      onOpen = Kind.MenuMoved,
+      onClose = Kind.MenuMoved,
+    }
+    Kind.menu = D.Menu(key, items, Kind.opts)
+    return Kind.menu
+  end
+
+  function Kind.Open()
+    return Kind.menu ~= nil and Kind.menu:IsShown()
+  end
+
+  -- The key's ink: the window's own text ink, stronger while pointed at or
+  -- open, faint with nothing to take.
+  function Kind.Ink(key)
+    local icon = key.Icon
+    icon:SetVertexColor(Theme.InkFor(1, 1, 1, "window"))
+    if key.none then
+      icon:SetAlpha(Kind.DIM)
+    else
+      icon:SetAlpha((key.hover or Kind.Open()) and Kind.LIT or Kind.REST)
+    end
+  end
+
+  function Kind.Tip(key)
+    Theme.TipBegin(key, "ANCHOR_RIGHT")
+    Theme.TipTitle(L["KIND_TITLE"])
+    if key.none then
+      -- Nothing fits under a C.O.D. with every slot taken; else the bags
+      -- hold nothing a pick would take.
+      Theme.TipLine(Theme.TipTone("muted", L[Kind.limit == 0 and "ERR_COD_QUEUE" or "KIND_TIP_NONE"]))
+    else
+      Theme.TipLine(L["KIND_TIP"])
+    end
+    GameTooltip:Show()
+  end
+
+  -- The look the pointer or the click asks for: the one just made while
+  -- nothing has moved since, else a new one. -> how many lines.
+  function Kind.Fresh(panel)
+    if Kind.fresh and Kind.limit == Kind.Limit(panel) then return #Kind.lines end
+    return Kind.Look(panel)
+  end
+
+  function Kind.Enter(key)
+    key.hover = true
+    local panel = key.panel
+    Kind.Place(panel)
+    if Kind.Open() then
+      Kind.Ink(key)
+      return
+    end
+    key.none = Kind.Fresh(panel) == 0 and not Kind.Busy(panel)
+    Kind.Ink(key)
+    Kind.Tip(key)
+  end
+
+  function Kind.Leave(key)
+    key.hover = nil
+    Kind.Ink(key)
+    GameTooltip:Hide()
+  end
+
+  function Kind.Click(key)
+    local panel = key.panel
+    GameTooltip:Hide()
+    if Kind.Open() then
+      Kind.menu:Close()
+      return
+    end
+    if Kind.Busy(panel) then return end
+    local n = Kind.Fresh(panel)
+    key.none = n == 0
+    if n == 0 then
+      Kind.Ink(key)
+      Kind.Tip(key)
+      return
+    end
+    local menu = Kind.Menu(key, n)
+    if menu then menu:Toggle() end
+    Kind.Ink(key)
+  end
+
+  -- The bags, the slots or the queue moved: the last look is old, and a key
+  -- it left dim is live again until the next one. One comparison at rest;
+  -- an open menu keeps its lines until it closes.
+  function Kind.Stale(panel)
+    Kind.fresh = false
+    local key = panel and panel.KindKey
+    if key and key.none then
+      key.none = false
+      Kind.Ink(key)
+    end
+  end
+
+  -- The key at the caption's end. The caption's box is made as wide as its
+  -- words and the key together, so the key stands on whatever the caption
+  -- stands on (the plate a nearly clear window lays under its text,
+  -- Theme.OnWindow) and moves as the count widens it. A caption too long
+  -- to leave the key room over the six slots is the one that changes: it
+  -- is cut to the room left, and the key stands after it. Nothing is set
+  -- while the caption's width has not moved.
+  function Kind.Place(panel)
+    local key, label = panel.KindKey, panel.AttachLabel
+    if not (key and label) then return end
+    local w
+    if label.GetUnboundedStringWidth then w = label:GetUnboundedStringWidth() else w = label:GetStringWidth() end
+    w = ceil(tonumber(w) or 0)
+    local room = K.SEND_SLOTS_PER_ROW * K.SLOT_STEP_X - M.gap - Kind.GAP - Kind.W
+    local cut = w > room
+    if cut then w = max(0, room) end
+    if key.at == w and key.cut == cut then return end
+    key.at, key.cut = w, cut
+    label:SetWidth(cut and w or (w + Kind.GAP + Kind.W))
+    key:ClearAllPoints()
+    key:SetPoint("LEFT", label, "LEFT", w + Kind.GAP, 0)
+  end
+
+  -- Built with the attachment area, where this client can tell a material
+  -- (Kind.Ready) and the house caret can be drawn; else the caption is left
+  -- exactly as it was.
+  function Kind.Build(panel, area, label)
+    if not (Kind.Ready() and Theme.Glyph) then return end
+    local key = CreateFrame("Button", nil, area)
+    local icon = Theme.Glyph(key, "caret", Kind.GLYPH, "ARTWORK")
+    if not icon then
+      key:Hide()
+      return
+    end
+    key:SetSize(Kind.W, LabelHeight())
+    local under = panel.AttachHit or area
+    key:SetFrameLevel((under:GetFrameLevel() or 0) + 1)
+    icon:SetPoint("CENTER", key, "CENTER", 0, 0)
+    -- Pointing down, the way its menu opens, and still: the art drawn the
+    -- other way up, as the options' Reset to defaults draws its caret.
+    local art = icon.__pbSpec
+    if art then icon:SetTexCoord(art.l, art.r, art.b, art.t) end
+    key.Icon, key.panel = icon, panel
+    key:SetScript("OnClick", Kind.Click)
+    key:SetScript("OnEnter", Kind.Enter)
+    key:SetScript("OnLeave", Kind.Leave)
+    -- Its words from the left of a box now wider than they are, on the one
+    -- line they have always had (a box too narrow for them cuts them; it
+    -- never breaks them).
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    panel.KindKey = key
+    Kind.key = key
+    Kind.Place(panel)
+    Kind.Ink(key)
+  end
 end
 
 -- A press anywhere but on the open contact picker, or on a key of the bar
@@ -7478,6 +7958,9 @@ local function BuildAttachmentArea(panel)
     Invalidate(panel, "bags")
     Invalidate(panel, "cost")
   end)
+  -- At the caption's end, the key that attaches every stack of one kind of
+  -- material (section 18b).
+  ST.Kind.Build(panel, area, label)
 
   -- The attachment queue's count (section 18a), to the right of the label:
   -- "8 more queued", the items themselves in its tooltip, and a click to
