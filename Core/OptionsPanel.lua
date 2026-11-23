@@ -8301,6 +8301,164 @@ function State.HiddenRow(col)
   return cell
 end
 
+-- All mail takes (Options > Mail tab > Collecting): what All mail over the
+-- whole box takes, by who sent it -- the auction house, the game, the
+-- player's characters, other players (MailService's Mail.SenderKind). The
+-- setting is MailboxUI's set of kinds (GetAllMailTakes: nil for every
+-- mail, the default, else kind -> true), stored as it always was, so a
+-- value saved by the two-choice row reads the same here. A dropdown in the
+-- row's control place whose caption says what All mail takes: "Every mail"
+-- with all four ticked, else the kinds it takes in one phrase ("Auction
+-- house, game and my characters"), cut by the box's own rules where long.
+-- Open, it is a menu as Hidden characters' (Dropdown.Menu, keepOpen): each
+-- kind ticked while taken, a click unticks or ticks it at once and the list
+-- stays open; the last ticked kind is drawn faint and its click does
+-- nothing, so All mail never takes nothing. One row, as the two-choice row
+-- was: the window keeps its height. The kinds are the row's choices, so the
+-- options search finds the row by them; Reset this tab reads the set
+-- through the row's `get` (TabReset.Units), as before.
+State.TAKES_NAME = { ah = "OPT_TAKES_AH", game = "OPT_TAKES_GAME", own = "OPT_TAKES_OWN", players = "OPT_TAKES_PLAYERS" }
+State.TAKES_IN = { ah = "OPT_TAKES_AH_IN", game = "OPT_TAKES_GAME_IN", own = "OPT_TAKES_OWN_IN", players = "OPT_TAKES_PLAYERS_IN" }
+-- Each stored value's caption, made once (fifteen sets at most).
+State.takesWords = {}
+
+-- id (the kind's place in MailboxUI.SENDER_KINDS) -> whether All mail
+-- takes that kind now.
+function State.TakesHas(id)
+  local UI = ns.MailboxUI
+  local kind = UI.SENDER_KINDS[id]
+  if not kind then return false end
+  local set = UI.GetAllMailTakes()
+  return set == nil or set[kind] == true
+end
+
+-- How many kinds All mail takes now.
+function State.TakesCount()
+  local n, kinds = 0, ns.MailboxUI.SENDER_KINDS
+  for i = 1, #kinds do
+    if State.TakesHas(i) then n = n + 1 end
+  end
+  return n
+end
+
+-- The setting as one word for what reads it as a value (Reset this tab's
+-- probe, the dropdown's selection, which no choice matches): "every", or
+-- the kinds taken as stored ("ah,game,own").
+function State.TakesKey()
+  local UI = ns.MailboxUI
+  if not (UI and UI.GetAllMailTakes and UI.GetAllMailTakes()) then return "every" end
+  local stored = ns.Store and ns.Store.Get and ns.Store.Get("profile.allMailTakes")
+  return "takes:" .. tostring(stored)
+end
+
+-- The caption for the set All mail takes now: "Every mail", the one kind's
+-- name, or the first kind's name and the others joined in the locale's
+-- list ("Auction house, game and my characters").
+function State.TakesWords()
+  local UI = ns.MailboxUI
+  local set = UI.GetAllMailTakes()
+  if not set then return L["OPT_ALL_TAKES_EVERY"] end
+  local key = State.TakesKey()
+  local words = State.takesWords[key]
+  if words then return words end
+  local kinds = UI.SENDER_KINDS
+  local last
+  for i = 1, #kinds do
+    local kind = kinds[i]
+    if set[kind] then
+      if not words then
+        words = L[State.TAKES_NAME[kind]]
+      else
+        if last then words = words .. L["OPT_TAKES_SEP"] .. last end
+        last = L[State.TAKES_IN[kind]]
+      end
+    end
+  end
+  if last then words = string.format(L["OPT_TAKES_AND"], words, last) end
+  -- No kind at all: a value written by hand (the row never stores one),
+  -- read as it always was -- All mail takes nothing -- and said so.
+  words = words or L["OPT_HIDDEN_NONE"]
+  State.takesWords[key] = words
+  return words
+end
+
+-- The caption, painted where the row stands (S.refresh, and each tick).
+function State.Takes()
+  local cell = S.takesRow
+  if not cell then return end
+  cell.dd:SetText(State.TakesWords())
+end
+
+-- A click on kind `id` in the open menu: taken -> left, left -> taken,
+-- never the last kind taken. Stored as the set (MailboxUI.SetAllMailTakes:
+-- every kind is stored as nothing, the default), which asks the Mail tab's
+-- list to count All mail again.
+function State.TakesFlip(id)
+  local UI = ns.MailboxUI
+  local kinds = UI.SENDER_KINDS
+  local kind = kinds[id]
+  if not kind then return end
+  local on = State.TakesHas(id)
+  if on and State.TakesCount() <= 1 then return end
+  local set = {}
+  for i = 1, #kinds do
+    if State.TakesHas(i) then set[kinds[i]] = true end
+  end
+  set[kind] = (not on) or nil
+  UI.SetAllMailTakes(set)
+  State.Takes()
+end
+
+-- The toggle's click: the menu, made once, open or shut.
+function State.TakesToggle(cell)
+  local tk = cell.takes
+  local Drop = ns.Core.UI.Dropdown
+  local UI = ns.MailboxUI
+  if not (Drop and type(Drop.Menu) == "function" and UI and type(UI.SetAllMailTakes) == "function") then return end
+  if tk.menu and tk.menu:IsShown() then
+    tk.menu:Close()
+    return
+  end
+  if not tk.menu then
+    tk.opts = {
+      keepOpen = true,
+      alignRight = true,
+      checked = State.TakesHas,
+      -- The last kind taken: faint, its click does nothing.
+      disabled = function(id) return State.TakesHas(id) and State.TakesCount() <= 1 end,
+      onPick = State.TakesFlip,
+      -- The row holds the panel while it is open, as a select's list does.
+      onOpen = function() Rows.Hold(cell) end,
+      onClose = function()
+        if tk.menu then tk.menu:Close() end
+        Rows.Release(cell)
+      end,
+    }
+    tk.menu = Drop.Menu(cell.control, cell.items, tk.opts)
+  end
+  -- Never narrower than the toggle it opens from.
+  tk.opts.minWidth = cell.control:GetWidth() or 0
+  tk.menu:Toggle()
+end
+
+-- The row, in `col` (the Mail tab's Collecting).
+function State.TakesRow(col)
+  local kinds = ns.MailboxUI.SENDER_KINDS
+  local items = {}
+  for i = 1, #kinds do items[i] = { id = i, name = L[State.TAKES_NAME[kinds[i]]] } end
+  local cell = Rows.Dropdown(col, {
+    title = L["OPT_ALL_TAKES_TITLE"], text = L["OPT_ALL_TAKES_DESC"],
+    items = items,
+    get = State.TakesKey,
+    set = function() end,
+  })
+  cell.takes = { menu = false, opts = false }
+  cell.control:SetScript("OnClick", function() State.TakesToggle(cell) end)
+  S.takesRow = cell
+  State.Takes()
+  return cell
+end
+
 -------------------------------------------------------------
 -- The pages
 --
@@ -8593,31 +8751,9 @@ function Pages.mail(col)
     get = function() return ns.MailboxUI.GetKeepFreeSlots and ns.MailboxUI.GetKeepFreeSlots() or 0 end,
     set = function(id) if ns.MailboxUI.SetKeepFreeSlots then ns.MailboxUI.SetKeepFreeSlots(id) end end,
   })
-  -- What All mail takes, by who sent it: every mail (the default), or the
-  -- auction house's, the game's own and the player's characters', mail from
-  -- anyone else staying in the box for the player's hand. The setting is a
-  -- set of sender kinds (MailboxUI.GetAllMailTakes); these two choices are
-  -- two of its values, and any other set reads as the second. Read at the
-  -- start of each run and by the Mail tab's list, whose count on All mail
-  -- follows the choice at once (the setter asks for it).
-  do
-    local OURS = { ah = true, game = true, own = true }
-    Rows.Dropdown(col, {
-      title = L["OPT_ALL_TAKES_TITLE"], text = L["OPT_ALL_TAKES_DESC"],
-      items = {
-        { id = "every", name = L["OPT_ALL_TAKES_EVERY"] },
-        { id = "ours",  name = L["OPT_ALL_TAKES_OURS"] },
-      },
-      get = function()
-        local UI = ns.MailboxUI
-        return (UI.GetAllMailTakes and UI.GetAllMailTakes()) and "ours" or "every"
-      end,
-      set = function(id)
-        local UI = ns.MailboxUI
-        if UI.SetAllMailTakes then UI.SetAllMailTakes(id == "ours" and OURS or nil) end
-      end,
-    })
-  end
+  -- What All mail takes, by who sent it: a row whose list ticks the four
+  -- kinds (State.TakesRow).
+  State.TakesRow(col)
   -- Finished mail, a group of its own: where it goes, and the bar over it.
   -- Collecting keeps the rows about a collect run and its History.
   Rows.Group(col, L["OPT_FINISHED_HEADING"])
@@ -12552,6 +12688,7 @@ local function Build()
   S.refresh[#S.refresh + 1] = State.RowLayout
   S.refresh[#S.refresh + 1] = State.BarSays
   S.refresh[#S.refresh + 1] = State.Hidden
+  S.refresh[#S.refresh + 1] = State.Takes
   S.refresh[#S.refresh + 1] = State.Arrange
   S.refresh[#S.refresh + 1] = State.Lists
   S.refresh[#S.refresh + 1] = Ctx.PaintExtra

@@ -16175,16 +16175,26 @@ function RV.AllTakes()
   return nil
 end
 
+-- The words for the mail All mail left, as true as the kinds it takes
+-- allow: "3 left from other players" while it leaves other players' mail
+-- alone (its old second choice), "3 left in your mailbox" for any other
+-- mix. A key of the locale's counted strings, for ns.Plural.
+function RV.OthersKey()
+  local takes = RV.AllTakes()
+  if takes and takes.ah and takes.game and takes.own and not takes.players then return "STATUS_LEFT_OTHERS" end
+  return "STATUS_LEFT_KINDS"
+end
+
 -- n -> what a run's outcome says of the mail All mail left for who sent it,
--- "3 left from other players", or nil for none. The words are kept, so the
--- line can follow the inbox (RV.OthersFollow), and named to the shell as
--- the line's note, the part a title bar too narrow for the whole line lets
--- go before it shortens what went wrong (MailboxUI, 3a). Called before the
--- outcome is written.
+-- "3 left from other players", or nil for none (RV.OthersKey). The words
+-- are kept, so the line can follow the inbox (RV.OthersFollow), and named
+-- to the shell as the line's note, the part a title bar too narrow for the
+-- whole line lets go before it shortens what went wrong (MailboxUI, 3a).
+-- Called before the outcome is written.
 function RV.OthersSay(n)
   n = tonumber(n) or 0
   local text = nil
-  if n > 0 then text = ns.Plural("STATUS_LEFT_OTHERS", n) else n = 0 end
+  if n > 0 then text = ns.Plural(RV.OthersKey(), n) else n = 0 end
   RV.othersText, RV.othersN = text, n
   local UI = ns.MailboxUI
   if UI and type(UI.SetStatusNote) == "function" then UI.SetStatusNote(text) end
@@ -16200,7 +16210,7 @@ function RV.OthersFollow(n)
   local said = RV.othersText
   if not said or n >= (RV.othersN or 0) then return end
   local UI = ns.MailboxUI
-  local now = (n > 0) and ns.Plural("STATUS_LEFT_OTHERS", n) or nil
+  local now = (n > 0) and ns.Plural(RV.OthersKey(), n) or nil
   local swapped = UI and type(UI.SwapStatusPart) == "function" and UI.SwapStatusPart(said, now)
   if swapped and now then
     RV.othersText, RV.othersN = now, n

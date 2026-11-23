@@ -1790,8 +1790,9 @@ end
 -- ("ah,game,own"), and only when that is not every kind. So a profile that
 -- is reset takes every mail again, and a kind a later version adds is one
 -- no stored choice names: it is left until the player says otherwise. A
--- stored word that is not a kind is passed over. The options' row is two
--- choices today; a list of ticks would hand over the same set.
+-- stored word that is not a kind is passed over. The options' row ticks
+-- the kinds (OptionsPanel's State.TakesRow) and never stores none: an
+-- empty value saved by hand still reads as a set of no kinds.
 -- The set is made once per stored value and is the caller's to read, never
 -- to write: the list walk asks on every refresh and gets the same table, or
 -- nil.
