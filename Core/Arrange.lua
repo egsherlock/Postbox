@@ -931,6 +931,56 @@ end
 -- is laid on the title bar or on any frame a skin repaints.
 -------------------------------------------------------------
 
+-- The lit plate alone, for the key lit as Done here and for the Mail tab's
+-- Alt key (Core/CollectTab.lua, RV.Marks), which is only ever lit: a key
+-- made by AR.BuildLitKey is `bare`, its word KEY_LEAD in with no check
+-- before it, and as wide as its word needs.
+function AR.PaintLit(button, hover)
+  local T = Th()
+  local light = AR.Light()
+  local mark, check, label = button.Mark, button.Check, button.Label
+  -- The selected plate the window's segments wear: their style's tokens
+  -- where it gives them (the Postbox style's Dark: the neutral gray of a
+  -- selected tab, no wash, no lit edge, nothing more under the pointer),
+  -- the palette's otherwise. The words are inked for that plate.
+  local tok = T.VariantTokens and T.VariantTokens("segment") or nil
+  local C = tok or T.Colors
+  local ground = tok and "tabSelected" or "plateSelected"
+  local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
+  button.Fill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
+  button.Fill:Show()
+  AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], ring[4])
+  AR.ShowEdges(button.Ring, true)
+  AR.TintEdges(button.Key, 0, 0, 0, 1)
+  AR.ShowEdges(button.Key, not light)
+  local r, g, b = T.GetAccentTone("base")
+  button.Wash:SetVertexColor(r, g, b, C.accentWash[4])
+  button.Wash:Show()
+  -- The underline is a mark: on a light palette the accent's mark tone,
+  -- 3:1 on the plate, as a selected tab's is (the accent itself on white
+  -- can fall far short).
+  r, g, b = AR.MarkRGB()
+  button.Base:SetVertexColor(r, g, b, 1)
+  button.Base:Show()
+  button.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
+  button.Bevel:Show()
+  button.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
+  button.Lift:SetShown(hover and true or false)
+  if mark then mark:Hide() end
+  if button.grip then button.grip:Hide() end
+  if check then
+    T.SetColor(check, "accentBright", ground)
+    check:Show()
+  end
+  T.SetColor(label, "accentBright", ground)
+  label:Show()
+  local lead = button.bare and KEY_LEAD or (KEY_LEAD + KEY_CHECK + KEY_GAP)
+  button:SetWidth(lead + math.ceil(T.TextWidth(label)) + KEY_TAIL)
+  -- A skin that draws the lit key its own way (the Blizzard style) does
+  -- it last, lit and unlit; no other look answers.
+  if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, true) end
+end
+
 -- Every look the key has, from its state: at rest the mark alone; pointed
 -- at, white on a plate (a 7% white fill, a grey ring, a black keyline);
 -- lit, the selected plate the window's segments wear (Theme's PaintPlate,
@@ -950,45 +1000,7 @@ function AR.PaintToggle(button)
   local light = AR.Light()
   local mark, check, label = button.Mark, button.Check, button.Label
   if lit then
-    -- The selected plate the window's segments wear: their style's tokens
-    -- where it gives them (the Postbox style's Dark: the neutral gray of a
-    -- selected tab, no wash, no lit edge, nothing more under the pointer),
-    -- the palette's otherwise. The words are inked for that plate.
-    local tok = T.VariantTokens and T.VariantTokens("segment") or nil
-    local C = tok or T.Colors
-    local ground = tok and "tabSelected" or "plateSelected"
-    local fill, ring, bevel, lift = C.plateSelected, C.plateEdgeSelected, C.plateBevel, C.plateHighlight
-    button.Fill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
-    button.Fill:Show()
-    AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], ring[4])
-    AR.ShowEdges(button.Ring, true)
-    AR.TintEdges(button.Key, 0, 0, 0, 1)
-    AR.ShowEdges(button.Key, not light)
-    local r, g, b = T.GetAccentTone("base")
-    button.Wash:SetVertexColor(r, g, b, C.accentWash[4])
-    button.Wash:Show()
-    -- The underline is a mark: on a light palette the accent's mark tone,
-    -- 3:1 on the plate, as a selected tab's is (the accent itself on white
-    -- can fall far short).
-    r, g, b = AR.MarkRGB()
-    button.Base:SetVertexColor(r, g, b, 1)
-    button.Base:Show()
-    button.Bevel:SetVertexColor(bevel[1], bevel[2], bevel[3], bevel[4])
-    button.Bevel:Show()
-    button.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
-    button.Lift:SetShown(hover)
-    if mark then mark:Hide() end
-    if button.grip then button.grip:Hide() end
-    if check then
-      T.SetColor(check, "accentBright", ground)
-      check:Show()
-    end
-    T.SetColor(label, "accentBright", ground)
-    label:Show()
-    button:SetWidth(KEY_LEAD + KEY_CHECK + KEY_GAP + math.ceil(T.TextWidth(label)) + KEY_TAIL)
-    -- A skin that draws the lit key its own way (the Blizzard style) does
-    -- it last, lit and unlit; no other look answers.
-    if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, true) end
+    AR.PaintLit(button, hover)
     return
   end
   button:SetWidth(AR.KEY_W)
@@ -1046,7 +1058,7 @@ end
 -- The key's art, made once with the key. Back to front: the keyline, the
 -- fill, the accent's wash, the ring, the lit top edge, the underline and
 -- the hover wash, then the mark, the check and the word.
-local function BuildKeyArt(button)
+local function BuildKeyArt(button, bare)
   local T = Th()
   button.Key = AR.NewEdges(button, "BACKGROUND", -7, 1, 1)
   button.Fill = button:CreateTexture(nil, "BACKGROUND", nil, -6)
@@ -1073,6 +1085,13 @@ local function BuildKeyArt(button)
   button.Lift:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
   button.Lift:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
 
+  -- A bare key (AR.BuildLitKey) is its word alone, KEY_LEAD in.
+  if bare then
+    button.Label = T.CreateText(button, "segment", "ARTWORK")
+    button.Label:SetPoint("LEFT", button, "LEFT", KEY_LEAD, KEY_LIFT)
+    button.Label:SetWordWrap(false)
+    return
+  end
   -- The mark, and where the glyph art is missing the six dots it replaced.
   button.Mark = T.Glyph and T.Glyph(button, "layout", KEY_MARK, "ARTWORK") or nil
   if button.Mark then
@@ -1133,6 +1152,20 @@ function AR.BuildToggle(parent, place, getHost)
     if GameTooltip:IsOwned(self) then ToggleTip(self) end
   end)
   AR.PaintToggle(button)
+  return button
+end
+
+-- A key that is only ever lit, wearing what the cog key wears as Done:
+-- the Mail tab's Alt key, while Return and Delete are kept on the rows
+-- (Core/CollectTab.lua, RV.Marks). Its word is `text`; the caller places
+-- it, gives it its scripts, and paints it with AR.PaintLit.
+function AR.BuildLitKey(parent, text)
+  local button = CreateFrame("Button", nil, parent)
+  button:SetSize(AR.KEY_W, KEY_SIZE)
+  button:SetFrameLevel(parent:GetFrameLevel() + 20)
+  button.bare = true
+  BuildKeyArt(button, true)
+  button.Label:SetText(text or "")
   return button
 end
 
