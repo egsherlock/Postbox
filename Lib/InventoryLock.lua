@@ -23,6 +23,9 @@ local M = Core.InventoryLock
 local LOCK_TEXTURE = "Interface\\PetBattles\\PetBattle-LockIcon"
 local LOCK_SIZE = 14
 local LOCK_TINT = { 0.85, 0.40, 0.40 }
+-- The same lock, published: the Send tab draws it, gray, in the C.O.D. box
+-- while the game has C.O.D. switched off (ST.PaintCODOff).
+M.LOCK_TEXTURE, M.LOCK_SIZE = LOCK_TEXTURE, LOCK_SIZE
 -- The grey: black this opaque over the icon leaves it at 45% of its light,
 -- which is exactly what tinting the icon to 0.45 used to draw.
 local SHADE_ALPHA = 0.55

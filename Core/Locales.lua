@@ -594,7 +594,7 @@ L["ROW_AH_BOUGHT"]             = "AH Bought"
 L["ROW_AH_EXPIRED"]            = "AH Expired"
 L["ROW_AH_CANCELED"]           = "AH Cancel"
 L["ROW_AH_MAIL"]              = "AH Mail"
-L["TIP_AH_MAIL_WHY"]           = "The game gave this mail no title, so how the auction ended isn't known."
+L["TIP_AH_MAIL_WHY"]           = "The game sent this mail without a title (its own mailbox says \"%s\"), so how the auction ended isn't known."
 L["GROUPS_TITLE"]              = "Character Groups"
 L["GROUPS_OPT_DESC"]           = "Your own collect buttons, each for the characters you choose.\n\nGroup your bank alts, crafters or a friend, and one click collects all they sent. The buttons show while Show category buttons is on."
 L["GROUPS_EMPTY"]              = "Put characters together, such as your bank alts or your crafters. Each group gets its own button in the Mail tab that collects everything those characters sent."
@@ -1228,6 +1228,11 @@ L["ERR_COD_API_UNAVAILABLE"]   = "The game's SetSendMailCOD function is missing.
 -- the one place with room to join the two.
 L["TOOLTIP_COD_TITLE"]         = "Cash on Delivery"
 L["TOOLTIP_COD_DESC"]          = "Nothing is handed over until the recipient pays the amount you set."
+-- While the game has C.O.D. switched off (Forever's C_Mail.IsCODEnabled), in
+-- place of the description: who turned it off, then the game's own reason
+-- (COD_DISABLED, the game's translation) quoted.
+L["TOOLTIP_COD_OFF"]           = "Blizzard has turned off C.O.D. for now."
+L["TOOLTIP_COD_GAME_SAYS"]     = "The game says: \"%s\""
 
 -- Send guidance (Core/MailRules.lua picks which of these applies).
 --
@@ -1792,6 +1797,8 @@ if GetLocale() == "frFR" then
   L["ERR_COD_API_UNAVAILABLE"]   = "La fonction SetSendMailCOD du jeu est introuvable."
   L["TOOLTIP_COD_TITLE"]         = "Contre-Remboursement"
   L["TOOLTIP_COD_DESC"]          = "Rien n'est remis tant que le destinataire n'a pas payé le montant que tu fixes."
+  L["TOOLTIP_COD_OFF"]           = "Blizzard a désactivé le C.R. pour le moment."
+  L["TOOLTIP_COD_GAME_SAYS"]     = "Le jeu indique : « %s »"
 
   -- Conseils d'envoi
   L["SEND_RULE_SELF"]            = "Tu ne peux pas t'envoyer du courrier à toi-même."
@@ -2292,7 +2299,7 @@ if GetLocale() == "frFR" then
   L["ROW_AH_EXPIRED"]            = "HV Expiré"
   L["ROW_AH_CANCELED"]           = "HV Annulé"
   L["ROW_AH_MAIL"]               = "HV Lettre"
-  L["TIP_AH_MAIL_WHY"]           = "Le jeu n'a donné aucun titre à ce courrier : on ne sait donc pas comment l'enchère s'est terminée."
+  L["TIP_AH_MAIL_WHY"]           = "Le jeu a envoyé ce courrier sans titre (sa propre boîte aux lettres affiche « %s ») : on ne sait donc pas comment l'enchère s'est terminée."
   L["GROUPS_TITLE"]              = "Groupes de personnages"
   L["GROUPS_OPT_DESC"]           = "Tes propres boutons de récupération, chacun pour les personnages de ton choix.\n\nRegroupe tes rerolls banque, tes artisans ou un ami, et un clic récupère tout ce qu'ils ont envoyé. Les boutons s'affichent tant que Boutons de catégorie est activé."
   L["GROUPS_EMPTY"]              = "Regroupe des personnages, comme tes rerolls banque ou tes artisans. Chaque groupe a son propre bouton dans l'onglet Courrier, qui récupère tout ce que ces personnages ont envoyé."
@@ -3078,6 +3085,8 @@ if GetLocale() == "deDE" then
   L["ERR_COD_API_UNAVAILABLE"]   = "Die Spielfunktion SetSendMailCOD fehlt."
   L["TOOLTIP_COD_TITLE"]         = "Nachnahme"
   L["TOOLTIP_COD_DESC"]          = "Es wird nichts herausgegeben, bis der Empfänger den von dir gesetzten Betrag zahlt."
+  L["TOOLTIP_COD_OFF"]           = "Blizzard hat Nachnahme vorerst abgeschaltet."
+  L["TOOLTIP_COD_GAME_SAYS"]     = "Das Spiel meldet: „%s“"
 
   -- Versandhinweise
   L["SEND_RULE_SELF"]            = "Du kannst dir selbst keine Post schicken."
@@ -3454,7 +3463,7 @@ if GetLocale() == "deDE" then
   L["ROW_AH_EXPIRED"]            = "AH Abgelaufen"
   L["ROW_AH_CANCELED"]           = "AH Abgebrochen"
   L["ROW_AH_MAIL"]               = "AH Post"
-  L["TIP_AH_MAIL_WHY"]           = "Das Spiel hat dieser Post keinen Betreff gegeben, daher ist nicht bekannt, wie die Auktion ausging."
+  L["TIP_AH_MAIL_WHY"]           = "Das Spiel hat diese Post ohne Betreff geschickt (sein eigener Briefkasten zeigt „%s“), daher ist nicht bekannt, wie die Auktion ausging."
   L["GROUPS_TITLE"]              = "Charaktergruppen"
   L["GROUPS_OPT_DESC"]           = "Eigene Abhol-Buttons, jeder für die Charaktere deiner Wahl.\n\nFasse deine Banktwinks, Handwerker oder einen Freund zusammen, und ein Klick holt alles ab, was sie geschickt haben. Die Buttons erscheinen, solange „Kategorie-Buttons zeigen“ an ist."
   L["GROUPS_EMPTY"]              = "Fasse Charaktere zusammen, etwa deine Banktwinks oder deine Handwerker. Jede Gruppe bekommt im Post-Tab einen eigenen Button, der alles abholt, was diese Charaktere geschickt haben."
@@ -4364,6 +4373,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["ERR_COD_API_UNAVAILABLE"]   = "Falta la función SetSendMailCOD del juego."
   L["TOOLTIP_COD_TITLE"]         = "Contra reembolso"
   L["TOOLTIP_COD_DESC"]          = "No se entrega nada hasta que el destinatario paga el importe que fijes."
+  L["TOOLTIP_COD_OFF"]           = "Blizzard ha desactivado el contra reembolso por ahora."
+  L["TOOLTIP_COD_GAME_SAYS"]     = "El juego dice: «%s»"
 
   -- Avisos de envio
   L["SEND_RULE_SELF"]            = "No puedes enviarte correo a ti mismo."
@@ -4740,7 +4751,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["ROW_AH_EXPIRED"]            = "CS Expirado"
   L["ROW_AH_CANCELED"]           = "CS Cancelado"
   L["ROW_AH_MAIL"]               = "CS Correo"
-  L["TIP_AH_MAIL_WHY"]           = "El juego no le dio asunto a este correo, así que no se sabe cómo terminó la subasta."
+  L["TIP_AH_MAIL_WHY"]           = "El juego envió este correo sin asunto (su propio buzón muestra «%s»), así que no se sabe cómo terminó la subasta."
   L["GROUPS_TITLE"]              = "Grupos de personajes"
   L["GROUPS_OPT_DESC"]           = "Tus propios botones de recogida, cada uno para los personajes que elijas.\n\nAgrupa tus alters de banco, tus artesanos o a un amigo, y un clic recoge todo lo que enviaron. Los botones se ven mientras Botones de categoría está activado."
   L["GROUPS_EMPTY"]              = "Agrupa personajes, como tus alters de banco o tus artesanos. Cada grupo tiene su propio botón en la pestaña Correo, que recoge todo lo que esos personajes enviaron."
@@ -5683,6 +5694,8 @@ L["ERR_COD_ZERO_PRICE"]        = "Для наложенного платежа �
 L["ERR_COD_API_UNAVAILABLE"]   = "Игровая функция SetSendMailCOD отсутствует."
 L["TOOLTIP_COD_TITLE"]         = "Наложенный платеж"
 L["TOOLTIP_COD_DESC"]          = "Ничего не выдаётся, пока получатель не заплатит указанную вами сумму."
+L["TOOLTIP_COD_OFF"]           = "Blizzard временно отключила наложенный платеж."
+L["TOOLTIP_COD_GAME_SAYS"]     = "Игра сообщает: «%s»"
 
 -- Подсказки при отправке
 L["SEND_RULE_SELF"]            = "Нельзя отправить письмо самому себе."
@@ -6071,7 +6084,7 @@ L["ROW_AH_BOUGHT"]             = "Аук. куплено"
 L["ROW_AH_EXPIRED"]            = "Аук. истекло"
 L["ROW_AH_CANCELED"]           = "Аук. отменено"
 L["ROW_AH_MAIL"]               = "Аук. почта"
-L["TIP_AH_MAIL_WHY"]           = "Игра не дала этому письму заголовка, поэтому неизвестно, чем закончился аукцион."
+L["TIP_AH_MAIL_WHY"]           = "Игра прислала это письмо без заголовка (её собственный почтовый ящик показывает «%s»), поэтому неизвестно, чем закончился аукцион."
 L["GROUPS_TITLE"]              = "Группы персонажей"
 L["GROUPS_OPT_DESC"]           = "Собственные кнопки сбора, каждая — для выбранных вами персонажей.\n\nОбъедините банковских твинков, ремесленников или друга, и один щелчок заберёт всё, что они прислали. Кнопки видны, пока включены «Кнопки категорий»."
 L["GROUPS_EMPTY"]              = "Объедините персонажей, например банковских твинков или ремесленников. Каждая группа получает свою кнопку на вкладке «Почта», которая забирает всё, что эти персонажи прислали."
@@ -7217,7 +7230,7 @@ if GetLocale() == "zhCN" then
   L["ROW_AH_EXPIRED"]          = "拍卖行过期"
   L["ROW_AH_CANCELED"]         = "拍卖行取消"
   L["ROW_AH_MAIL"]             = "拍卖行邮件"
-  L["TIP_AH_MAIL_WHY"]         = "游戏没有给这封邮件标题，因此不知道拍卖的结果。"
+  L["TIP_AH_MAIL_WHY"]         = "游戏发送这封邮件时没有给标题（它自己的邮箱显示“%s”），因此不知道拍卖的结果。"
   L["GROUPS_TITLE"]            = "角色分组"
   L["GROUPS_OPT_DESC"]         = "你自己的收取按钮，每个对应你选择的角色。\n\n把银行小号、制造角色或朋友编成一组，一键收取他们寄来的全部邮件。开启“显示分类按钮”后才会显示这些按钮。"
   L["GROUPS_EMPTY"]            = "把角色组合在一起，比如你的银行小号或制造角色。每个分组在邮件标签中都有自己的按钮，收取这些角色寄来的全部邮件。"
@@ -7773,6 +7786,8 @@ if GetLocale() == "zhCN" then
   L["ERR_COD_API_UNAVAILABLE"] = "游戏缺少 SetSendMailCOD 函数。"
   L["TOOLTIP_COD_TITLE"]       = "货到付款"
   L["TOOLTIP_COD_DESC"]        = "在收件人支付你设定的金额之前，不会交付任何东西。"
+  L["TOOLTIP_COD_OFF"]         = "暴雪暂时关闭了货到付款。"
+  L["TOOLTIP_COD_GAME_SAYS"]   = "游戏提示：“%s”"
   L["SEND_RULE_SELF"]          = "你不能给自己发送邮件。"
   L["SEND_RULE_COD_CAP"]       = "货到付款金额不能超过 %d 金币。"
   L["SEND_RULE_XREALM_WARBAND"] = "只有战团绑定物品可以跨服。金币和其他物品请使用战团银行。"
@@ -8480,7 +8495,7 @@ if GetLocale() == "zhTW" then
   L["ROW_AH_EXPIRED"]          = "拍賣場過期"
   L["ROW_AH_CANCELED"]         = "拍賣場取消"
   L["ROW_AH_MAIL"]             = "拍賣場郵件"
-  L["TIP_AH_MAIL_WHY"]         = "遊戲沒有給這封郵件標題，因此不知道拍賣的結果。"
+  L["TIP_AH_MAIL_WHY"]         = "遊戲寄出這封郵件時沒有給標題（它自己的信箱顯示「%s」），因此不知道拍賣的結果。"
   L["GROUPS_TITLE"]            = "角色群組"
   L["GROUPS_OPT_DESC"]         = "你自己的領取按鈕，每個對應你選擇的角色。\n\n把銀行分身、製作角色或朋友編成一組，一鍵領取他們寄來的所有郵件。開啟「顯示類別按鈕」後才會顯示這些按鈕。"
   L["GROUPS_EMPTY"]            = "把角色組合在一起，例如你的銀行分身或製作角色。每個群組在郵件索引標籤中都有自己的按鈕，領取這些角色寄來的所有郵件。"
@@ -9036,6 +9051,8 @@ if GetLocale() == "zhTW" then
   L["ERR_COD_API_UNAVAILABLE"] = "遊戲缺少 SetSendMailCOD 函式。"
   L["TOOLTIP_COD_TITLE"]       = "貨到付款"
   L["TOOLTIP_COD_DESC"]        = "在收件者支付你設定的金額之前，不會交付任何東西。"
+  L["TOOLTIP_COD_OFF"]         = "暴雪暫時關閉了貨到付款。"
+  L["TOOLTIP_COD_GAME_SAYS"]   = "遊戲提示：「%s」"
   L["SEND_RULE_SELF"]          = "你不能寄信給自己。"
   L["SEND_RULE_COD_CAP"]       = "貨到付款金額不能超過 %d 金幣。"
   L["SEND_RULE_XREALM_WARBAND"] = "只有戰隊綁定物品可以跨伺服器。金幣和其他物品請使用戰隊銀行。"

@@ -4450,7 +4450,9 @@ do
   -- outcome, after the facts; nothing for any other kind. Mail Memory's
   -- rows and History's say it too (CT.RowRules.TipWhy).
   function RV.TipWhy(kind)
-    if kind == "auction" then Th().TipNote(L()["TIP_AH_MAIL_WHY"]) end
+    -- The game's own placeholder quoted (RETRIEVING_DATA), as its mailbox
+    -- shows it in each language.
+    if kind == "auction" then Th().TipNote(L()("TIP_AH_MAIL_WHY", RETRIEVING_DATA or "")) end
   end
 
   -- subject, quantity -> the title: the mail's own subject, its trailing

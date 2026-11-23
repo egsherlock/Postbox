@@ -593,7 +593,66 @@ function ST.SyncCOD(panel)
     Invalidate(panel, "guidance")
   end
   cod:SetEnabled(allowed)
-  if cod.text then cod.text:SetAlpha(allowed and 1 or 0.5) end
+  -- Painted at each show while off, so a skin or a palette that painted
+  -- after it is answered; put back once when it comes on again. Where the
+  -- game has no switch (Retail) this is one comparison and paints nothing.
+  if not allowed or cod.__pbCODOff then ST.PaintCODOff(cod, not allowed) end
+end
+
+-- The look of the switched-off box, as the game's own mail window draws
+-- its C.O.D. button (Disable() and its label in GRAY_FONT_COLOR): the
+-- label in the look's disabled gray, the box's art as it is. Postbox's
+-- "can't be mailed" lock (Lib/InventoryLock.lua) stands in the empty box,
+-- in the same gray, on a holder of its own over the box so no skin's pass
+-- over the box's own textures fades it; it takes no room. Made the first
+-- time C.O.D. is off, so Retail never makes it.
+function ST.PaintCODOff(cod, off)
+  cod.__pbCODOff = off
+  local label = cod.text
+  if label then
+    label:SetAlpha(1)
+    if off then ST.CODGray(label) else Theme.SetColor(label, "accent") end
+  end
+  local lock = cod.__pbLock
+  if off and not lock then
+    local holder = CreateFrame("Frame", nil, cod)
+    holder:SetAllPoints(cod)
+    lock = holder:CreateTexture(nil, "OVERLAY")
+    local IL = ns.Core and ns.Core.InventoryLock
+    lock:SetTexture(IL and IL.LOCK_TEXTURE or "Interface\\PetBattles\\PetBattle-LockIcon")
+    local size = IL and IL.LOCK_SIZE or 14
+    lock:SetSize(size, size)
+    lock:SetPoint("CENTER", cod, "CENTER", 0, 0)
+    if type(lock.SetDesaturated) == "function" then lock:SetDesaturated(true) end
+    cod.__pbLock = lock
+  end
+  if not lock then return end
+  if off then
+    ST.CODGray(lock)
+    lock:SetAlpha(1)
+  end
+  lock:GetParent():SetShown(off)
+end
+
+-- A text or texture in the look's disabled gray: the game's own
+-- (GameFontDisable, GRAY_FONT_COLOR's 0.5) in the game's look, the
+-- palette's textDisabled in a style of Postbox's or a host UI's.
+function ST.CODGray(region)
+  if Theme.NativeLook and Theme.NativeLook() then
+    local r, g, b = 0.5, 0.5, 0.5
+    local font = _G.GameFontDisable
+    if font and type(font.GetTextColor) == "function" then
+      local fr, fg, fb = font:GetTextColor()
+      if type(fr) == "number" and type(fg) == "number" and type(fb) == "number" then r, g, b = fr, fg, fb end
+    end
+    if region:IsObjectType("FontString") then
+      Theme.SetTextRGB(region, r, g, b)
+    else
+      region:SetVertexColor(r, g, b, 1)
+    end
+  else
+    Theme.SetColor(region, "textDisabled")
+  end
 end
 
 -------------------------------------------------------------
@@ -8291,14 +8350,19 @@ local function BuildMoneyRow(panel)
   cod.__postboxCheck = true
   cod.__label = cod.text
   -- Grayed while the game has C.O.D. switched off (ST.SyncCOD), and its
-  -- tooltip still shows then, with the game's own reason.
+  -- tooltip still shows then: that Blizzard turned it off, then the game's
+  -- own reason, quoted, in place of what C.O.D. does.
   cod:SetMotionScriptsWhileDisabled(true)
   cod:SetScript("OnEnter", function(self)
     Theme.TipBegin(self, "ANCHOR_RIGHT")
     Theme.TipTitle(L["TOOLTIP_COD_TITLE"])
-    Theme.TipLine(L["TOOLTIP_COD_DESC"])
-    if not ST.CODAllowed() and type(COD_DISABLED) == "string" then
-      Theme.TipLine(Theme.TipTone("warning", COD_DISABLED))
+    if ST.CODAllowed() then
+      Theme.TipLine(L["TOOLTIP_COD_DESC"])
+    else
+      Theme.TipLine(Theme.TipTone("warning", L["TOOLTIP_COD_OFF"]))
+      if type(COD_DISABLED) == "string" then
+        Theme.TipLine(Theme.TipTone("muted", L("TOOLTIP_COD_GAME_SAYS", COD_DISABLED)))
+      end
     end
     GameTooltip:Show()
   end)
