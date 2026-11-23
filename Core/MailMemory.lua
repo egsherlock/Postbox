@@ -97,6 +97,9 @@ end
 
 local live = nil
 local captureQueued = false
+-- What the last look of this visit counted, mail waiting and mail unlisted
+-- (CaptureNow tells the minimap icon when it moves); nil between visits.
+local liveCounted = nil
 
 -- The search's folded text, kept per mail table (Matches, section 3d). Weak
 -- keys, so a snapshot dropped takes its entries with it -- and never a field
@@ -185,7 +188,7 @@ local function CaptureNow()
   -- outside this file ever holds them (RowsFor hands out copies).
   local prev = live
   local mails = prev and prev.mails or {}
-  local count = 0
+  local count, waiting = 0, 0
   for index = 1, numItems do
     local packageIcon, stationeryIcon, sender, subject, money, cod, daysLeft,
       itemCount, wasRead = GetInboxHeaderInfo(index)
@@ -329,6 +332,8 @@ local function CaptureNow()
       -- Absolute, so "has this expired since I saw it" is answerable in a
       -- later session without trusting a stale daysLeft.
       mail.expires = now + math.floor((tonumber(daysLeft) or 0) * 86400)
+      -- Still waiting, by the rule every count follows (Holds, section 2b).
+      if mail.items > 0 or mail.money > 0 or mail.cod > 0 or not mail.read then waiting = waiting + 1 end
       if count >= MAX_MAILS then break end
     end
   end
@@ -339,6 +344,14 @@ local function CaptureNow()
     prev.seenAt, prev.total = now, totalItems
   else
     live = { seenAt = now, total = totalItems, mails = mails }
+  end
+  -- The minimap icon counts this look while the box is open (MM.LiveCount):
+  -- told when what it would count has moved, and only then.
+  local counted = waiting + math.max(0, totalItems - count)
+  if counted ~= liveCounted then
+    liveCounted = counted
+    local Icon = ns.MinimapButton
+    if Icon and Icon.MemoryChanged then Icon.MemoryChanged() end
   end
   if perfAt then perf.End("capture", perfAt) end
 end
@@ -413,6 +426,7 @@ local function PersistOnClose()
   if not live then return end
   local snapshot = live
   live = nil
+  liveCounted = nil
 
   -- The arrival baseline, taken at the boundary the badge measures from:
   -- what the client's unread indicators said the moment the box closed.
@@ -432,7 +446,7 @@ local function PersistOnClose()
   root[realm][name] = snapshot
   CharactersChanged()
   -- Defined in section 2b, below this function in the file.
-  if MM._SettleWatch then MM._SettleWatch(realm, name, snapshot.seenAt or time()) end
+  if MM._SettleWatch then MM._SettleWatch(realm, name, snapshot.seenAt or time(), snapshot) end
 end
 
 local function StoredSnapshot()
@@ -665,6 +679,8 @@ do
       local snap = SnapshotFor(realm, name)
       if snap and (tonumber(snap.seenAt) or 0) >= at then return end
       NoteArrival(realm, name, nil, true)
+      -- The window, where it is showing, says "and more" with its count now.
+      if MM.Refresh then MM.Refresh() end
     end)
   end
 end
@@ -682,7 +698,9 @@ local function LivePending(watch, now)
 end
 
 -- How many LivePending would list, by its rule, without the list: the
--- character list counts every character's.
+-- character list counts every character's. And the ones the list let go to
+-- stay bounded (2g, `pendingMore`: how many, and when the newest of them
+-- came), so the count is every auction noted, however many.
 local function LivePendingCount(watch, now)
   local pending = watch and type(watch.pending) == "table" and watch.pending or nil
   if not pending then return 0 end
@@ -691,19 +709,43 @@ local function LivePendingCount(watch, now)
   for i = 1, #pending do
     if (tonumber(pending[i].t) or 0) > cutoff then count = count + 1 end
   end
+  local more = tonumber(watch.pendingMore)
+  if more and more > 0 and (tonumber(watch.pendingMoreAt) or 0) > cutoff then count = count + more end
   return count
+end
+
+-- Mail the server holds past what it listed at the last look: `total`, the
+-- server's count, less the mails the look listed. Counted, never described:
+-- the record keeps what was listed. "Unlisted" throughout this file (the
+-- Mail tab's "held back" is another thing: mail a sweep steps over). Gone
+-- once that look is as old as mail lives: by then every mail it counted has
+-- been returned or deleted.
+local function Unlisted(snap, now)
+  if not snap then return 0 end
+  local mails = snap.mails
+  local listed = type(mails) == "table" and #mails or 0
+  local n = (tonumber(snap.total) or listed) - listed
+  if n <= 0 then return 0 end
+  if now - (tonumber(snap.seenAt) or now) >= MAIL_LIFE then return 0 end
+  return n
 end
 
 -- This character's box was opened and recorded: what the watch guarded is in
 -- the snapshot now. An auction still running can send mail after the visit,
--- so it stays watched -- from now.
-function MM._SettleWatch(realm, name, now)
+-- so it stays watched -- from now. `snapshot`: the visit's last look, which
+-- the auctions noted since the visit before are settled against (2g).
+function MM._SettleWatch(realm, name, now, snapshot)
   local watch = WatchFor(realm, name, false)
   if not watch then return end
   watch.newAt = nil
   -- What the notifications said had arrived is in the snapshot now, and so
-  -- is what nothing named.
-  watch.pending = nil
+  -- is what nothing named; but for the auctions whose mail the visit never
+  -- listed, kept as mail known to be unlisted (MM.Auctions.Settle).
+  if MM.Auctions and MM.Auctions.Settle then
+    MM.Auctions.Settle(watch, snapshot, now)
+  else
+    watch.pending, watch.pendingMore, watch.pendingMoreAt = nil, nil, nil
+  end
   watch.uncountedAt = nil
   if watch.auctionsUntil and watch.auctionsUntil > now then
     watch.auctionAt = now
@@ -754,13 +796,25 @@ local function Uncounted(watch, seenAt, now)
     and now - posted >= AUCTION_LONGEST and now - posted < UNSEEN_STOP) and true or false
 end
 
--- realm, name, now -> what there is to say about that character's mail.
---   waiting    mails in its snapshot still waiting
---   pending    the mail the auction house's notices named since, and `sent`
+-- realm, name, now -> what there is to say about that character's mail: the
+-- one tally every count is read from. The minimap icon, its tooltip, the
+-- character list and the options' summary say `count` (or its parts); Mail
+-- Memory's top and another box's plate on the Mail tab say `box`, the list
+-- they head; the two are the same number while no read mail is kept.
+--   waiting    mails in its snapshot still waiting (Holds)
+--   stuck      of those, the ones the server refused
+--   finished   mails in its snapshot still in date, read and holding nothing
+--   unlisted   mail the server held past what the visit listed (Unlisted)
+--   pending    the auctions noted since the visit, one each (2g), and `sent`
 --   sent       the mail Postbox sent it from another character since
 --              (MM.SentSince; never on the character being played)
+--   count      the mail waiting: waiting + unlisted + pending
+--   box        the whole box: count + finished
 --   uncounted  mail came since that nothing named (Uncounted): the count
---              is waiting + pending and more (MM.CountText)
+--              is `count` and more (MM.CountText)
+--   more       what a window says with the count: `uncounted`, or for the
+--              character being played an arrival drawn that the count
+--              cannot hold (MM.Tally)
 --   soon       how many of them are short (three days, one for C.O.D.) and
 --              worth a warning (Counts), and `soonest`
 --   held       when the first of its waiting mail holding something
@@ -768,15 +822,27 @@ end
 --              character list's Expiring soonest, MM.CharactersInOrder)
 --   unseenDays set when mail known to be on the way has gone unopened
 --              long enough to be a week from its earliest loss
-local function Status(realm, name, now)
-  local snap = SnapshotFor(realm, name)
-  -- Every field it will carry, here and in MM.Characters, named at once so
-  -- the table is sized once rather than grown twice; the ones left nil are
-  -- set below, or there, when they apply.
-  local st = { realm = realm, name = name, waiting = 0, seenAt = snap and snap.seenAt or nil,
-    soon = nil, soonest = nil, held = nil, pending = 0, sent = 0, uncounted = false, unseenDays = nil, warn = false,
-    gone = nil, goneSoonest = nil, goneText = nil,
-    me = nil, hidden = nil, label = nil, text = nil }
+-- `look`: this visit's look, for the character being played at a mailbox:
+-- read in the record's place, and nothing noted since is added to it (the
+-- look holds what came). `st`: a table to fill again, in a new one's place.
+local function Status(realm, name, now, look, st)
+  local snap = look or SnapshotFor(realm, name)
+  if st then
+    st.realm, st.name, st.waiting, st.pending, st.sent = realm, name, 0, 0, 0
+    st.soon, st.soonest, st.held, st.unseenDays, st.warn = nil, nil, nil, nil, false
+    st.gone, st.goneSoonest, st.goneText, st.uncounted = nil, nil, nil, false
+    st.stuck, st.finished = 0, 0
+  else
+    -- Every field it will carry, here and in MM.Characters, named at once so
+    -- the table is sized once rather than grown twice; the ones left nil are
+    -- set below, or there, when they apply.
+    st = { realm = realm, name = name, waiting = 0, seenAt = nil,
+      soon = nil, soonest = nil, held = nil, pending = 0, sent = 0, uncounted = false, unseenDays = nil, warn = false,
+      gone = nil, goneSoonest = nil, goneText = nil,
+      me = nil, hidden = nil, label = nil, text = nil,
+      stuck = 0, finished = 0, unlisted = 0, count = 0, box = 0, more = false }
+  end
+  st.seenAt = snap and snap.seenAt or nil
   local mails = snap and snap.mails or {}
   -- Soon by the rows' own rule (the Mail tab's RV.ShortDays, its amber):
   -- under three days, or one for a C.O.D. mail, which only lives three.
@@ -788,6 +854,7 @@ local function Status(realm, name, now)
     local mail = mails[i]
     if Holds(mail, now) then
       st.waiting = st.waiting + 1
+      if mail.stuck then st.stuck = st.stuck + 1 end
       local left = (tonumber(mail.expires) or 0) - now
       local cod = (tonumber(mail.cod) or 0) > 0
       local soon = shortDays and shortDays(cod) * DAY or (cod and DAY or SOON)
@@ -809,10 +876,18 @@ local function Status(realm, name, now)
           if not st.goneSoonest or mail.expires < st.goneSoonest then st.goneSoonest = mail.expires end
         end
       end
+    else
+      -- Read and holding nothing, and still in date: in the box, with
+      -- nothing to collect. Past its date it is counted nowhere.
+      local expires = tonumber(mail.expires)
+      if not (expires and expires > 0 and expires <= now) then st.finished = st.finished + 1 end
     end
   end
+  st.unlisted = Unlisted(snap, now)
   local watch = WatchFor(realm, name, false)
-  st.pending = LivePendingCount(watch, now)
+  -- At a mailbox the look holds what came since the visit before: counted
+  -- once, there.
+  st.pending = look and 0 or LivePendingCount(watch, now)
   -- And the mail Postbox sent it from another of the player's characters
   -- since its last visit (MM.SentSince), counted with the mail known to
   -- be on its way. Never the character being played: its own box knows.
@@ -821,6 +896,8 @@ local function Status(realm, name, now)
     st.sent = MM.SentSince(realm, name, st.seenAt, now)
     st.pending = st.pending + st.sent
   end
+  st.count = st.waiting + st.unlisted + st.pending
+  st.box = st.count + st.finished
   if watch then
     st.uncounted = Uncounted(watch, st.seenAt, now)
     local since = watch.newAt
@@ -830,6 +907,7 @@ local function Status(realm, name, now)
     end
   end
   st.warn = (st.soon ~= nil) or (st.unseenDays ~= nil)
+  st.more = st.uncounted
   return st
 end
 
@@ -851,7 +929,8 @@ local function WarningText(st, now)
 end
 
 -- A character's count as every list says it. `n` is what is counted (the
--- snapshot's mail waiting and what the notices named); `uncounted`, that
+-- tally's `count`: the snapshot's mail waiting, the mail unlisted and the
+-- auctions noted since); `uncounted`, that
 -- more came which nothing named (Status). Then it is "N+", or "new" where
 -- nothing was counted: never a bare 0 beside mail known to be there.
 -- CountText is the bare number (the minimap tooltip, the Mail tab's
@@ -1030,7 +1109,7 @@ end
 -- st (one of MM.Characters) -> whether it has mail to show: counted, or
 -- known to have come uncounted. What decides whether a list names it.
 function MM.HasMail(st)
-  return (st.waiting + (st.pending or 0)) > 0 or st.uncounted == true
+  return (st.count or 0) > 0 or st.uncounted == true
 end
 
 -- A character's name as the lists show it: the realm only when it is not
@@ -1243,7 +1322,11 @@ function MM.Dashboard()
   for i = 1, #all do
     local st = all[i]
     if st.seenAt then dash.recorded = true end
-    if not st.hidden and st.waiting > 0 then
+    -- What the box held: its mail waiting, and the mail the server held past
+    -- what the visit listed (the tally's `unlisted`), which has no gold or
+    -- date to add.
+    local held = st.waiting + (st.unlisted or 0)
+    if not st.hidden and held > 0 then
       local mails = (SnapshotFor(st.realm, st.name) or {}).mails or {}
       local gold, soonest, fate, amber = 0, nil, nil, false
       for j = 1, #mails do
@@ -1266,10 +1349,10 @@ function MM.Dashboard()
         end
       end
       n = n + 1
-      cand.realm, cand.name, cand.mails, cand.gold, cand.seenAt = st.realm, st.name, st.waiting, gold, st.seenAt or 0
+      cand.realm, cand.name, cand.mails, cand.gold, cand.seenAt = st.realm, st.name, held, gold, st.seenAt or 0
       cand.soonest, cand.fate, cand.amber = soonest, fate, amber
       k = DashKeep(rows, k, cand)
-      dash.mails, dash.gold = dash.mails + st.waiting, dash.gold + gold
+      dash.mails, dash.gold = dash.mails + held, dash.gold + gold
       if soonest and ((amber and not dash.amber) or (amber == dash.amber and (not dash.soonest or soonest < dash.soonest))) then
         dash.soonest, dash.fate, dash.amber = soonest, fate, amber
       end
@@ -2437,6 +2520,14 @@ end
 -- copper, or "item", a link and a count. The first take of a C.O.D. mail is
 -- the one that paid the price.
 function MM.HistoryTook(ctx, what, value, count)
+  -- A mail taken is a mail this visit listed, whether or not History keeps
+  -- it: said once a mail, for the auctions noted to be settled against at
+  -- the close (2g, A.Taken).
+  if ctx and not ctx.told then
+    ctx.told = true
+    local A = MM.Auctions
+    if A and A.Taken then A.Taken(ctx.kind, ctx.subject) end
+  end
   -- "Never": History is off, and nothing is recorded.
   if not ctx or HistoryKeep() <= 0 then return end
   local list = HistoryList(true)
@@ -2764,19 +2855,46 @@ do
     end
   end
 
-  local function ItemPosted(location, duration, quantity)
+  -- Each also tells 2g what was posted and what is asked for it (A.Posted),
+  -- for the auction's row when it sells, runs out or is canceled: an item's
+  -- bid and buyout, a commodity's price each.
+  local function Asked(commodity, location, quantity, bid, buyout)
+    local A = MM.Auctions
+    if A and A.Posted then pcall(A.Posted, commodity, location, quantity, bid, buyout) end
+  end
+  local function ItemPosted(location, duration, quantity, bid, buyout)
     pcall(Posted, location)
     pcall(PostMade, false, location, duration, quantity)
+    Asked(false, location, quantity, bid, buyout)
   end
-  local function CommodityPosted(location, duration, quantity)
+  local function CommodityPosted(location, duration, quantity, unitPrice)
     pcall(Posted, location)
     pcall(PostMade, true, location, duration, quantity)
+    Asked(true, location, quantity, unitPrice)
   end
-  local function ItemConfirmed(location, duration, quantity)
+  local function ItemConfirmed(location, duration, quantity, bid, buyout)
     pcall(PostConfirmed, false, location, duration, quantity)
+    Asked(false, location, quantity, bid, buyout)
   end
-  local function CommodityConfirmed(location, duration, quantity)
+  local function CommodityConfirmed(location, duration, quantity, unitPrice)
     pcall(PostConfirmed, true, location, duration, quantity)
+    Asked(true, location, quantity, unitPrice)
+  end
+
+  -- What is bought and canceled, heard the same way for 2g (MM.Auctions):
+  -- post-hooks that read their arguments and return, each behind a pcall,
+  -- so nothing of Postbox's can stand in the way of the call it follows.
+  local function BidPlaced(auctionID, amount)
+    local A = MM.Auctions
+    if A and A.BidPlaced then pcall(A.BidPlaced, auctionID, amount) end
+  end
+  local function CommodityAsked(itemID, quantity)
+    local A = MM.Auctions
+    if A and A.CommodityAsked then pcall(A.CommodityAsked, itemID, quantity) end
+  end
+  local function CancelPlaced(auctionID)
+    local A = MM.Auctions
+    if A and A.CancelPlaced then pcall(A.CancelPlaced, auctionID) end
   end
 
   -- Hooked once, the first time the auction house opens: nothing is hooked
@@ -2793,6 +2911,14 @@ do
     if type(house.ConfirmPostCommodity) == "function" then
       hooksecurefunc(house, "ConfirmPostCommodity", CommodityConfirmed)
     end
+    if type(house.PlaceBid) == "function" then hooksecurefunc(house, "PlaceBid", BidPlaced) end
+    if type(house.StartCommoditiesPurchase) == "function" then
+      hooksecurefunc(house, "StartCommoditiesPurchase", CommodityAsked)
+    end
+    if type(house.ConfirmCommoditiesPurchase) == "function" then
+      hooksecurefunc(house, "ConfirmCommoditiesPurchase", CommodityAsked)
+    end
+    if type(house.CancelAuction) == "function" then hooksecurefunc(house, "CancelAuction", CancelPlaced) end
   end
 
   -- An auction the client says was made (AUCTION_HOUSE_AUCTION_CREATED):
@@ -2980,6 +3106,648 @@ do
         end
       end
     end
+  end
+end
+
+-------------------------------------------------------------
+-- 2g. Auctions as they happen
+--
+-- Every auction this character wins, sells, cancels or lets run out sends
+-- one mail, and the game says so as it happens, wherever the player is. Each
+-- is noted then, in `mailWatch[realm][name].pending`, oldest first: one
+-- entry an auction, which the tally counts as one mail (Status) and Mail
+-- Memory lists as the mail it will be (3b). An entry:
+--   k     "bought", "sold", "canceled" or "expired", the Mail tab's kinds
+--   t     when it was noted
+--   item  the item's name, as the game wrote it (set later where the game
+--         had not loaded it: A.Name)
+--   i, l  its id and its link, where the game gave them; c, its own icon
+--         where its id's is another (2e)
+--   n     how many, where more than one and known
+--   m     copper: what a won auction cost, or what a sold one asked (its
+--         buyout: the mail holds that less the house's cut, plus the
+--         deposit returned, which nothing says before the mail does)
+--   a     the auction's id, where the game gave one
+--   s     which signals have said it (SRC, added up)
+--
+-- Heard, never asked for: the game's own events, and post-hooks
+-- (hooksecurefunc) on the calls that place a bid, buy a commodity, cancel
+-- and post, which say what the events leave out. Whoever makes the call,
+-- the game's own window or another addon's, it is the one call. Nothing is
+-- replaced or wrapped, nothing of another addon's is read, and no request
+-- is sent.
+--
+-- One auction can be said twice: a purchase by its completed event and by
+-- the auction house's notice, a commodity purchase by two events, an expiry
+-- by its event and its notice. Two signals are one auction when they carry
+-- one auction id and are not the same signal again (the same one again
+-- within SAME seconds is an echo; later it is another part of that auction
+-- selling), or when neither denies the other within PAIR seconds: the same
+-- outcome, the same item where both name one, different auctions' ids in
+-- neither, and not the same signal twice. So no auction is counted twice
+-- whichever signals arrive, in whichever order.
+--
+-- Bounded: PENDING_MAX entries a character; past that the oldest is let go
+-- and counted on (`pendingMore`, `pendingMoreAt`), so the count stays every
+-- auction noted. A visit to the mailbox settles them (A.Settle): the record
+-- of the visit takes their place.
+--
+-- Beside them, `up`: this character's auctions as they were posted, by
+-- auction id (the item, how many, the price asked), so a sale, an expiry or
+-- a cancel can say what the game's signal does not. At most UP_MAX, each
+-- dropped when its auction ends or UP_KEEP after it was posted.
+-------------------------------------------------------------
+MM.Auctions = {}
+do
+  local A = MM.Auctions
+  local PENDING_MAX, UNLISTED_MAX = 100, 100
+  local PAIR, SAME = 30, 2
+  local UP_MAX, UP_KEEP = 200, AUCTION_LONGEST + DAY
+  -- What the hooks heard waits this long, in seconds, for its event.
+  local INTENT_AGE = 60
+  local SRC = { event = 1, notice = 2, commodity = 4 }
+  A.SRC = SRC
+
+  local function Now() return type(GetTime) == "function" and GetTime() or 0 end
+
+  -- A number the game gave, or nil: never a secret value, which cannot be
+  -- compared or kept.
+  local function Num(v)
+    if type(issecretvalue) == "function" and issecretvalue(v) then return nil end
+    return tonumber(v)
+  end
+
+  local function Text(v)
+    if type(issecretvalue) == "function" and issecretvalue(v) then return nil end
+    if type(v) ~= "string" or v == "" then return nil end
+    return v
+  end
+
+  local function Has(sources, src)
+    return math.floor((tonumber(sources) or 0) / src) % 2 == 1
+  end
+
+  -- A link's name, without the quality mark the game writes into it.
+  local function LinkName(link)
+    local name = type(link) == "string" and link:match("|h%[(.-)%]|h") or nil
+    if name then name = name:gsub("%s*|A:.-|a", "") end
+    if name == "" then return nil end
+    return name
+  end
+
+  local function NameOfID(itemID)
+    local api = C_Item
+    if not itemID or type(api) ~= "table" or type(api.GetItemNameByID) ~= "function" then return nil end
+    local ok, name = pcall(api.GetItemNameByID, itemID)
+    return ok and Text(name) or nil
+  end
+
+  -- p -> the entry's item name: its own, or, where the game had not loaded
+  -- the item when it was noted, asked again by its link or id and kept.
+  function A.Name(p)
+    local item = p.item
+    if type(item) == "string" and item ~= "" then return item end
+    local name = LinkName(p.l) or NameOfID(tonumber(p.i))
+    if name then p.item = name end
+    return name
+  end
+
+  -- p -> the bag slots its mail takes: one, or as many stacks as its count
+  -- makes where the game says how many of the item stack.
+  function A.Slots(p)
+    local n, id = tonumber(p.n) or 1, tonumber(p.i)
+    local api = C_Item
+    if n <= 1 or not id or type(api) ~= "table" or type(api.GetItemMaxStackSizeByID) ~= "function" then return 1 end
+    local ok, stack = pcall(api.GetItemMaxStackSizeByID, id)
+    stack = ok and Num(stack) or nil
+    if not stack or stack < 1 or n <= stack then return 1 end
+    return math.ceil(n / stack)
+  end
+
+  -- Whether an entry and a signal can be one auction's, by their items:
+  -- the ids where both have one, else the names where both have one; with
+  -- nothing to compare, nothing denies it.
+  local function SameItem(e, itemID, name)
+    local id = tonumber(e.i)
+    if itemID and id then return itemID == id end
+    local item = A.Name(e)
+    if name and item then return name == item end
+    return true
+  end
+
+  -- What a signal knows, onto an entry that lacks it.
+  local function Fill(e, src, auctionID, itemID, name, qty, money, link)
+    local grew = false
+    if not Has(e.s, src) then e.s = (tonumber(e.s) or 0) + src end
+    if auctionID and not e.a then e.a = auctionID end
+    if itemID and not e.i then e.i = itemID end
+    if link and not e.l then e.l = link end
+    if name and not (type(e.item) == "string" and e.item ~= "") then
+      e.item = name
+      grew = true
+    end
+    if qty and qty > 1 and not e.n then
+      e.n = qty
+      grew = true
+    end
+    if money and money > 0 and not e.m then
+      e.m = money
+      grew = true
+    end
+    return grew
+  end
+
+  -- One signal that an auction of this character's ended in mail: the
+  -- entry it is noted in, a new one or the one another signal already made
+  -- for that auction (above), and whether it is new. Nil while Mail Memory
+  -- is off.
+  local function Note(kind, src, auctionID, itemID, name, qty, money, link)
+    if not MemoryEnabled() then return nil end
+    local realm, who = Me()
+    local watch = WatchFor(realm, who, true)
+    if not watch then return nil end
+    if type(watch.pending) ~= "table" then watch.pending = {} end
+    local pending = watch.pending
+    local now = time()
+    if auctionID and auctionID <= 0 then auctionID = nil end
+    if qty and qty <= 1 then qty = nil end
+    local found
+    if auctionID then
+      for i = #pending, 1, -1 do
+        local e = pending[i]
+        if e.k == kind and e.a == auctionID then
+          if not Has(e.s, src) or now - (tonumber(e.t) or 0) <= SAME then found = e end
+          break
+        end
+      end
+    end
+    if not found then
+      for i = #pending, 1, -1 do
+        local e = pending[i]
+        if now - (tonumber(e.t) or 0) > PAIR then break end
+        if e.k == kind and not Has(e.s, src) and not (auctionID and e.a and e.a ~= auctionID)
+            and SameItem(e, itemID, name) then
+          found = e
+          break
+        end
+      end
+    end
+    if found then
+      -- Said already: what this signal adds is shown, and nothing counted.
+      if Fill(found, src, auctionID, itemID, name, qty, money, link) and MM.Refresh then MM.Refresh() end
+      return found, false
+    end
+    local entry = { k = kind, t = now, s = 0 }
+    Fill(entry, src, auctionID, itemID, name, qty, money, link)
+    -- The item's id, and its own icon where one was noted, where this
+    -- account put it up for auction (2e): its row's icon (PendingIcon) then
+    -- needs no asking by name.
+    if not entry.i and entry.item then
+      local id, icon = MM.PostedItem(entry.item)
+      if id then entry.i, entry.c = id, icon end
+    end
+    if #pending >= PENDING_MAX then
+      local gone = table.remove(pending, 1)
+      watch.pendingMore = (tonumber(watch.pendingMore) or 0) + 1
+      watch.pendingMoreAt = math.max(tonumber(watch.pendingMoreAt) or 0, tonumber(gone and gone.t) or 0)
+    end
+    pending[#pending + 1] = entry
+    CharactersChanged()
+    NoteArrival(realm, who)
+    local snap = StoredSnapshot()
+    if snap then snap.newSince = true end
+    if MM.Refresh then MM.Refresh() end
+    return entry, true
+  end
+
+  ---------------------------------------------------------
+  -- What the hooks heard, for the event that follows: session only, in
+  -- tables made once.
+  ---------------------------------------------------------
+  local RING = 8
+  -- The last bids placed and auctions canceled, by auction id.
+  local function NewRing()
+    local ring = { at = 0 }
+    for i = 1, RING do ring[i] = { a = false, i = false, l = false, item = false, m = false, low = false, t = 0 } end
+    return ring
+  end
+  local bids, cancels = NewRing(), NewRing()
+
+  local function RingPut(ring, auctionID)
+    for i = 1, RING do
+      if ring[i].a == auctionID then return ring[i] end
+    end
+    ring.at = ring.at % RING + 1
+    return ring[ring.at]
+  end
+
+  local function RingFind(ring, auctionID)
+    if not auctionID then return nil end
+    local now = Now()
+    for i = 1, RING do
+      local slot = ring[i]
+      if slot.a == auctionID and now - slot.t <= INTENT_AGE and now >= slot.t then return slot end
+    end
+    return nil
+  end
+
+  -- auctionID -> what the game says of that auction now: its item's id and
+  -- link, its buyout, and whether it answered at all.
+  local function AuctionFacts(auctionID)
+    local house = C_AuctionHouse
+    if type(house) ~= "table" or type(house.GetAuctionInfoByID) ~= "function" then return nil, nil, nil, false end
+    local ok, info = pcall(house.GetAuctionInfoByID, auctionID)
+    if not ok or type(info) ~= "table" then return nil, nil, nil, false end
+    local key = info.itemKey
+    return type(key) == "table" and Num(key.itemID) or nil, Text(info.itemLink), Num(info.buyoutAmount), true
+  end
+
+  -- C_AuctionHouse.PlaceBid's hook: a bid or a buyout placed, by the game's
+  -- window or any addon's. `low`: surely a bid under the buyout (or on an
+  -- auction with none), whose mail comes only if it wins.
+  function A.BidPlaced(auctionID, amount)
+    auctionID, amount = Num(auctionID), Num(amount)
+    if not auctionID then return end
+    local itemID, link, buyout, answered = AuctionFacts(auctionID)
+    local slot = RingPut(bids, auctionID)
+    slot.a, slot.i, slot.l, slot.item = auctionID, itemID or false, link or false, LinkName(link) or false
+    slot.m, slot.t = amount or false, Now()
+    slot.low = answered and amount ~= nil and (buyout == nil or buyout <= 0 or amount < buyout) or false
+  end
+
+  -- C_AuctionHouse.CancelAuction's hook: which of this character's auctions
+  -- is being canceled, while the game can still say what it is.
+  function A.CancelPlaced(auctionID)
+    auctionID = Num(auctionID)
+    if not auctionID then return end
+    local itemID, link = AuctionFacts(auctionID)
+    local slot = RingPut(cancels, auctionID)
+    slot.a, slot.i, slot.l, slot.item = auctionID, itemID or false, link or false, LinkName(link) or false
+    slot.m, slot.low, slot.t = false, false, Now()
+  end
+
+  -- A commodity purchase under way: what and how many (the hooks on
+  -- StartCommoditiesPurchase and ConfirmCommoditiesPurchase), and the sum the
+  -- game quoted for it (COMMODITY_PRICE_UPDATED).
+  local buy = { i = false, n = false, m = false, t = 0 }
+
+  function A.CommodityAsked(itemID, quantity)
+    itemID, quantity = Num(itemID), Num(quantity)
+    if not itemID then return end
+    if buy.i ~= itemID or buy.n ~= (quantity or false) then buy.m = false end
+    buy.i, buy.n, buy.t = itemID, quantity or false, Now()
+  end
+
+  function A.CommodityPrice(_, total)
+    total = Num(total)
+    local now = Now()
+    if buy.i and total and total > 0 and now - buy.t <= INTENT_AGE and now >= buy.t then buy.m = total end
+  end
+
+  local function Buying()
+    local now = Now()
+    return buy.i and now - buy.t <= INTENT_AGE and now >= buy.t
+  end
+
+  -- The purchase under way has been said: it stands a few seconds more, for
+  -- its other signal, and then answers for no later event.
+  local function Bought()
+    buy.t = math.min(buy.t, Now() - INTENT_AGE + 5)
+  end
+
+  -- AUCTION_HOUSE_PURCHASE_COMPLETED's auction is a bid this session placed
+  -- under the buyout: no mail until it wins, and the auction house's notice
+  -- says when.
+  function A.OnlyBid(auctionID)
+    local slot = RingFind(bids, Num(auctionID))
+    return slot ~= nil and slot.low == true
+  end
+
+  -- AUCTION_HOUSE_PURCHASE_COMPLETED: an auction bought out. The game sends
+  -- it for a commodity purchase too, which then is the purchase under way.
+  function A.Bought(auctionID)
+    auctionID = Num(auctionID)
+    local slot = RingFind(bids, auctionID)
+    if slot then
+      if slot.low then return nil end
+      local itemID, link, item, paid = slot.i or nil, slot.l or nil, slot.item or nil, slot.m or nil
+      slot.a = false
+      return Note("bought", SRC.event, auctionID, itemID, item or NameOfID(itemID), nil, paid, link)
+    end
+    if Buying() then
+      local itemID, quantity, paid = buy.i, buy.n or nil, buy.m or nil
+      Bought()
+      return Note("bought", SRC.event, auctionID, itemID, NameOfID(itemID), quantity, paid, nil)
+    end
+    -- A purchase whose placing was not heard: one mail all the same.
+    return Note("bought", SRC.event, auctionID)
+  end
+
+  -- COMMODITY_PURCHASE_SUCCEEDED: the commodity purchase under way went
+  -- through.
+  function A.CommodityBought()
+    if Buying() then
+      local itemID, quantity, paid = buy.i, buy.n or nil, buy.m or nil
+      Bought()
+      return Note("bought", SRC.commodity, nil, itemID, NameOfID(itemID), quantity, paid, nil)
+    end
+    return Note("bought", SRC.commodity)
+  end
+
+  -- The auction house's notice that an auction was won (by its id, for an
+  -- item's) or a commodity bought (how many).
+  function A.Won(name, auctionID, quantity)
+    return Note("bought", SRC.notice, Num(auctionID), nil, Text(name), Num(quantity))
+  end
+
+  ---------------------------------------------------------
+  -- This character's auctions, as they were posted.
+  ---------------------------------------------------------
+  -- The posts the hooks heard, waiting for the game to say each auction was
+  -- made: parallel arrays, reused. `left`: the auctions a post still has to
+  -- make (an item posted five times is five auctions of one).
+  local POSTS, POST_AGE = 8, 30
+  local posts = { n = 0, i = {}, q = {}, m = {}, u = {}, left = {}, t = {} }
+
+  local function PostDrop(k)
+    local p = posts
+    for j = k, p.n - 1 do
+      p.i[j], p.q[j], p.m[j], p.u[j], p.left[j], p.t[j] = p.i[j + 1], p.q[j + 1], p.m[j + 1], p.u[j + 1], p.left[j + 1], p.t[j + 1]
+    end
+    p.n = p.n - 1
+  end
+
+  -- PostItem / PostCommodity and their confirms (2e's hooks): the item, how
+  -- many an auction and what is asked for it. A commodity is one auction of
+  -- the whole quantity at a price each; an item is `quantity` auctions of
+  -- one. An item's asking price is kept only where its sale can go for
+  -- nothing else: a buyout, and no lower bid to win it by.
+  function A.Posted(commodity, location, quantity, bid, buyout)
+    local api = C_Item
+    if type(api) ~= "table" or type(location) ~= "table" or type(api.GetItemID) ~= "function" then return end
+    local ok, itemID = pcall(api.GetItemID, location)
+    itemID = ok and Num(itemID) or nil
+    quantity, bid, buyout = Num(quantity) or 1, Num(bid), Num(buyout)
+    if not itemID or quantity < 1 then return end
+    local each, asked, unit, left
+    if commodity then
+      -- `bid` is the price of one here (PostCommodity's unitPrice).
+      unit = (bid and bid > 0) and bid or false
+      each, asked, left = quantity, unit and unit * quantity or false, 1
+    else
+      unit = false
+      each, left = 1, quantity
+      asked = (buyout and buyout > 0 and (not bid or bid <= 0 or bid >= buyout)) and buyout or false
+    end
+    local p, now = posts, Now()
+    -- The same post again (its confirm): it waits from now.
+    for k = p.n, 1, -1 do
+      if p.i[k] == itemID and p.q[k] == each and p.m[k] == asked and p.u[k] == unit and p.left[k] == left then
+        p.t[k] = now
+        return
+      end
+    end
+    if p.n >= POSTS then PostDrop(1) end
+    local k = p.n + 1
+    p.n = k
+    p.i[k], p.q[k], p.m[k], p.u[k], p.left[k], p.t[k] = itemID, each, asked, unit, left, now
+  end
+
+  function A.PostsClosed() posts.n = 0 end
+
+  local function Up(create)
+    local realm, who = Me()
+    local watch = WatchFor(realm, who, create)
+    if not watch then return nil end
+    if type(watch.up) ~= "table" then
+      if not create then return nil end
+      watch.up = {}
+    end
+    return watch.up
+  end
+
+  -- AUCTION_HOUSE_AUCTION_CREATED: the auction the game made, noted by its
+  -- id from the oldest post still waiting for its item (`itemID`: the item
+  -- where the game could say it, 2e's MM.PostCreated; else the oldest
+  -- waiting).
+  function A.Created(auctionID, itemID)
+    auctionID, itemID = Num(auctionID), Num(itemID)
+    local p, now = posts, Now()
+    local k = 1
+    while k <= p.n do
+      if now - p.t[k] > POST_AGE or now < p.t[k] then PostDrop(k) else k = k + 1 end
+    end
+    local at
+    for j = 1, p.n do
+      if not itemID or p.i[j] == itemID then
+        at = j
+        break
+      end
+    end
+    if not at or not auctionID or auctionID <= 0 or not MemoryEnabled() then return end
+    local up = Up(true)
+    if not up then return end
+    local stamp = time()
+    -- Bounded: the ones past their time dropped, then the oldest.
+    local count, oldest, oldestAt = 0, nil, nil
+    for id, note in pairs(up) do
+      local t = type(note) == "table" and tonumber(note.t) or nil
+      if not t or stamp - t > UP_KEEP then
+        up[id] = nil
+      else
+        count = count + 1
+        if not oldestAt or t < oldestAt then oldest, oldestAt = id, t end
+      end
+    end
+    if count >= UP_MAX and oldest then up[oldest] = nil end
+    local note = { i = p.i[at], t = stamp }
+    if p.q[at] > 1 then note.n = p.q[at] end
+    if p.m[at] then note.m = p.m[at] end
+    if p.u[at] then note.u = p.u[at] end
+    local name = NameOfID(p.i[at])
+    if name then note.item = name end
+    up[auctionID] = note
+    p.left[at] = p.left[at] - 1
+    if p.left[at] <= 0 then PostDrop(at) end
+  end
+
+  local function UpOf(auctionID)
+    local up = auctionID and Up(false) or nil
+    local note = up and up[auctionID]
+    return type(note) == "table" and note or nil, up
+  end
+
+  -- The auction house's notice that an auction sold. An item's auction is
+  -- over and its mail is its asking price (above); a commodity's may sell
+  -- again, part by part, and nothing says how many went.
+  function A.Sold(name, auctionID)
+    auctionID, name = Num(auctionID), Text(name)
+    local note, up = UpOf(auctionID)
+    local asked
+    if note and not note.u then
+      asked = tonumber(note.m)
+      up[auctionID] = nil
+    end
+    return Note("sold", SRC.notice, auctionID, note and tonumber(note.i) or nil, name or (note and Text(note.item)), nil, asked)
+  end
+
+  -- An auction ran out (`kind` "expired": its event, AUCTION_HOUSE_AUCTIONS_EXPIRED,
+  -- or the auction house's notice, which names it) or was canceled
+  -- ("canceled": AUCTION_CANCELED): the item comes back by mail. How many
+  -- only for an item's auction: a commodity's may have sold in part.
+  function A.Ended(kind, src, auctionID, name)
+    auctionID, name = Num(auctionID), Text(name)
+    local note, up = UpOf(auctionID)
+    local slot = kind == "canceled" and RingFind(cancels, auctionID) or nil
+    local itemID = (note and tonumber(note.i)) or (slot and slot.i) or nil
+    local link = slot and slot.l or nil
+    name = name or (note and Text(note.item)) or (slot and slot.item) or NameOfID(itemID)
+    if note then up[auctionID] = nil end
+    if slot then slot.a = false end
+    return Note(kind, src, auctionID, itemID, name or nil, nil, nil, link or nil)
+  end
+
+  ---------------------------------------------------------
+  -- A visit to the mailbox.
+  ---------------------------------------------------------
+  -- The auction mail taken from the box this visit, by kind and item: a
+  -- mail taken is a mail the visit listed, though its last look no longer
+  -- holds it. Session only; emptied as a visit begins and as it is settled.
+  local taken = {}
+  local seen = {}
+
+  -- An auction mail's item, from its subject as a row shows it: without the
+  -- game's words around it and without a count after it.
+  local function SubjectItem(subject)
+    local H = ns.Helpers
+    if type(subject) ~= "string" or subject == "" or not (H and H.ShortSubject) then return nil end
+    local item = H.ShortSubject(subject)
+    if type(item) ~= "string" then return nil end
+    return (item:gsub("%s*%(%d+%)%s*$", ""))
+  end
+
+  local function Count(set, kind, item)
+    if not (kind and item) then return end
+    local byKind = set[kind]
+    if not byKind then
+      byKind = {}
+      set[kind] = byKind
+    end
+    byKind[item] = (byKind[item] or 0) + 1
+  end
+
+  local function Uncount(set, kind, item)
+    local byKind = set[kind]
+    local n = byKind and byKind[item]
+    if not n or n <= 0 then return false end
+    byKind[item] = n - 1
+    return true
+  end
+
+  local function Empty(set)
+    for _, byKind in pairs(set) do
+      for item in pairs(byKind) do byKind[item] = nil end
+    end
+  end
+
+  local AUCTION_KINDS = { bought = true, sold = true, canceled = true, expired = true, auction = true }
+
+  function A.VisitBegan() Empty(taken) end
+
+  -- A mail's first take this visit (MM.HistoryTook): noted only while this
+  -- character has auctions noted to settle, so any other visit pays one
+  -- lookup a mail.
+  function A.Taken(kind, subject)
+    if not AUCTION_KINDS[kind] then return end
+    local realm, who = Me()
+    local watch = WatchFor(realm, who, false)
+    if not (watch and (type(watch.pending) == "table" or type(watch.unlisted) == "table")) then return end
+    Count(taken, kind, SubjectItem(subject))
+  end
+
+  -- e -> whether a mail the visit listed is this auction's: one of its kind
+  -- and item, or one whose outcome the game never said ("auction") holding
+  -- that item. Each listed mail answers for one entry.
+  local function Listed(e)
+    local item = A.Name(e)
+    if not item then return false end
+    return Uncount(seen, e.k, item) or Uncount(seen, "auction", item)
+  end
+
+  -- watch, snapshot, now -> the auctions noted, settled against a visit
+  -- that just ended (`snapshot`, its last look):
+  --   * one noted after that look stays as it is: the look cannot hold its
+  --     mail;
+  --   * with every mail in the box listed (nothing unlisted), the rest are
+  --     in the record or were taken: all let go;
+  --   * with mail unlisted, each of the rest that no listed mail answers for
+  --     (in the last look, or taken this visit) is kept in `unlisted`: mail
+  --     known to be in the box that the visit never listed. Never counted
+  --     again -- the server's count already holds it (the tally's
+  --     `unlisted`) -- and never more of them than that count: if there
+  --     are, some are no longer true and nothing says which, so none is
+  --     kept.
+  function A.Settle(watch, snapshot, now)
+    local seenAt = snapshot and tonumber(snapshot.seenAt) or now
+    local pending = type(watch.pending) == "table" and watch.pending or nil
+    local known = type(watch.unlisted) == "table" and watch.unlisted or nil
+    watch.pendingMore, watch.pendingMoreAt = nil, nil
+    local room = Unlisted(snapshot, now)
+    if room > 0 and (known or pending) then
+      Empty(seen)
+      local mails = type(snapshot.mails) == "table" and snapshot.mails or {}
+      for i = 1, #mails do
+        local mail = mails[i]
+        if AUCTION_KINDS[mail.kind] then Count(seen, mail.kind, SubjectItem(mail.subject)) end
+      end
+      for kind, byKind in pairs(taken) do
+        for item, n in pairs(byKind) do
+          for _ = 1, n do Count(seen, kind, item) end
+        end
+      end
+    end
+    local kept, cutoff = nil, now - MAIL_LIFE
+    if room > 0 and known then
+      for i = 1, #known do
+        local e = known[i]
+        if (tonumber(e.t) or 0) > cutoff and not Listed(e) then
+          kept = kept or {}
+          kept[#kept + 1] = e
+        end
+      end
+    end
+    if pending then
+      local n, write = #pending, 0
+      for i = 1, n do
+        local e = pending[i]
+        local t = tonumber(e.t) or 0
+        if t > seenAt then
+          write = write + 1
+          pending[write] = e
+        elseif room > 0 and t > cutoff and not Listed(e) then
+          kept = kept or {}
+          kept[#kept + 1] = e
+        end
+      end
+      for i = n, write + 1, -1 do pending[i] = nil end
+      if write == 0 then watch.pending = nil end
+    end
+    if kept and #kept > room then kept = nil end
+    if kept then
+      for _ = 1, #kept - UNLISTED_MAX do table.remove(kept, 1) end
+    end
+    watch.unlisted = kept
+    Empty(seen)
+    Empty(taken)
+  end
+
+  -- realm, name -> the auctions known to be mail in that character's box
+  -- that its last visit never listed (A.Settle), oldest first, or nil. For
+  -- what lists them; no count reads it.
+  function A.Unlisted(realm, name)
+    local watch = WatchFor(realm, name, false)
+    local known = watch and watch.unlisted
+    return type(known) == "table" and known[1] ~= nil and known or nil
   end
 end
 
@@ -3809,6 +4577,8 @@ function MM.NewRow(parent)
   -- the clicks. Lit under the pointer, as a Mail tab row is.
   HoverOnly(row)
   row:SetScript("OnEnter", function(self)
+    -- The pointer is on the window: its foot's age, as of now.
+    MM.FootAgain()
     if not self.mail then return end
     ns.Theme.StyleMailRow(self, self._rowIndex, true)
     MM.RowTip(self)
@@ -3964,13 +4734,14 @@ local function Figures(mail, now, fs)
   return money, slots, expiry, nil, expiryText, expired, moneyKind == "cod" and money ~= nil
 end
 
--- The last figure the arrangement shows, left to right, or nil.
-local function LastShownFigure(R)
+-- The last figure the arrangement shows, left to right, or nil. `texts`:
+-- the last one shown that those texts leave empty.
+local function LastShownFigure(R, texts)
   local layout = R and R.Layout and R.Layout()
   if not layout then return "slots" end
   for i = #layout, 1, -1 do
     local id = layout[i].id
-    if R.IsFigure(id) and layout[i].shown then return id end
+    if R.IsFigure(id) and layout[i].shown and not (texts and texts[id]) then return id end
   end
   return nil
 end
@@ -3990,8 +4761,29 @@ local function RowTexts(mail, now, fs)
   texts.expiryText, texts.expired, texts.cod = nil, nil, nil
   if mail.header or mail.note then return texts end
   if mail.pending then
-    local last = LastShownFigure(R)
-    if last then texts[last] = ns.Theme.Colorize("positive", L["MEMORY_NEW_ROW"], ns.Theme.ROW) end
+    local T = ns.Theme
+    -- An auction noted as it happened (3b, Arrivals.Row) says what its mail
+    -- will: what a won one cost or a sold one asked, in the gold's column,
+    -- and the slots it takes, each where the switches leave it on the row.
+    if mail.auction and R then
+      local money, moneyKind = R.MoneyText(false, tonumber(mail.asked) or 0, 0, tonumber(mail.paid), true, nil,
+        R.RowCoins and R.RowCoins(nil, fs) or nil, T.ROW)
+      if money and R.MoneyShown(moneyKind) then texts.money = money end
+      if (mail.items or 0) > 0 and R.Shows("slots") then
+        local text = R.SlotsText and R.SlotsText(mail.items, true) or ns.Plural("COUNT_SLOTS", mail.items)
+        texts.slots = T.Colorize("textSecondary", text, T.ROW)
+      end
+    end
+    -- "New" where a mail's time left stands: it has none to show yet. With
+    -- that column off, in the last figure shown that the row leaves empty;
+    -- with none, the unread mark says it alone.
+    local at
+    if R and R.Shows("time") then
+      at = "time"
+    else
+      at = LastShownFigure(R, texts)
+    end
+    if at then texts[at] = T.Colorize("positive", L["MEMORY_NEW_ROW"], T.ROW) end
     return texts
   end
   texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now, fs)
@@ -4484,38 +5276,108 @@ end
 -- newest first. The client's latest-senders line names every UNREAD sender,
 -- not only new ones, so a sender with unread mail already in the snapshot is
 -- that mail, not an arrival.
+--
+-- A row for each auction noted (2g) reads as the mail it will be: the
+-- outcome where the sender stands, the item, its count on the icon, what was
+-- paid for a won one or asked for a sold one, the slots it takes. One table
+-- an entry, kept while the entry is (weakly keyed) and filled again on each
+-- list, so a list of the same auctions makes none.
+local Arrivals = { rowOf = setmetatable({}, { __mode = "k" }) }
+
+-- snap, sender -> whether the snapshot holds unread mail from that sender.
+function Arrivals.UnreadFrom(snap, sender)
+  local mails = snap and snap.mails
+  if not mails then return false end
+  for i = 1, #mails do
+    if not mails[i].read and mails[i].sender == sender then return true end
+  end
+  return false
+end
+
+-- sender, snap, named -> whether a sender the client names is a row of its
+-- own: not the auction house while its arrivals are already rows by item
+-- (`named`; the auction house by its own name or, on Forever, its
+-- faction's, Helpers.IsAuctionHouse), and not one whose unread mail the
+-- snapshot holds.
+function Arrivals.Named(sender, snap, named)
+  if named and ns.Helpers.IsAuctionHouse(sender) then return false end
+  return not Arrivals.UnreadFrom(snap, sender)
+end
+
+-- arrived, from, snap, named -> how many rows say only that mail arrived,
+-- which no count can hold (PendingRows draws exactly these): one for each
+-- sender that is a row of its own, or the one that stands for an arrival
+-- nothing names.
+function Arrivals.Unnamed(arrived, from, snap, named)
+  if not arrived then return 0 end
+  local n = 0
+  if type(from) == "table" then
+    for i = 1, #from do
+      if Arrivals.Named(from[i], snap, named) then n = n + 1 end
+    end
+  end
+  if n == 0 and not named then return 1 end
+  return n
+end
+
+-- p (an auction noted, 2g), gen -> its row.
+function Arrivals.Row(p, gen)
+  local row = Arrivals.rowOf[p]
+  if not row then
+    row = { pending = true, auction = true, sender = "", subject = "", read = false, stuck = false,
+      kind = false, icon = false, count = false, items = 0, money = 0, cod = 0, paid = false, asked = false,
+      link = false, id = false }
+    Arrivals.rowOf[p] = row
+  end
+  local A = MM.Auctions
+  local item = A and A.Name(p) or p.item
+  local n = tonumber(p.n)
+  local subject = item or L["MEMORY_NEW_UNOPENED"]
+  if item and (n or 1) > 1 then subject = item .. " (" .. n .. ")" end
+  if row.subject ~= subject or row.kind ~= p.k then
+    -- The text a search folded was another's.
+    searchText[row] = nil
+    row.subject = subject
+  end
+  row.kind, row.icon, row.count = p.k, PendingIcon(p, gen), n
+  row.link, row.id = p.l or false, tonumber(p.i) or false
+  -- A sale's mail holds gold alone; every other outcome brings the item.
+  row.items = (p.k ~= "sold") and (A and A.Slots(p) or 1) or 0
+  local sum = tonumber(p.m)
+  if sum and sum <= 0 then sum = nil end
+  row.paid = (p.k == "bought") and sum or false
+  row.asked = (p.k == "sold") and sum or false
+  return row
+end
+
+-- The rows (above): the auctions noted, newest first, then one for each
+-- sender the client names that is a row of its own, or the one that stands
+-- for an arrival nothing names -- under the auction house's name where the
+-- client says it is the auction house's.
 local function PendingRows(watch, arrived, from, snap)
   local out = {}
   local pending = LivePending(watch)
-  local known = {}
-  local mails = snap and snap.mails or {}
-  for i = 1, #mails do
-    if not mails[i].read and mails[i].sender then known[mails[i].sender] = true end
-  end
+  local named = #pending > 0
   local gen = MM.PostsGen and MM.PostsGen() or 0
   for i = #pending, 1, -1 do
-    local p = pending[i]
-    local subject = p.item or ""
-    if (tonumber(p.n) or 1) > 1 then subject = subject .. " (" .. p.n .. ")" end
-    out[#out + 1] = { pending = true, kind = p.k, sender = "", subject = subject, icon = PendingIcon(p, gen),
-      count = tonumber(p.n) }
+    out[#out + 1] = Arrivals.Row(pending[i], gen)
   end
   if arrived then
+    -- The auction house, where the client names it among the senders: the
+    -- name the row that stands for an unnamed arrival then takes.
+    local house
     if type(from) == "table" then
       for i = 1, #from do
         local sender = from[i]
-        -- The auction house, by its own name or, on Forever, its faction's
-        -- (Helpers.IsAuctionHouse).
-        local isAH = ns.Helpers.IsAuctionHouse(sender)
-        -- The auction house's arrivals are already rows, by item.
-        if not (isAH and #pending > 0) and not known[sender] then
+        if not house and ns.Helpers.IsAuctionHouse(sender) then house = sender end
+        if Arrivals.Named(sender, snap, named) then
           out[#out + 1] = { pending = true, sender = sender, subject = L["MEMORY_NEW_UNOPENED"],
             icon = "Interface\\Icons\\INV_Letter_02" }
         end
       end
     end
     if #out == 0 then
-      out[1] = { pending = true, sender = L["MEMORY_SENDER_UNKNOWN"], subject = L["MEMORY_NEW_UNOPENED"],
+      out[1] = { pending = true, sender = house or L["MEMORY_SENDER_UNKNOWN"], subject = L["MEMORY_NEW_UNOPENED"],
         icon = "Interface\\Icons\\INV_Letter_02" }
     end
   end
@@ -4524,20 +5386,22 @@ end
 
 -- For the minimap tooltip's "arrived" section: what the notifications named,
 -- newest first, as { label = outcome in its tone, item = name }; the tone
--- inked for the tooltip, which stays dark in Light mode.
-function MM.PendingSummary()
+-- inked for the tooltip, which stays dark in Light mode. At most `most`
+-- (nil: all), and how many there are in all.
+function MM.PendingSummary(most)
   local realm, name = Me()
   local watch = WatchFor(realm, name, false)
   local pending = LivePending(watch)
   local R = Rules()
+  local A = MM.Auctions
   local out = {}
-  for i = #pending, 1, -1 do
+  for i = #pending, math.max(1, most and (#pending - most + 1) or 1), -1 do
     local p = pending[i]
-    local item = p.item or ""
-    if (tonumber(p.n) or 1) > 1 then item = item .. " (" .. p.n .. ")" end
+    local item = (A and A.Name(p)) or p.item or ""
+    if item ~= "" and (tonumber(p.n) or 1) > 1 then item = item .. " (" .. p.n .. ")" end
     out[#out + 1] = { label = (R and R.OutcomeSender(p.k, "tooltip")) or L["MEMORY_FROM_AH"], item = item }
   end
-  return out
+  return out, LivePendingCount(watch, time())
 end
 
 -------------------------------------------------------------
@@ -4593,6 +5457,8 @@ do
         if Holds(mails[i], now) then return true end
       end
     end
+    -- Mail the server held past what its last visit listed (Status).
+    if Unlisted(snap, now) > 0 then return true end
     -- Mail sent it from another character since its last visit (Status).
     if MM.SentSince(realm, name, snap and snap.seenAt or nil, now) > 0 then return true end
     local watch = WatchFor(realm, name, false)
@@ -4679,36 +5545,20 @@ end
 function MM.CountFor(realm, name)
   local myRealm, myName = Me()
   local st = Status(realm or myRealm, name or myName, time())
-  return st.waiting + (st.pending or 0), st.warn, WarningText(st, time()), st.uncounted
+  return st.count, st.warn, WarningText(st, time()), st.uncounted
 end
 
--- The whole box a list heads, as the Mail tab's Inbox counts its own: every
--- mail in the record still in date, read or not, holding anything or not;
--- the ones past the record's cap, as the server counted them; and `pending`,
--- the mail known to have come since, which the list shows at its top. Only
--- mail past its date is left out: the server has returned or deleted it.
-local function BoxTotal(snapshot, pending, now)
-  local n = pending or 0
-  local mails = snapshot and snapshot.mails
-  if not mails then return n end
-  for i = 1, #mails do
-    local expires = tonumber(mails[i].expires)
-    if not (expires and expires > 0 and expires <= now) then n = n + 1 end
-  end
-  return n + math.max(0, (tonumber(snapshot.total) or #mails) - #mails)
-end
-
--- realm, name -> another character's whole box, for its plate on the Mail
--- tab: the count MM.RowsFor gives that box as info.box, the mail sent it
--- since its last visit included (MM.SentSince); and whether more came than
--- it holds (Uncounted; MM.CountText says them together).
+-- realm, name -> a box's whole count, for the list that heads it (Mail
+-- Memory's top, another box's plate on the Mail tab): the tally's `box`, as
+-- the Mail tab's Inbox counts its own -- every mail in the record still in
+-- date, read or not, holding anything or not; the mail unlisted, as the
+-- server counted it; the auctions noted since, one each, and the mail sent
+-- it since its last visit (MM.SentSince). Only mail past its date is left
+-- out: the server has returned or deleted it. And whether more came than it
+-- holds (the tally's `more`; MM.CountText says them together).
 function MM.BoxCount(realm, name)
-  local now = time()
-  local snapshot, watch = SnapshotFor(realm, name), WatchFor(realm, name, false)
-  local seenAt = snapshot and snapshot.seenAt or nil
-  local myRealm, myName = Me()
-  local sent = (realm == myRealm and name == myName) and 0 or MM.SentSince(realm, name, seenAt, now)
-  return BoxTotal(snapshot, LivePendingCount(watch, now) + sent, now), Uncounted(watch, seenAt, now)
+  local t = MM.Tally(realm, name)
+  return t.box, t.more
 end
 
 -- The foot of the list, standing for the characters the player hid: one
@@ -4748,7 +5598,7 @@ do
     end,
     mail = function(a, b)
       if a.me ~= b.me then return a.me end
-      return By(a, b, a.waiting + (a.pending or 0), b.waiting + (b.pending or 0), false)
+      return By(a, b, a.count, b.count, false)
     end,
     name = function(a, b)
       if a.me ~= b.me then return a.me end
@@ -5020,7 +5870,7 @@ local function PaintPicker(list)
           -- own box, said in words where the others have their counts.
           row.Count:SetText(L["PICKER_THIS_CHARACTER"])
         else
-          local count = MM.MailsText(st.waiting + (st.pending or 0), st.uncounted)
+          local count = MM.MailsText(st.count, st.uncounted)
           row.Count:SetText(st.warn and T.Colorize("warning", count) or count)
         end
       end
@@ -5477,6 +6327,58 @@ local function ArrivedSince(snapshot)
   return arrived, from
 end
 
+-- [realm, name[, now]] -> the tally of that character's box (Status), the
+-- character being played by default: one table, filled again on each call,
+-- so a caller reads what it needs before it asks again. Every count shown
+-- for a box is one of its fields, so no two places can add a box up
+-- differently.
+--
+-- The character being played is read as it stands: at a mailbox, this
+-- visit's look, and nothing noted since the visit before on top of it (the
+-- look holds that mail); away from one, its record, and `more` also where
+-- an arrival is drawn that no count can hold (Arrivals.Unnamed: the row
+-- that says only "arrived", by the three detectors of Arrived).
+do
+  local TALLY = {}
+
+  function MM.Tally(realm, name, now)
+    local myRealm, myName = Me()
+    realm, name = realm or myRealm, name or myName
+    now = now or time()
+    local me = (realm == myRealm and name == myName)
+    -- A look a missed close left behind is the record now (HealLive).
+    if me then HealLive() end
+    local state = MailboxState()
+    local look = me and live or nil
+    local t = Status(realm, name, now, look, TALLY)
+    if look then
+      t.more = false
+    elseif me and not t.more and not (state and state.mailboxOpen) then
+      local snapshot = StoredSnapshot()
+      if snapshot then
+        local arrived, from = ArrivedSince(snapshot)
+        if arrived then
+          local named = LivePendingCount(WatchFor(realm, name, false), now) > 0
+          t.more = Arrivals.Unnamed(true, from, snapshot, named) > 0
+        end
+      end
+    end
+    return t
+  end
+
+  -- The count of the character being played while its mailbox is open, for
+  -- the minimap icon, which reads the others from MM.Characters: this
+  -- visit's look as the tally counts it, so the icon and its tooltip say
+  -- one number through a visit. Nil away from a mailbox or before the first
+  -- look, where the list's own entry stands.
+  function MM.LiveCount()
+    if not live then return nil end
+    local t = MM.Tally()
+    -- Still this visit's look (not one just settled as the record).
+    return live and t.count or nil
+  end
+end
+
 -- Whether mail has come to the character being played since its mailbox
 -- was last opened, by the same three detectors (Arrived): the minimap
 -- icon's New since last visit. False at a mailbox, where that visit is
@@ -5498,8 +6400,9 @@ end
 -- opts.characters: an MM.Characters() list already built for this refresh;
 -- opts.footSeen: the list's foot says when the box was seen (SentBlock).
 -- info: realm, name, me, snapshot, total (mails in the snapshot), hidden
--- (in the box but past the record's cap), box (the whole box, BoxTotal,
--- whatever the search), matched, onCharacters, sent (the mail sent another
+-- (in the box but past the record's cap), box (the whole box, the tally's,
+-- whatever the search) and more (more came than it holds), matched,
+-- onCharacters, sent (the mail sent another
 -- character since its last visit listed at the top, SentBlock).
 function MM.RowsFor(realm, name, opts)
   opts = opts or {}
@@ -5537,8 +6440,11 @@ function MM.RowsFor(realm, name, opts)
   -- Another character's box: the mail sent it since its last visit, which
   -- the box holds too (MM.SentSince), listed at the top below.
   local sentN = me and 0 or MM.SentSince(realm, name, snapshot and snapshot.seenAt or nil, now)
-  -- The rows so far are the arrivals, then the record.
-  info.box = BoxTotal(snapshot, #rows - count + sentN, now)
+  -- The box's count, and whether more came than it holds: the tally's, as
+  -- every other place reads them (MM.Tally), not the rows drawn here. An
+  -- auction noted is one each; a row that says only "arrived" is "and more".
+  local tally = MM.Tally(realm, name, now)
+  info.box, info.more = tally.box, tally.more
 
   local query = opts.query or ""
   if query ~= "" then
@@ -6421,7 +7327,9 @@ local function PaintWho(frame, info, picking)
   frame.picking = picking
   picker:Show()
   MM.HostPick(picker, plate)
-  local _, warn, _, uncounted = MM.CountFor(info.realm, info.name)
+  local _, warn = MM.CountFor(info.realm, info.name)
+  -- More came than the count holds (the tally's `more`, MM.RowsFor).
+  local uncounted = info.more and true or false
   local n = tonumber(info.box) or 0
   if plate._realm ~= info.realm or plate._name ~= info.name or plate._n ~= n
       or plate._uncounted ~= uncounted or plate._warn ~= warn or plate._gen ~= frame._whoGen
@@ -6507,6 +7415,43 @@ local function BindRows(frame)
   ns.Theme.TipFollow(frame.ListChild)
 end
 
+-- The foot: when the box was seen, or what a search found. Written by each
+-- refresh, and again, with no refresh, at the moments its age is read
+-- beside another's (MM.FootAgain): the same stamp reads the same age here
+-- and in the minimap icon's tooltip. Set only when the words have changed.
+local function PaintFoot(frame, info)
+  local text = MM.SeenText(info.snapshot, (info.sent or 0) > 0)
+  if (info.hidden or 0) > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], info.hidden) end
+  if info.matched then
+    text = ns.Plural("MEMORY_MATCHES", info.matched)
+    if (info.onCharacters or 0) > 1 then
+      text = text .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
+    end
+  end
+  -- The whole minutes since the box was seen: what the age is written from.
+  local seenAt = info.snapshot and tonumber(info.snapshot.seenAt)
+  frame._footAge = seenAt and math.floor((time() - seenAt) / 60) or nil
+  if frame._footText ~= text then
+    frame._footText = text
+    frame.Status:SetText(text)
+  end
+end
+
+-- The foot's age written again where the window is showing a box (not a
+-- search's result, which has no age): when the pointer comes onto the
+-- window or one of its rows, and when the minimap icon's tooltip is shown
+-- (MinimapButton), which writes the same age at that moment. No timer:
+-- between those moments nobody is reading the two side by side. Nothing is
+-- made unless another whole minute has passed since the foot was written.
+function MM.FootAgain()
+  local frame = MM._frame
+  local info = frame and frame._info
+  if not (info and frame:IsShown()) or info.matched then return end
+  local seenAt = info.snapshot and tonumber(info.snapshot.seenAt)
+  if not seenAt or frame._footAge == math.floor((time() - seenAt) / 60) then return end
+  PaintFoot(frame, info)
+end
+
 local function OnHeader(frame, realm, name)
   local myRealm, myName = Me()
   frame.viewing = (realm == myRealm and name == myName) and nil or { realm = realm, name = name }
@@ -6562,15 +7507,7 @@ function Refresh(frame)
   if frame._topHidden then MM.HideTopRow(frame) end
 
   -- The foot: when the box was seen, or what a search found.
-  local text = MM.SeenText(info.snapshot, (info.sent or 0) > 0)
-  if (info.hidden or 0) > 0 then text = text .. "  " .. string.format(L["MEMORY_MORE"], info.hidden) end
-  if info.matched then
-    text = ns.Plural("MEMORY_MATCHES", info.matched)
-    if (info.onCharacters or 0) > 1 then
-      text = text .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", info.onCharacters)
-    end
-  end
-  frame.Status:SetText(text)
+  PaintFoot(frame, info)
 
   -- A search that finds nothing says so where the list stands, in the
   -- house's one line (the Mail tab's words), the list's card kept under it.
@@ -6752,6 +7689,9 @@ local function Build()
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", frame.StartMoving)
   frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+  -- The pointer comes onto the window: the foot says how long ago the box
+  -- was seen as of now (MM.FootAgain).
+  frame:HookScript("OnEnter", MM.FootAgain)
   frame:Hide()
 
   -- A floating note over the game world: readable always, whatever opacity
@@ -6780,6 +7720,7 @@ local function Build()
   frame.StatusHit:SetAllPoints(frame.Status)
   HoverOnly(frame.StatusHit)
   frame.StatusHit:SetScript("OnEnter", function(self)
+    MM.FootAgain()
     if not (frame.Status.IsTruncated and frame.Status:IsTruncated()) then return end
     ns.Theme.TipBegin(self)
     ns.Theme.TipTitle(frame.Status:GetText())
@@ -7057,8 +7998,16 @@ end
 -- or nil when there is nothing recorded to describe. Assembled here rather
 -- than in the icon so the tooltip and the memory window can never tell
 -- different stories about the same snapshot.
-function MM.MailboxSummary()
+-- `most`: how many of the auctions noted since to list (`pending`; nil, all
+-- of them); `pendingN` says how many there are.
+function MM.MailboxSummary(most)
   if not MemoryEnabled() then return nil end
+  -- The one tally (MM.Tally), read before anything else asks for it: at a
+  -- mailbox this visit's look, away from one the record and what was noted
+  -- since. It settles a look a missed close left behind, so the record read
+  -- next is the one it counted.
+  local t = MM.Tally()
+  local count, stuck, unlisted, noted, more = t.count, t.stuck, t.unlisted, t.pending, t.more
   local snap = live or StoredSnapshot()
   if not snap then return nil end
 
@@ -7066,18 +8015,12 @@ function MM.MailboxSummary()
   -- your item, but "waiting to collect" and "the server would not give me
   -- this" are different problems with different answers, and reading a
   -- sender under the first heading and then a count under a separate
-  -- refusal line made one mail look like two.
-  local waiting, stuck = 0, 0
+  -- refusal line made one mail look like two. So `waiting` is the tally's
+  -- count less the refused ones, which `stuck` says: the mail in the record
+  -- still waiting, by sender (`groups`); the mail the server held past what
+  -- the visit listed (`unlisted`); and the auctions noted since, which are
+  -- the auction house's and are counted in its group.
   local mails = snap.mails or {}
-  local now = time()
-  for i = 1, #mails do
-    local mail = mails[i]
-    -- The Collect tab's rule, so the two counts agree: a mail waits while it
-    -- holds anything, or has not been read -- until its date.
-    if Holds(mail, now) then
-      if mail.stuck then stuck = stuck + 1 else waiting = waiting + 1 end
-    end
-  end
 
   local function GroupsFor(wantStuck)
     local order, counts = WaitingBySender(snap, wantStuck)
@@ -7089,19 +8032,45 @@ function MM.MailboxSummary()
     return out
   end
 
+  local groups = GroupsFor(false)
+  if noted > 0 then
+    groups = groups or {}
+    local house
+    for i = 1, #groups do
+      if ns.Helpers.IsAuctionHouse(groups[i].name) then
+        house = groups[i]
+        break
+      end
+    end
+    if house then
+      house.count = house.count + noted
+    else
+      groups[#groups + 1] = { name = L["MEMORY_FROM_AH"], count = noted }
+    end
+    table.sort(groups, function(a, b)
+      if a.count ~= b.count then return a.count > b.count end
+      return a.name < b.name
+    end)
+  end
+
   -- By all three detectors, as Mail Memory's rows are (ArrivedSince).
   local arrived, newFrom = ArrivedSince(snap)
 
+  local pending = MM.PendingSummary and MM.PendingSummary(most) or nil
+
   return {
-    groups      = GroupsFor(false),
+    groups      = groups,
     stuckGroups = GroupsFor(true),
-    waiting     = waiting,
+    waiting     = count - stuck,
     stuck       = stuck,
+    unlisted    = unlisted,
+    more        = more,
     total       = #mails,
     seenAt      = snap.seenAt,
     arrived     = arrived,
     newFrom     = arrived and newFrom or nil,
-    pending     = MM.PendingSummary and MM.PendingSummary() or nil,
+    pending     = pending,
+    pendingN    = noted,
   }
 end
 
@@ -7125,6 +8094,19 @@ function MM.Diagnose()
   parts[#parts + 1] = "pending evt " ..
     (lastPendingAt and string.format("%ds ago (%s)", time() - lastPendingAt, lastPendingVerdict)
      or lastPendingVerdict)
+  -- The auctions noted since the last visit (2g), and for the newest which
+  -- signals said it: 1 its event, 2 the auction house's notice, 4 the
+  -- commodity purchase's own event, added up. What each client sends for a
+  -- buyout, a sale, a cancel is read here, not guessed.
+  do
+    local realm, name = Me()
+    local watch = WatchFor(realm, name, false)
+    local pending = watch and type(watch.pending) == "table" and watch.pending or nil
+    local last = pending and pending[#pending]
+    parts[#parts + 1] = string.format("auctions noted %d%s%s", LivePendingCount(watch, time()),
+      last and string.format(" (last %s, signals %s, id %s)", tostring(last.k), tostring(last.s), tostring(last.a)) or "",
+      (watch and type(watch.unlisted) == "table") and string.format(", %d known unlisted", #watch.unlisted) or "")
+  end
   -- The two structural tells: a stranded live capture means a close signal
   -- was missed; a false registration means this client refused an event
   -- name outright.
@@ -7266,7 +8248,20 @@ end
 -- -- can be completely silent on the mail side. But the purchase itself is
 -- loudly announced to the buyer, and a completed purchase IS mail in
 -- transit. Witnessed cause, honest badge.
-local function OnPurchaseCompleted()
+--
+-- The purchase is one mail, and is noted as one (2g): the item, how many
+-- and what it cost, where the placing of it was heard, in a row of its own
+-- and one more in every count. A commodity purchase raises both events and
+-- is noted once (2g's rule for two signals). A bid placed under the buyout
+-- is no purchase yet: nothing is noted or flashed for it, and the auction
+-- house's notice says when it wins.
+local function OnPurchaseCompleted(event, auctionID)
+  local A = MM.Auctions
+  local commodity = event == "COMMODITY_PURCHASE_SUCCEEDED"
+  if not commodity and A.OnlyBid(auctionID) then
+    MM.PendingLog.Note("bid", false)
+    return
+  end
   -- The alert first: it does not depend on the memory. Your own purchase:
   -- the icon flashes and counts it, the sound stays quiet (MB.NotifyArrival).
   local Icon = ns.MinimapButton
@@ -7274,24 +8269,8 @@ local function OnPurchaseCompleted()
   if Icon and type(Icon.NotifyArrival) == "function" then played = Icon.NotifyArrival("purchase") end
   MM.PendingLog.Note("purchase", played)
   if not MemoryEnabled() then return end
-  MM._NoteSignal()
-  local snap = StoredSnapshot()
-  if not snap then return end
-  snap.newSince = true
-  local label = L["MEMORY_FROM_AH"]
-  local from = snap.newFrom or {}
-  local listed = false
-  for i = 1, #from do
-    if from[i] == label then
-      listed = true
-      break
-    end
-  end
-  if not listed then from[#from + 1] = label end
-  snap.newFrom = from
-
-  local frame = MM._frame
-  if frame and frame:IsShown() then Refresh(frame) end
+  -- The entry, the mark on the record and the window's refresh are A's.
+  if commodity then A.CommodityBought() else A.Bought(auctionID) end
 end
 
 -- Same dual close coverage as Core/MailboxUI.lua, for the same reason: the
@@ -7315,6 +8294,8 @@ end
 local function OnMailboxOpened()
   local frame = MM._frame
   if frame and frame:IsShown() then frame:Hide() end
+  -- A visit begins: nothing has been taken in it yet (2g).
+  MM.Auctions.VisitBegan()
 end
 
 -- Registration results surface in Diagnose (`registered`, declared in
@@ -7346,6 +8327,9 @@ if bus then
     -- on, and the deposit that was waiting for it (2f).
     local ok, itemID = pcall(MM.PostCreated, auctionID)
     pcall(MM.DepositCreated, ok and itemID or nil)
+    -- And the auction itself, by its id: what it is and what is asked for
+    -- it, for its row when it sells, runs out or is canceled (2g).
+    pcall(MM.Auctions.Created, auctionID, ok and itemID or nil)
     if not MemoryEnabled() then return end
     local watch = WatchFor(ns.Helpers.PlayerRealm(), ns.Helpers.PlayerName(), true)
     if not watch then return end
@@ -7360,50 +8344,44 @@ if bus then
   registered.postWarning = bus.Register("AUCTION_HOUSE_POST_WARNING", function() MM.PostWarned() end)
   registered.postError = bus.Register("AUCTION_HOUSE_POST_ERROR", function() MM.PostFailed() end)
   registered.auctionError = bus.Register("AUCTION_HOUSE_SHOW_ERROR", function() MM.PostFailed() end)
-  registered.auctionClosed = bus.Register("AUCTION_HOUSE_CLOSED", function() MM.PostsClosed() end)
-  registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function()
-    MM._NoteSignal()
+  registered.auctionClosed = bus.Register("AUCTION_HOUSE_CLOSED", function()
+    MM.PostsClosed()
+    MM.Auctions.PostsClosed()
+  end)
+  -- An auction ran out, or was canceled: its item comes back by mail, one
+  -- mail an auction, noted as it happens (2g). The game names the auction
+  -- by its id; what it was is known from its posting, from the cancel as it
+  -- was placed, or from the auction house's notice below.
+  registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function(_, auctionID)
+    MM.Auctions.Ended("expired", MM.Auctions.SRC.event, auctionID)
+  end)
+  registered.auctionCanceled = bus.Register("AUCTION_CANCELED", function(_, auctionID)
+    MM.Auctions.Ended("canceled", MM.Auctions.SRC.event, auctionID)
+  end)
+  -- The sum the game quotes for a commodity purchase under way: what it
+  -- costs, for its row (2g). Nothing while none is under way.
+  registered.commodityPrice = bus.Register("COMMODITY_PRICE_UPDATED", function(_, unit, total)
+    MM.Auctions.CommodityPrice(unit, total)
   end)
 
-  -- The auction house's own notices -- sold, expired, won -- name the item,
-  -- and reach the client wherever the player is. Each is mail on its way, and
-  -- the memory's new-mail rows say what (section 3b).
-  local function NotePending(kind, item, count)
-    if not MemoryEnabled() or not kind or type(item) ~= "string" or item == "" then return end
-    local realm, name = Me()
-    local watch = WatchFor(realm, name, true)
-    if not watch then return end
-    watch.pending = type(watch.pending) == "table" and watch.pending or {}
-    if #watch.pending >= 30 then table.remove(watch.pending, 1) end
-    local entry = { k = kind, item = item, n = tonumber(count), t = time() }
-    -- The item's id, and its own icon where one was noted, where this
-    -- account put it up for auction (2e): its row's icon (PendingIcon) then
-    -- needs no asking by name.
-    local id, icon = MM.PostedItem(item)
-    if id then entry.i, entry.c = id, icon end
-    watch.pending[#watch.pending + 1] = entry
-    CharactersChanged()
-    NoteArrival(realm, name)
-    local snap = StoredSnapshot()
-    if snap then snap.newSince = true end
-    local frame = MM._frame
-    if frame and frame:IsShown() then Refresh(frame) end
-  end
-  registered.ahNotice = bus.Register("AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION", function(_, notification, item)
+  -- The auction house's own notices -- sold, expired, won -- name the item
+  -- (and an item's auction, by its id), and reach the client wherever the
+  -- player is. Each is one mail, noted as the auction it is (2g), and the
+  -- memory's new-mail rows say what (section 3b).
+  registered.ahNotice = bus.Register("AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION", function(_, notification, item, auctionID)
     local E = type(Enum) == "table" and Enum.AuctionHouseNotification or nil
     if not E then return end
-    local kind
+    local A = MM.Auctions
     if notification == E.AuctionSold then
-      kind = "sold"
+      A.Sold(item, auctionID)
     elseif notification == E.AuctionExpired then
-      kind = "expired"
+      A.Ended("expired", A.SRC.notice, auctionID, item)
     elseif notification == E.AuctionWon then
-      kind = "bought"
+      A.Won(item, auctionID)
     end
-    NotePending(kind, item)
   end)
   registered.commodityWon = bus.Register("AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION", function(_, item, quantity)
-    NotePending("bought", item, quantity)
+    MM.Auctions.Won(item, nil, quantity)
   end)
   registered.login = bus.Register("PLAYER_ENTERING_WORLD", function(_, isInitialLogin)
     loginAt = time()

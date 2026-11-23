@@ -602,11 +602,21 @@ local function Evaluate()
     and type(Memory.Characters) == "function" then
     local list = Memory.Characters()
     local warns = Memory.Warns
+    -- At a mailbox this character's count is this visit's look, as the
+    -- tooltip reads it (MailMemory.LiveCount); nil away from one.
+    local here = type(Memory.LiveCount) == "function" and Memory.LiveCount() or nil
     for i = 1, #list do
       local st = list[i]
       if not st.hidden then
-        local n = (tonumber(st.waiting) or 0) + (tonumber(st.pending) or 0)
-        if st.me then mine = n end
+        -- The tally's count (MailMemory's Status): the mail waiting in its
+        -- record, the mail the server held past what the visit listed, and
+        -- the auctions noted since. The one number the tooltip, the
+        -- character list and Mail Memory read too.
+        local n = tonumber(st.count) or 0
+        if st.me then
+          if here then n = here end
+          mine = n
+        end
         all = all + n
         if st.uncounted then uncounted = true end
         if not warn and warns and warns(st, warnMode) then warn = true end
@@ -645,29 +655,30 @@ end
 -- RV.PaintCount): the game's number font, outlined, white, at the icon's
 -- bottom-right corner, a hair out past it. Its size follows the icon's --
 -- 10 at the default 20 px, as on a mail row's icon -- and so does the hair.
--- Hidden at zero. One or two digits are drawn so, whole. Three or more are
--- drawn a step smaller (one unit, 9 at 20 px), and whole where they then
--- fit: no wider than the icon's side, or than "99+" itself where that is
--- wider, so a number as wide as "99+" always shows as itself; a number
--- wider still reads "99+". Measured in the font string's own font, once per
--- change of the number or the icon's size: the text is made only then, and
--- the font only when the size or the step does.
-local function CountFontSize(size, small)
-  if small then return math.max(8, math.floor(size * 0.4 + 1.5)) end
-  return math.max(9, math.floor(size * 0.4 + 2.5))
+-- Hidden at zero. Always the number itself, whole: never a "+", never a
+-- short form. One or two digits are drawn so. Three or more are drawn a
+-- step smaller (one unit, 9 at 20 px), where they fit: no wider than the
+-- icon's side, or than the ruler "99+" where that is wider (a width only,
+-- never shown; it is what three digits were always given). A number wider
+-- still steps down a unit at a time until it fits or the font is at its
+-- floor, and is drawn whole there. Measured in the font string's own font,
+-- once per change of the number or the icon's size: the text is made only
+-- then, and the font only when the size or the step does.
+local function CountFontSize(size, step)
+  local floor = (step <= 0 and 9) or (step == 1 and 8) or 7
+  return math.max(floor, math.floor(size * 0.4 + 2.5) - step)
 end
 
-local COUNT_MORE = "99+"
+local COUNT_RULER = "99+"
 
--- fs, n -> the words for n, in the font fs wears now (CountFontSize).
-local function CountText(fs, n, size)
-  local text = string.format("%d", n)
-  if n < 100 then return text end
-  fs:SetText(COUNT_MORE)
-  local room = math.max(size, fs:GetStringWidth() or 0)
-  fs:SetText(text)
-  if (fs:GetStringWidth() or 0) <= room then return text end
-  return COUNT_MORE
+-- fs, size, step -> the count's font at that step, set only when it moves.
+local function CountFont(fs, size, step)
+  if fs.__pbStep == step then return end
+  fs.__pbStep = step
+  local T = ns.Theme
+  local object = T and T.FontObject and T.FontObject("numberSmall")
+  local path = object and object:GetFont()
+  fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, step), "OUTLINE")
 end
 
 -- holder: the frame the count is drawn on; anchor: the icon texture; size:
@@ -685,15 +696,10 @@ local function PaintCount(holder, anchor, size, n)
     fs:SetWordWrap(false)
     holder.__pbCount = fs
   end
-  local small = n >= 100
-  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor or fs.__pbSmall ~= small then
-    fs.__pbSize, fs.__pbAnchor, fs.__pbSmall = size, anchor, small
-    -- Measured again in the new font.
-    fs.__pbN = nil
-    local T = ns.Theme
-    local object = T and T.FontObject and T.FontObject("numberSmall")
-    local path = object and object:GetFont()
-    fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, small), "OUTLINE")
+  if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor then
+    fs.__pbSize, fs.__pbAnchor = size, anchor
+    -- Measured again, in the font of the new size.
+    fs.__pbN, fs.__pbStep = nil, nil
     fs:SetTextColor(1, 1, 1, 1)
     fs:ClearAllPoints()
     fs:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT",
@@ -701,7 +707,20 @@ local function PaintCount(holder, anchor, size, n)
   end
   if fs.__pbN ~= n then
     fs.__pbN = n
-    fs:SetText(CountText(fs, n, size))
+    local text = string.format("%d", n)
+    local step = n >= 100 and 1 or 0
+    CountFont(fs, size, step)
+    if step > 0 then
+      fs:SetText(COUNT_RULER)
+      local room = math.max(size, fs:GetStringWidth() or 0)
+      fs:SetText(text)
+      while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1) < CountFontSize(size, step) do
+        step = step + 1
+        CountFont(fs, size, step)
+      end
+    else
+      fs:SetText(text)
+    end
   end
   fs:Show()
 end
@@ -2089,7 +2108,7 @@ function TIP.Characters(Memory)
       if shown < TIP.CHARACTERS then
         shown = shown + 1
         GameTooltip:AddDoubleLine(TIP.CharacterName(Memory, st),
-          Memory.CountText(st.waiting + (st.pending or 0), st.uncounted), 1, 1, 1, 1, 1, 1)
+          Memory.CountText(st.count, st.uncounted), 1, 1, 1, 1, 1, 1)
       else
         extra = extra + 1
       end
@@ -2115,7 +2134,10 @@ ShowTooltip = function(button, hostMode)
   local Memory = ns.MailMemory
   local memoryOn = MemoryOn()
   local state = memoryOn and Memory and type(Memory.MailboxSummary) == "function"
-    and Memory.MailboxSummary() or nil
+    and Memory.MailboxSummary(TIP.ARRIVALS) or nil
+  -- Mail Memory's window, where it is showing, says how long ago the box
+  -- was seen as this tooltip is about to: the two are read side by side.
+  if memoryOn and Memory and type(Memory.FootAgain) == "function" then Memory.FootAgain() end
 
   -- White, as every Postbox tooltip's title: the game's default is yellow.
   GameTooltip:SetText(L["FRAME_TITLE"], 1, 1, 1)
@@ -2146,7 +2168,9 @@ ShowTooltip = function(button, hostMode)
       for i = 1, shown do
         GameTooltip:AddDoubleLine(pending[i].label, pending[i].item, 1, 1, 1, 1, 1, 1)
       end
-      if #pending > shown then TIP.More(#pending - shown) end
+      -- Every auction noted since, however many the lines above name.
+      local noted = math.max(#pending, tonumber(state.pendingN) or 0)
+      if noted > shown then TIP.More(noted - shown) end
     elseif type(from) == "table" and #from > 0 then
       for i = 1, #from do
         GameTooltip:AddDoubleLine(i == 1 and L["MEMORY_NEW_SINCE"] or " ", from[i], pr, pg, pb, 1, 1, 1)
@@ -2157,10 +2181,22 @@ ShowTooltip = function(button, hostMode)
   end
 
   if state then
-    if state.groups or state.stuckGroups then
-      if state.groups then
-        TIP.Fact(L["MINIMAP_TIP_WAITING"], state.waiting)
+    -- The number the icon wears (MailMemory's tally), less the stuck mail
+    -- said apart below: the mail in the record still waiting, by sender
+    -- (the auctions noted since in the auction house's count), then the
+    -- mail the server held past what the visit listed. With "+" where more
+    -- came than can be counted (MailMemory.CountText): the icon itself
+    -- never wears one.
+    local waiting = tonumber(state.waiting) or 0
+    if waiting > 0 or state.stuckGroups then
+      if waiting > 0 then
+        TIP.Fact(L["MINIMAP_TIP_WAITING"], Memory.CountText and Memory.CountText(waiting, state.more) or waiting)
         TIP.Senders(state.groups)
+        local unlisted = tonumber(state.unlisted) or 0
+        if unlisted > 0 then
+          local m = TIP.MUTED
+          GameTooltip:AddDoubleLine(TIP.INDENT .. L["MINIMAP_TIP_UNLISTED"], "x" .. unlisted, m, m, m, m, m, m)
+        end
       end
       -- In the orange a refusal wears everywhere else in the addon, and
       -- apart: listing these under "waiting to collect" and counting them
