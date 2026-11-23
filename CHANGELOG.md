@@ -48,6 +48,9 @@
 
 ### Fixed
 
+- Send tab: a C.O.D. above the game's limit of 10,000 gold now stops at
+  Send with that reason, as the game's own Send button does. It used to
+  reach the server, which answered "Internal mail database error."
 - Mail tab: Delete on an opened mail that still holds something asks with
   the mail's contents named, in the game's own words: its items and how
   many of each, then its gold. The name was missing from the question.
