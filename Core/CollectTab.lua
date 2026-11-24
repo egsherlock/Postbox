@@ -7217,6 +7217,14 @@ function AV.Row(panel, slot)
   if row then return row end
   row = ns.MailMemory.NewRow(panel.MailListChild)
   row:SetHeight(COMPACT_ROW_HEIGHT)
+  -- A plain click says nothing can be taken here (RV.AwayUp); every click
+  -- still passes on to the list, as before.
+  if row.SetMouseClickEnabled then
+    row._panel = panel
+    row:SetMouseClickEnabled(true)
+    row:SetScript("OnMouseDown", RV.AwayDown)
+    row:SetScript("OnMouseUp", RV.AwayUp)
+  end
   pool[slot] = row
   return row
 end
@@ -7266,8 +7274,10 @@ function AV.Build(panel, query)
 
   -- The note where the sweeps stand: whose box and when it was seen, and
   -- where to go to collect it; or what a search of every box found.
-  local note
+  local note, why
   if info.matched and panel._searchAll and query ~= "" then
+    -- A count says nothing of where to collect: lit, the line says it.
+    why = true
     -- Through a filter, what it left: the rows and their headings.
     local matched, chars = info.matched, info.onCharacters or 0
     if show then
@@ -7286,7 +7296,9 @@ function AV.Build(panel, query)
   else
     note = Memory.SeenText(info.snapshot)
   end
-  panel.AltNote:SetText(note)
+  -- Through the bag's setter, which keeps a lit line lit (BV.SetNote).
+  local Bag = ns.BagView
+  if Bag and Bag.SetNote then Bag.SetNote(panel.AltNote, note, why) else panel.AltNote:SetText(note) end
   return earned, spent, #rows
 end
 
@@ -10675,7 +10687,48 @@ function HV.BuildHistoryRow(panel)
   end)
   -- Its tooltip follows the entry it shows after each pass (Theme.TipFollow).
   row.__pbTipRow = row
+  -- Nothing is taken from History: a plain click is answered with the lock
+  -- on the row's icon and the line at the foot lit (HV.RowClick). A Button
+  -- hears the left button only, so a right-click is still nothing.
+  row._panel = panel
+  row:SetScript("OnClick", HV.RowClick)
   return row
+end
+
+-- A plain click on a History row takes nothing and says so (BagView's
+-- BV.NoTake). Shift and Ctrl do nothing, as before; nor does a click while
+-- the columns are being arranged.
+function HV.RowClick(row, button)
+  if button ~= "LeftButton" or RV.Modified() or not row.entry then return end
+  local arrange = ns.Arrange
+  if arrange and arrange.host then return end
+  local Bag = ns.BagView
+  if Bag and Bag.NoTake then Bag.NoTake(row._panel, row, row.Icon, 12, "entry") end
+end
+
+-- Another character's box and the matches of a search of every box: the
+-- rows are Mail Memory's, hover targets that pass every click to the list
+-- under them (the window is dragged by them). On the Mail tab they also
+-- hear a plain left click, to say nothing can be taken here (BV.NoTake),
+-- and only one: a press that moved (a drag of the window), a modified
+-- click, a heading or a line of words, and any other button, do what they
+-- did. Shared by every row; nothing is made per click.
+function RV.AwayDown(row, button)
+  if button ~= "LeftButton" then return end
+  RV.awayRow = row
+  RV.awayX, RV.awayY = GetCursorPosition()
+end
+
+function RV.AwayUp(row, button)
+  local down = RV.awayRow
+  RV.awayRow = nil
+  if button ~= "LeftButton" or down ~= row or not row.mail or RV.Modified() then return end
+  local x, y = GetCursorPosition()
+  if math.abs((x or 0) - (RV.awayX or 0)) > 4 or math.abs((y or 0) - (RV.awayY or 0)) > 4 then return end
+  local arrange = ns.Arrange
+  if arrange and arrange.host then return end
+  local Bag = ns.BagView
+  if Bag and Bag.NoTake then Bag.NoTake(row._panel, row, row.Icon, 12, "mail") end
 end
 
 function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
@@ -10793,7 +10846,8 @@ end
 -- first, or the first cut short -- and the gold; the C.O.D. paid and a won
 -- auction's price; each amount unless the row shows exactly that; Collected,
 -- the day and the time; then what the letter said, kept because the mail
--- itself may be gone. A History row does nothing on a click: no hint.
+-- itself may be gone. A History row takes nothing on a click (the lock
+-- answers it, HV.RowClick): no hint.
 function HV.RowTip(row)
   local entry = row.entry
   if not entry then return false end
@@ -14090,7 +14144,14 @@ function CT.RefreshMailList(panel)
     earned, spent = HV.BuildHistoryList(panel, query)
     stride = COMPACT_ROW_HEIGHT + ROW_GAP
     listed = #panel._history
-    panel.HistoryNote:SetText(HV.Note(panel))
+    -- History's line says what the list is, not that nothing can be taken
+    -- here: lit by a click, it says that too (BV.SetNote).
+    local Bag = ns.BagView
+    if Bag and Bag.SetNote then
+      Bag.SetNote(panel.HistoryNote, HV.Note(panel), true)
+    else
+      panel.HistoryNote:SetText(HV.Note(panel))
+    end
   end
   -- Another character's box, or every box's matches: that list instead.
   local away = AV.Active(panel)
@@ -20679,6 +20740,8 @@ function CT.Build(parent)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
   -- Any scroll closes the fan: its row is bound to other mail.
   scroll:HookScript("OnVerticalScroll", RV.FanScrolled)
+  -- And ends a lock on a row now bound to other mail (BagView's BV.NoTake).
+  if ns.BagView and ns.BagView.NoTakeCheck then scroll:HookScript("OnVerticalScroll", ns.BagView.NoTakeCheck) end
   -- After the template's own handler, which sets the bar from the client's
   -- measure of the list (RV.HoldRange).
   scroll:HookScript("OnScrollRangeChanged", RV.HoldRange)

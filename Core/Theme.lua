@@ -5436,6 +5436,10 @@ Theme.AtlasSets = {
 --   eye-16, eye-off-16  Phosphor's bold eye and eye-slash, outlines at 16
 --     units: Manage Recipients' hide / show mark on each row, a name shown
 --     and a name hidden. Fitted by icons-r13's generator.
+--   lock-16, lock-12  Phosphor's bold lock-simple, outlines at 16 and 12
+--     units: the Mail tab's answer to a click where nothing can be taken
+--     (BagView's BV.NoTake), white over a one-bag tile (16) or a row's icon
+--     (12). Fitted by icons-r13's rules at each size.
 --   people, people-on  one figure, 14 units, and one with another behind
 --     it, 16: the search box's every-character toggle (Theme.CreateSearchBox),
 --     the pair while it is on. The two share a centre; Theme.SetGlyphArt
@@ -5540,6 +5544,8 @@ do
     x = { file = MEDIA .. "glyph-x-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-16"] = { file = MEDIA .. "glyph-eye-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["lock-16"] = { file = MEDIA .. "glyph-lock-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
+    ["lock-12"] = { file = MEDIA .. "glyph-lock-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     ["groups-10"] = { file = MEDIA .. "glyph-groups-10.tga", w = 16, h = 12, l = 0, r = 1, t = 0, b = 0.75, px = true,
       ink = { 1, 15 } },
     ["recipients-10"] = { file = MEDIA .. "glyph-recipients-10.tga", w = 12, h = 12, l = 0, r = 0.75, t = 0, b = 0.75, px = true,

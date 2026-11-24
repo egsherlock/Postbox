@@ -27,8 +27,9 @@
 -- tile does (MailService's TakeAttachment). Shift-click links, Ctrl-click
 -- tries on; right-click shows its mails (the list, searched for the item).
 -- Where nothing can be taken -- another character's box, History -- the
--- tiles keep their color, a click does nothing and the line under the list
--- says so, as it does for the list.
+-- tiles keep their color and a click takes nothing: a lock shows on the
+-- tile and the line under the list lights (BV.NoTake), as on a mail row of
+-- the list there.
 --
 -- Nothing here runs while the switch is off but the button's own paint, a
 -- comparison or two at the end of a list refresh. On, the bag is built once
@@ -800,6 +801,8 @@ function BV.Bind()
   for i = lines + 1, #heads do heads[i]:Hide() end
   if BV.remHead and not remUp then BV.remHead:Hide() end
   Th().TipFollow(child)
+  -- A tile that was answered (BV.NoTake) and is bound to something else.
+  if BV.NT.on then BV.NoTakeCheck() end
 end
 
 -- The bag's own frames, made the first time it shows: its ground in the
@@ -907,6 +910,9 @@ end
 -- for the list on screen, and the bag drawn in the list's place, or the
 -- list put back. Off, that is all it does.
 function BV.Refresh(panel)
+  -- The list was bound again, or the view changed: an answer on a row or a
+  -- note no longer there ends (BV.NoTake).
+  if BV.NT.on then BV.NoTakeCheck() end
   if not panel._bagHooked and panel.Detail then
     -- Once a panel: the reading view's coming and going is heard.
     panel._bagHooked = true
@@ -1877,10 +1883,10 @@ function BV.TileClick(tile, button)
     if split and BV.Many.May(kind) then BV.Many.Open(kind) end
     return
   end
-  -- Nothing can be taken from another character's box or from History;
-  -- the line under the list says where, and lights for a moment to say so
-  -- (BV.Flash).
-  if model.src ~= "inbox" or not P.MailboxOpen() then return BV.Flash(panel) end
+  -- Nothing can be taken from another character's box or from History: a
+  -- lock on the tile, and the line under the list lit for a moment
+  -- (BV.NoTake), as a mail row there answers.
+  if model.src ~= "inbox" or not P.MailboxOpen() then return BV.NoTake(panel, tile, tile, 16, "kind") end
   if kind.look ~= 0 then return end
   if CT.IsRunning() or M.IsBusy() then return end
   if not BV.Current(kind) then return CT.RequestRefresh(panel) end
@@ -1893,26 +1899,45 @@ function BV.TileClick(tile, button)
 end
 
 -------------------------------------------------------------
--- 6b. The line at the foot, lit
+-- 6b. Nothing to take here
 --
--- A plain click on a tile where nothing can be taken (another character's
--- box, History) takes nothing, and the line already under the list that
--- says where to collect it ("Seen 2 hours ago. Log in on Charge to collect
--- it.") answers: the buttons' pointer wash across its slot and its words
--- white, in at once (0.10 s), held (0.60 s), eased out (0.40 s). No new
--- words, no chat line, no sound.
+-- A plain click where nothing can be taken (another character's box, its
+-- History or this character's, a search of every character) takes nothing,
+-- in the bag and in the list alike, and is answered on the thing clicked
+-- and at the foot, for about a second:
+--   * a small white lock (Phosphor's lock-simple, Theme.GLYPHS lock-16 on a
+--     tile, lock-12 on a row's icon) over the tile or the icon, which is
+--     darkened under it, fading in (0.10 s), held (0.60 s), eased out
+--     (0.40 s). White on the darkened art, with a black copy a unit under
+--     it, so it reads on a pale icon and on any window opacity;
+--   * the line at the foot in its bright ink, and in the accent a line
+--     drawn out from the middle under its words (0.15 s), held, faded with
+--     the lock. Where the line does not say why nothing was taken (History,
+--     the matches of a search of every character), it says so while lit
+--     (NOTHING_TO_TAKE_SUFFIX) and loses it again.
+-- No chat line, no sound, no gray band over the line.
 --
--- The wash's fade is the client's own animation on the one texture; the
--- words are set as it starts and put back by ONE C_Timer.After of the
--- flash's length, told from an older one by two counts (timers of one
--- length fire in the order they were set), so a second click starts the
--- flash again and only the last timer ends it. Hidden mid-flash (the tab,
--- the window, the mailbox), it ends there: the words as they were, the
--- animation stopped. Nothing runs between flashes.
+-- One answer at a time, on one lock frame and one line texture made the
+-- first time (nothing is built per click, no closure per click). The fades
+-- are the client's own animations; the answer is ended by ONE
+-- C_Timer.After of its length, told from an older one by two counts, so a
+-- second click starts it again on the thing newly clicked (the old one put
+-- back at once) and only the last timer ends it. The tab, the window or the
+-- mailbox hidden, the view changed, the list scrolled or bound again under
+-- it: it ends there, everything as it was. Nothing runs between answers.
 -------------------------------------------------------------
-BV.FLASH_IN, BV.FLASH_HOLD, BV.FLASH_OUT = 0.10, 0.60, 0.40
-BV.FLASH_H, BV.FLASH_A = 28, 0.10
-BV.flashArmed, BV.flashFired = 0, 0
+BV.NT_IN, BV.NT_HOLD, BV.NT_OUT = 0.10, 0.60, 0.40
+-- The darkening under the lock; the black copy's alpha under the glyph.
+BV.NT_DIM, BV.NT_SHADE = 0.58, 0.9
+-- The accent line: drawn out in NT_GROW, NT_RULE_H tall, its top NT_RULE_Y
+-- under the words' middle (3 under their baseline), NT_RULE_PAD wider than
+-- the words each side.
+BV.NT_GROW, BV.NT_RULE_H, BV.NT_RULE_Y, BV.NT_RULE_PAD = 0.15, 2, 9, 4
+-- What is lit: the note, the panel, the frame clicked and which of its
+-- fields says what it shows (a tile's `kind`, a box row's `mail`, a History
+-- row's `entry`), and that thing; the two timer counts; the lit words kept
+-- for the note, the words and the room they were fitted to.
+BV.NT = { armed = 0, fired = 0 }
 
 -- panel -> the note standing in All mail's place, if one is.
 function BV.Note(panel)
@@ -1923,75 +1948,255 @@ function BV.Note(panel)
   return nil
 end
 
--- The flash is over: the words in their own ink again, the wash away.
-function BV.FlashEnd()
-  local note = BV.flashNote
+-- The notes' words are set here (CollectTab's AV.Build and the History
+-- view): `why` where they do not say why nothing can be taken here, so a
+-- lit line adds it. Set while lit, the line keeps its light.
+function BV.SetNote(note, text, why)
   if not note then return end
-  BV.flashNote = nil
-  Th().SetColor(note, "textSecondary", "window")
-  local wash = BV.wash
-  if wash then
-    if wash.Fade then wash.Fade:Stop() end
-    if wash:IsShown() then wash:Hide() end
+  note.__pbBase, note.__pbWhy = text, why and true or nil
+  local NT = BV.NT
+  if NT.note == note and why then
+    BV.LitText(note)
+  else
+    note:SetText(text)
   end
+  if NT.note == note then BV.PlaceRule(note) end
 end
 
-function BV.FlashDue()
-  BV.flashFired = BV.flashFired + 1
-  if BV.flashFired == BV.flashArmed then BV.FlashEnd() end
+-- The note's words while lit: its own and the suffix after them. Where
+-- both do not fit the note's width, its own words give way (cut, with
+-- "...") and the suffix is kept whole; only that case is measured further.
+-- Worked out once for the words and the room.
+function BV.LitText(note)
+  local NT = BV.NT
+  local base = note.__pbBase or ""
+  local room = BV.NoteRoom(note)
+  if NT.litNote ~= note or NT.litBase ~= base or NT.litRoom ~= room then
+    local suffix = L()["NOTHING_TO_TAKE_SUFFIX"]
+    local whole = base .. suffix
+    note:SetText(whole)
+    if room > 0 and Th().TextWidth(note) > room then whole = BV.FitLit(note, base, suffix, room) end
+    NT.litNote, NT.litBase, NT.litRoom, NT.lit = note, base, room, whole
+  end
+  note:SetText(NT.lit)
 end
 
-function BV.Flash(panel)
-  local note = BV.Note(panel)
-  if not (note and panel.Footer) then return end
-  local T = Th()
-  local wash = BV.wash
-  if not wash then
-    wash = CreateFrame("Frame", nil, panel.Footer)
-    wash:EnableMouse(false)
-    wash.Tex = wash:CreateTexture(nil, "BACKGROUND")
-    wash.Tex:SetAllPoints()
-    wash.Tex:SetColorTexture(1, 1, 1, BV.FLASH_A)
-    if type(wash.Tex.CreateAnimationGroup) == "function" then
-      local fade = wash.Tex:CreateAnimationGroup()
-      local up = fade:CreateAnimation("Alpha")
-      up:SetFromAlpha(0)
-      up:SetToAlpha(1)
-      up:SetDuration(BV.FLASH_IN)
-      up:SetOrder(1)
-      local down = fade:CreateAnimation("Alpha")
-      down:SetFromAlpha(1)
-      down:SetToAlpha(0)
-      down:SetStartDelay(BV.FLASH_HOLD)
-      down:SetDuration(BV.FLASH_OUT)
-      down:SetSmoothing("OUT")
-      down:SetOrder(2)
-      if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
-      wash.Fade = fade
+-- note, base, suffix, room -> the longest start of `base` (whole letters,
+-- a colour code never cut and always closed) that fits with "..." and the
+-- suffix after it; the suffix's words alone if none does.
+function BV.FitLit(note, base, suffix, room)
+  local cuts, open, opens = {}, false, {}
+  local i, n = 1, #base
+  while i <= n do
+    local c = base:sub(i, i)
+    if c == "|" and base:sub(i + 1, i + 1) == "c" then
+      i = i + 10
+      open = true
+    elseif c == "|" and base:sub(i + 1, i + 1) == "r" then
+      i = i + 2
+      open = false
+    else
+      local b = base:byte(i)
+      i = i + ((b >= 240 and 4) or (b >= 224 and 3) or (b >= 192 and 2) or 1)
+      cuts[#cuts + 1] = i - 1
+      opens[#cuts] = open
     end
-    wash:SetScript("OnHide", BV.FlashEnd)
-    wash:Hide()
-    BV.wash = wash
   end
-  -- Another note was lit (History's, then a box's): that one first.
-  if BV.flashNote and BV.flashNote ~= note then BV.FlashEnd() end
-  BV.flashNote = note
-  -- The note's slot, wherever the stack has put it (RV.PlaceStack: the
-  -- note stands in the middle of All mail's slot, inset from the footer's
-  -- sides, and the band may sit above or below it): the footer's width, a
-  -- button tall, about the note itself. Anchored to the note on every
-  -- flash, never to the footer's middle, which is the slot's only while
-  -- the slot is the whole footer.
-  local inset, half = T.Metrics.inset, BV.FLASH_H / 2
-  wash:ClearAllPoints()
-  wash:SetPoint("TOPLEFT", note, "LEFT", -inset, half)
-  wash:SetPoint("BOTTOMRIGHT", note, "RIGHT", inset, -half)
+  local T = Th()
+  local function Try(k)
+    local head = base:sub(1, cuts[k]):gsub("%s+$", "")
+    local text = head .. (opens[k] and "|r" or "") .. "..." .. suffix
+    note:SetText(text)
+    return T.TextWidth(note) <= room, text
+  end
+  local lo, hi, best = 1, #cuts, nil
+  while lo <= hi do
+    local mid = floor((lo + hi) / 2)
+    local fits, text = Try(mid)
+    if fits then best, lo = text, mid + 1 else hi = mid - 1 end
+  end
+  return best or (suffix:gsub("^[%s%p\194\183]+", ""))
+end
+
+-- The room the note's words have: the footer's width, inset each side as
+-- the note is (CollectTab's notes, RV.PlaceStack). Read off the footer,
+-- a frame of Postbox's own, never the words.
+function BV.NoteRoom(note)
+  local footer = note:GetParent()
+  local w = footer and footer:GetWidth() or 0
+  return (w or 0) - 2 * Th().Metrics.inset
+end
+
+-- The accent line under the note's words, as wide as they are (never
+-- wider than the note) and NT_RULE_PAD more each side, centred under them.
+function BV.PlaceRule(note)
+  local rule = BV.rule
+  if not rule then return end
+  local w = Th().TextWidth(note)
+  local room = BV.NoteRoom(note)
+  if room > 0 and w > room then w = room end
+  rule.Tex:SetWidth(w + 2 * BV.NT_RULE_PAD)
+end
+
+-- The lock and the line, made the first time anything is answered.
+function BV.NoTakeParts(panel)
+  local T = Th()
+  local lock = BV.lock
+  if not lock then
+    lock = CreateFrame("Frame", nil, panel)
+    lock:EnableMouse(false)
+    lock.Dim = lock:CreateTexture(nil, "ARTWORK")
+    lock.Dim:SetAllPoints()
+    lock.Dim:SetColorTexture(0, 0, 0, BV.NT_DIM)
+    lock.Shade = T.Glyph(lock, "lock-16", 16, "OVERLAY")
+    lock.Glyph = T.Glyph(lock, "lock-16", 16, "OVERLAY")
+    if lock.Shade then
+      lock.Shade:SetDrawLayer("OVERLAY", 1)
+      lock.Shade:SetVertexColor(0, 0, 0, BV.NT_SHADE)
+      lock.Shade:SetPoint("CENTER", lock, "CENTER", 0, -1)
+    end
+    if lock.Glyph then
+      lock.Glyph:SetDrawLayer("OVERLAY", 2)
+      lock.Glyph:SetVertexColor(1, 1, 1, 1)
+      lock.Glyph:SetPoint("CENTER", lock, "CENTER", 0, 0)
+    end
+    lock.Fade = BV.FadeOf(lock)
+    lock:SetScript("OnHide", BV.NoTakeEnd)
+    lock:Hide()
+    BV.lock = lock
+  end
+  local rule = BV.rule
+  if not rule then
+    rule = CreateFrame("Frame", nil, panel.Footer)
+    rule:EnableMouse(false)
+    rule:SetAllPoints(panel.Footer)
+    rule.Tex = rule:CreateTexture(nil, "ARTWORK")
+    rule.Tex:SetHeight(BV.NT_RULE_H)
+    if type(rule.Tex.CreateAnimationGroup) == "function" then
+      local g = rule.Tex:CreateAnimationGroup()
+      local grow = g:CreateAnimation("Scale")
+      if grow.SetScaleFrom then
+        grow:SetScaleFrom(0.02, 1)
+        grow:SetScaleTo(1, 1)
+      elseif grow.SetFromScale then
+        grow:SetFromScale(0.02, 1)
+        grow:SetToScale(1, 1)
+      end
+      if grow.SetOrigin then grow:SetOrigin("CENTER", 0, 0) end
+      grow:SetDuration(BV.NT_GROW)
+      grow:SetSmoothing("OUT")
+      grow:SetOrder(1)
+      local out = g:CreateAnimation("Alpha")
+      out:SetFromAlpha(1)
+      out:SetToAlpha(0)
+      out:SetStartDelay(BV.NT_IN + BV.NT_HOLD)
+      out:SetDuration(BV.NT_OUT)
+      out:SetSmoothing("OUT")
+      out:SetOrder(1)
+      if g.SetToFinalAlpha then g:SetToFinalAlpha(true) end
+      rule.Grow = g
+    end
+    rule:SetScript("OnHide", BV.NoTakeEnd)
+    rule:Hide()
+    BV.rule = rule
+  end
+  return lock, rule
+end
+
+-- In at once, held, eased out: the lock's fade.
+function BV.FadeOf(frame)
+  if type(frame.CreateAnimationGroup) ~= "function" then return nil end
+  local fade = frame:CreateAnimationGroup()
+  local up = fade:CreateAnimation("Alpha")
+  up:SetFromAlpha(0)
+  up:SetToAlpha(1)
+  up:SetDuration(BV.NT_IN)
+  up:SetOrder(1)
+  local down = fade:CreateAnimation("Alpha")
+  down:SetFromAlpha(1)
+  down:SetToAlpha(0)
+  down:SetStartDelay(BV.NT_HOLD)
+  down:SetDuration(BV.NT_OUT)
+  down:SetSmoothing("OUT")
+  down:SetOrder(2)
+  if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
+  return fade
+end
+
+-- panel, owner, region, size, field: a click on `owner` (a tile, a row)
+-- took nothing. The lock over `region` at `size` (16 a tile, 12 a row's
+-- icon); `owner[field]` is what it shows, so the answer ends if it is
+-- bound to something else. Nothing where no note stands under the list.
+function BV.NoTake(panel, owner, region, size, field)
+  local note = panel and BV.Note(panel)
+  if not (note and panel.Footer and owner and region) then return end
+  local NT = BV.NT
+  if NT.note then BV.NoTakeEnd() end
+  local T = Th()
+  local lock, rule = BV.NoTakeParts(panel)
+  NT.note, NT.panel, NT.on, NT.field, NT.what = note, panel, owner, field, owner[field]
+
+  local art = size >= 16 and "lock-16" or "lock-12"
+  if lock.Glyph then T.SetGlyphArt(lock.Glyph, art) end
+  if lock.Shade then T.SetGlyphArt(lock.Shade, art) end
+  lock:SetParent(owner)
+  lock:ClearAllPoints()
+  lock:SetAllPoints(region)
+  lock:SetFrameLevel(owner:GetFrameLevel() + 8)
+  lock:Show()
+  if lock.Fade then
+    lock.Fade:Stop()
+    lock.Fade:Play()
+  end
+
+  if note.__pbWhy then BV.LitText(note) end
   T.SetColor(note, "textPrimary", "window")
-  wash:Show()
-  if wash.Fade then
-    wash.Fade:Stop()
-    wash.Fade:Play()
+  local tex = rule.Tex
+  T.FillColor(tex, "accent")
+  tex:ClearAllPoints()
+  tex:SetPoint("TOP", note, "CENTER", 0, -BV.NT_RULE_Y)
+  BV.PlaceRule(note)
+  rule:Show()
+  if rule.Grow then
+    rule.Grow:Stop()
+    rule.Grow:Play()
   end
-  BV.flashArmed = BV.flashArmed + 1
-  C_Timer.After(BV.FLASH_IN + BV.FLASH_HOLD + BV.FLASH_OUT, BV.FlashDue)
+
+  NT.armed = NT.armed + 1
+  C_Timer.After(BV.NT_IN + BV.NT_HOLD + BV.NT_OUT, BV.NoTakeDue)
+end
+
+-- The answer is over: the words as they were, in their own ink, the lock
+-- and the line put away.
+function BV.NoTakeEnd()
+  local NT = BV.NT
+  local note = NT.note
+  if not note then return end
+  NT.note, NT.panel, NT.on, NT.field, NT.what = nil, nil, nil, nil, nil
+  if note.__pbWhy then note:SetText(note.__pbBase or "") end
+  Th().SetColor(note, "textSecondary", "window")
+  local lock, rule = BV.lock, BV.rule
+  if lock then
+    if lock.Fade then lock.Fade:Stop() end
+    if lock:IsShown() then lock:Hide() end
+  end
+  if rule then
+    if rule.Grow then rule.Grow:Stop() end
+    if rule:IsShown() then rule:Hide() end
+  end
+end
+
+function BV.NoTakeDue()
+  local NT = BV.NT
+  NT.fired = NT.fired + 1
+  if NT.fired == NT.armed then BV.NoTakeEnd() end
+end
+
+-- After the list or the bag is bound again, or scrolled: the answer ends
+-- where what was clicked is gone, shows something else, or the note went.
+function BV.NoTakeCheck()
+  local NT = BV.NT
+  local on = NT.on
+  if not on then return end
+  if on[NT.field] ~= NT.what or not on:IsVisible() or not NT.note:IsShown() then BV.NoTakeEnd() end
 end
