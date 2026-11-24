@@ -1388,8 +1388,10 @@ end
 -- else closes it with nothing taken, as do a scroll, a list refresh that
 -- changes the tile, a run, the bag going away and the mailbox closing.
 --
--- While it is open the keyboard is its own (an unseen edit box holds it,
--- as a search box does); shut, it holds nothing. Made the first time it
+-- While it is open, out of combat, it hears the keyboard and keeps only
+-- its own keys, the arrows, Enter and Escape; every other key reaches the
+-- game, so the player can still walk. Shut, it hears nothing; in combat it
+-- is the mouse's alone (and combat starting closes it). Made the first time it
 -- opens: a card on the popups' ground, as the fan's plate is, so each look
 -- dresses it as it dresses that; two segment plates, a house button.
 -------------------------------------------------------------
@@ -1456,18 +1458,79 @@ function Many.Wheel(_, delta)
   Many.Step((delta or 0) > 0 and 1 or -1)
 end
 
-function Many.Key(_, key)
-  if key == "LEFT" or key == "DOWN" then
-    Many.Step(-1)
-  elseif key == "RIGHT" or key == "UP" then
-    Many.Step(1)
+-- The keys the box answers while it is open; every other key, and these
+-- with Ctrl or Alt held (a keybind's chord), reach the game untouched.
+Many.KEYS = { LEFT = -1, DOWN = -1, RIGHT = 1, UP = 1, ENTER = "take", NUMPADENTER = "take", ESCAPE = "close" }
+
+-- Keys pass again. In combat propagation cannot be set (10.1.5 on, and on
+-- Forever), and the frame hides instead: a hidden frame takes no keys.
+function Many.Pass(key)
+  if key:GetPropagateKeyboardInput() then return end
+  if InCombatLockdown() then
+    key:Hide()
+  else
+    key:SetPropagateKeyboardInput(true)
   end
 end
 
--- Whatever is typed while it has the keyboard is let go: it shows a
--- number of its own, never one that was typed.
-function Many.Typed(kb)
-  if (kb:GetText() or "") ~= "" then kb:SetText("") end
+-- A key the box answers is kept from the game for that one press; an arrow
+-- steps at once, and Enter or Escape is answered the next frame, once keys
+-- pass again (Many.KeyAnswer), since closing the box in the press itself
+-- would let the press through.
+function Many.KeyDown(key, pressed)
+  if InCombatLockdown() then
+    key:Hide()
+    return
+  end
+  local act = Many.open and Many.KEYS[pressed] or nil
+  if act and (IsControlKeyDown() or IsAltKeyDown()) then act = nil end
+  if not act then
+    if not key:GetPropagateKeyboardInput() then key:SetPropagateKeyboardInput(true) end
+    return
+  end
+  if key:GetPropagateKeyboardInput() then key:SetPropagateKeyboardInput(false) end
+  if act == -1 or act == 1 then
+    Many.Step(act)
+  elseif not key.pending then
+    key.pending = act
+    key:SetScript("OnUpdate", Many.KeyAnswer)
+  end
+end
+
+-- The frame after Enter or Escape was kept: keys pass, then it is answered.
+function Many.KeyAnswer(key)
+  key:SetScript("OnUpdate", nil)
+  local act = key.pending
+  key.pending = nil
+  Many.Pass(key)
+  if act == "take" then Many.Take() else Many.Close() end
+end
+
+-- Hidden with the box (or for a fight): a press not yet answered is let go
+-- with it, and keys pass.
+function Many.KeyHidden(key)
+  key:SetScript("OnUpdate", nil)
+  key.pending = nil
+  Many.Pass(key)
+end
+
+-- The keyboard frame given the keys once, out of combat, propagation on
+-- before it is ever shown. Answers whether it hears keys: never in combat,
+-- where neither may be set, and never on a client without these.
+function Many.Arm(key)
+  if key.armed then return true end
+  if InCombatLockdown() or type(key.EnableKeyboard) ~= "function"
+      or type(key.SetPropagateKeyboardInput) ~= "function" or type(key.GetPropagateKeyboardInput) ~= "function" then
+    return false
+  end
+  key:SetPropagateKeyboardInput(true)
+  key:EnableKeyboard(true)
+  key:SetScript("OnKeyDown", Many.KeyDown)
+  key:SetScript("OnKeyUp", Many.Pass)
+  key:SetScript("OnShow", Many.Pass)
+  key:SetScript("OnHide", Many.KeyHidden)
+  key.armed = true
+  return true
 end
 
 function Many.Close()
@@ -1482,7 +1545,6 @@ function Many.Hidden(box)
   Many.open = false
   box:UnregisterEvent("GLOBAL_MOUSE_DOWN")
   box:UnregisterEvent("PLAYER_REGEN_DISABLED")
-  if Many.kb then Many.kb:ClearFocus() end
   -- Hidden with the bag or the window: shut for good, so it is not there
   -- again when they are next shown.
   if box:IsShown() then box:Hide() end
@@ -1550,22 +1612,16 @@ function Many.Build()
   Many.Sub:SetPoint("RIGHT", box, "RIGHT", -6, 0)
   Many.Sub:SetJustifyH("LEFT")
   Many.Sub:SetWordWrap(false)
-  -- The keyboard, while the box is open: an edit box nobody sees, in a
-  -- named font of the house's (Theme.SetBoxFont), given the focus as the
-  -- box opens and letting it go as it hides.
-  local kb = CreateFrame("EditBox", nil, box)
-  kb:SetSize(1, 1)
-  kb:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
-  kb:SetAlpha(0)
-  kb:SetAutoFocus(false)
-  local font = (T.FontObject and T.FontObject("numberSmall")) or GameFontHighlightSmall
-  if font then T.SetBoxFont(kb, font) end
-  if kb.SetAltArrowKeyMode then kb:SetAltArrowKeyMode(false) end
-  kb:SetScript("OnEscapePressed", Many.Close)
-  kb:SetScript("OnEnterPressed", Many.Take)
-  kb:SetScript("OnArrowPressed", Many.Key)
-  kb:SetScript("OnTextChanged", Many.Typed)
-  Many.kb = kb
+  -- The keys, while the box is open: a frame of its own, with no art, that
+  -- hears every key and keeps only the box's (Many.KEYS), so W A S D, jump
+  -- and every keybind reach the game as if the box were not there. A child
+  -- of the box, so it is shown and hidden with it; given the keys out of
+  -- combat only (Many.Arm, Many.Open).
+  local key = CreateFrame("Frame", nil, box)
+  key:SetAllPoints(box)
+  key:EnableMouse(false)
+  key:Hide()
+  Many.keys = key
   box:SetScript("OnMouseWheel", Many.Wheel)
   box:SetScript("OnEvent", Many.Event)
   box:SetScript("OnHide", Many.Hidden)
@@ -1603,7 +1659,18 @@ function Many.Open(kind)
   box:Show()
   box:RegisterEvent("GLOBAL_MOUSE_DOWN")
   box:RegisterEvent("PLAYER_REGEN_DISABLED")
-  Many.kb:SetFocus()
+  -- The keys, out of combat: in combat the box is the mouse's alone.
+  local key = Many.keys
+  if not InCombatLockdown() and Many.Arm(key) then
+    -- The list's own search box, if it has the keyboard, lets it go, so the
+    -- arrows step the box (a chat box open would have taken the Shift-click
+    -- as a link, and never opened it).
+    local focus = type(GetCurrentKeyBoardFocus) == "function" and GetCurrentKeyBoardFocus() or nil
+    if focus and BV.panel and focus == BV.panel.SearchBox then focus:ClearFocus() end
+    key:Show()
+  else
+    key:Hide()
+  end
 end
 
 -- After a list refresh while it is open: it stays only over the tile it
