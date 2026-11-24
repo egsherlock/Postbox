@@ -331,11 +331,17 @@ local function GuidFor(location)
 end
 
 -- nil = "this line says nothing decisive", true = soulbound, false = mailable.
+-- A field the game answers in a secret says nothing: it is never compared or
+-- used as a key (both raise), and the line is read as if it were not there.
 local function ClassifyBindingLine(line)
-  local bonding = tonumber(line.bonding)
+  local secret = type(issecretvalue) == "function" and issecretvalue or nil
+  local bonding = line.bonding
+  if secret and secret(bonding) then bonding = nil end
+  bonding = tonumber(bonding)
   if bonding and ACCOUNT_BINDINGS[bonding] then return false end
 
   local text = line.leftText
+  if secret and secret(text) then return nil end
   if type(text) ~= "string" then return nil end
 
   if ITEM_ACCOUNTBOUND and text == ITEM_ACCOUNTBOUND then return false end
@@ -372,7 +378,10 @@ local function TooltipVerdict(bag, slot)
       if surface then pcall(surface, line) end
       -- With a line type available we stop at the binding line instead of
       -- scanning the whole tooltip.
-      if (not BINDING_LINE_TYPE) or line.type == BINDING_LINE_TYPE then
+      -- A secret line type is read as the client without the type does.
+      local kind = line.type
+      if issecretvalue and issecretvalue(kind) then kind = BINDING_LINE_TYPE end
+      if (not BINDING_LINE_TYPE) or kind == BINDING_LINE_TYPE then
         local verdict = ClassifyBindingLine(line)
         if verdict ~= nil then return verdict end
       end
