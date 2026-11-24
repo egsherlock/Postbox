@@ -3681,11 +3681,12 @@ do
       end
       head:SetPoint("CENTER", RL.fill, "RIGHT", 0, 0)
       RL.shade:SetVertexColor(0, 0, 0, 0.3)
-      -- The end glow as tall and as strong over the line as under it.
-      RL.up:SetHeight(3)
-      RL.down:SetHeight(3)
-      Band(RL.up, 0.25, false)
-      Band(RL.down, 0.25, true)
+      -- The end glow as tall and as strong over the line as under it, a
+      -- step softer than it was (3 at 0.25; his pick on f58).
+      RL.up:SetHeight(2)
+      RL.down:SetHeight(2)
+      Band(RL.up, 0.15, false)
+      Band(RL.down, 0.15, true)
     else
       -- The accent as a mark, and its lit tone (the open tab's caption).
       local T = ns.Theme
@@ -3702,12 +3703,13 @@ do
       head:SetSize(38, 22)
       head:SetPoint("CENTER", RL.fill, "RIGHT", -1, 0)
       RL.shade:SetVertexColor(0, 0, 0, 0.5)
-      -- The end glow as tall and as strong over the line as under it, and
-      -- a touch softer than the drawing's 0.34 under (his note of 11-23).
-      RL.up:SetHeight(4)
-      RL.down:SetHeight(4)
-      Band(RL.up, 0.22, false)
-      Band(RL.down, 0.22, true)
+      -- The end glow as tall and as strong over the line as under it, a
+      -- step softer than it was (4 at 0.22, itself under the drawing's 0.34;
+      -- his notes of 11-23 and his pick on f58).
+      RL.up:SetHeight(3)
+      RL.down:SetHeight(3)
+      Band(RL.up, 0.13, false)
+      Band(RL.down, 0.13, true)
     end
     RL.s, RL.v, RL.target, RL.done, RL.total = 0, 0, 0, 0, total
     RL.pace, RL.at, RL.k = 0, GetTime(), 16
