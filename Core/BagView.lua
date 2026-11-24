@@ -449,8 +449,11 @@ function BV.Build(panel)
   m.src = src
   -- The inbox's mark the kinds were read at: every build's for the first
   -- section, which is always read again; the last whole build's for a
-  -- C.O.D. mail's tiles, which a run's builds leave as they were.
-  m.gen = Mail().InboxGen()
+  -- C.O.D. mail's tiles, which a run's builds leave as they were. The
+  -- inbox's kinds are read from the list as it was last built, so they
+  -- carry the mark that list was built at, as its rows do (RV.Acting): a
+  -- bag drawn again before a queued refresh is not current.
+  if src == "inbox" then m.gen = panel._bindGen else m.gen = Mail().InboxGen() end
   if not frozen then m.wholeGen = m.gen end
   if src == "inbox" then
     BV.TallyInbox(panel, frozen)
