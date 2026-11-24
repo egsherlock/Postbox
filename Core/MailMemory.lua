@@ -5372,11 +5372,26 @@ do
     end
     -- The sender column is measured only while the arrangement shows it.
     if not R.Shows("sender") then cap = 0 end
+    -- (s32 widths) Up to the labels' ceiling as always; past it only while
+    -- the window is wider than its smallest, a name too long for the column
+    -- then taking half of the width added, by the Mail tab's own rule (its
+    -- rules' SenderBegin / NoteSender / SenderCol): this window measured
+    -- from its own 400, another character's box from the Mail tab's 520.
+    cols.owner = owner
+    if R.SenderBegin then
+      R.SenderBegin(owner, cols, cap, owner == MM._frame and MM.SenderPast(owner, true) or nil)
+    end
+    local to = owner._senderTo or 0
     for i = 1, #rows do
       local mail = rows[i]
-      if not (mail.header or mail.note) and cols.sender < cap then
+      if not (mail.header or mail.note) and (cols.sender < cap or (cols.senderWide or 0) < to) then
         local label = R.OutcomeSender(mail.kind, ns.Theme.ROW) or R.DisplaySender(mail.sender) or ""
-        cols.sender = math.min(math.max(cols.sender, Width(widths, owner, R, sample.Sender, label) + 2), cap)
+        local width = Width(widths, owner, R, sample.Sender, label) + 2
+        if R.NoteSender then
+          R.NoteSender(cols, width, cap)
+        else
+          cols.sender = math.min(math.max(cols.sender, width), cap)
+        end
       end
       local texts = RowTexts(mail, now, sample.ColTime)
       for k = 1, #FIGURES do
@@ -5407,6 +5422,30 @@ do
     end
     return cols
   end
+end
+
+-- (s32 widths) Mail Memory's own window -> how much wider than its smallest
+-- (WINDOW_WIDTH) it stands, kept on it for the rows' binds. A window first
+-- made wider after a list measured at its smallest asks for one refresh on
+-- the next frame, so the names past the labels are measured (MeasureRows,
+-- which reads it `walking`, asking nothing).
+function MM.SenderPast(frame, walking)
+  local past = math.floor((frame:GetWidth() or WINDOW_WIDTH) - WINDOW_WIDTH + 0.5)
+  if past < 0 then past = 0 end
+  local was = frame._senderPast or 0
+  frame._senderPast = past
+  if not walking and past > 0 and was <= 0 and frame._senderFull == false and not frame._senderAsk
+      and C_Timer and C_Timer.After then
+    frame._senderAsk = true
+    C_Timer.After(0, MM.SenderRefresh)
+  end
+  return past
+end
+
+function MM.SenderRefresh()
+  local frame = MM._frame
+  if frame then frame._senderAsk = false end
+  MM.Refresh()
 end
 
 -- list -> the placement table (the rules' NewSpec) for one list of these
@@ -5687,7 +5726,16 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     spec.size.icon = ROW_ICON
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6
     spec.cols = cols
-    spec.senderCol = cols.sender or 92
+    -- The column as the window stands now (the rules' SenderCol): this
+    -- window's width read again here, so a drag moves it with no measuring.
+    local owner = cols.owner
+    if owner and R.SenderCol then
+      if owner == MM._frame then MM.SenderPast(owner) end
+      spec.senderCol = R.SenderCol(owner, cols)
+      if spec.senderCol <= 0 then spec.senderCol = cols.sender or 92 end
+    else
+      spec.senderCol = cols.sender or 92
+    end
     spec.share, spec.two = R.META_SHARE, false
     -- A C.O.D. price shows with the gold column hidden, as on the Mail tab.
     spec.force = codShown and "money" or nil

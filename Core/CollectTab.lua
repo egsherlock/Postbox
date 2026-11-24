@@ -3433,8 +3433,14 @@ function RV.SenderPast(panel)
 end
 
 -- A walk begins: `cap` is the labels' ceiling (0 while the column is hidden).
-function RV.SenderBegin(panel, cols, cap)
-  local past = RV.SenderPast(panel)
+-- `past`: the width added to a window other than the Mail tab's (Mail
+-- Memory's own); nil reads the Mail tab's (RV.SenderPast).
+function RV.SenderBegin(panel, cols, cap, past)
+  if past == nil then
+    past = RV.SenderPast(panel)
+  else
+    panel._senderPast = past
+  end
   cols.sender, cols.senderWide, cols.senderLabel = 0, 0, cap
   -- How far past the ceiling this walk measures: nowhere at the smallest
   -- window, so the walk is the one it always was there.
@@ -4430,6 +4436,10 @@ CT.RowRules = {
   MoneyText = RV.RulesMoneyText,
   Measure = MeasureWith,
   SenderColumn = SenderColumnWidth,
+  -- The Sender column's growth with the window (RV.SenderBegin, above).
+  SenderBegin = RV.SenderBegin,
+  NoteSender = RV.NoteSender,
+  SenderCol = RV.SenderCol,
   -- The one placement (RV.Place) and what it reads.
   Place = RV.Place,
   NewSpec = RV.NewSpec,
