@@ -148,6 +148,8 @@ local function Sect(head, look)
   local by = s.by
   for key in pairs(by) do by[key] = nil end
   s.n, s.head, s.look, s.rem, s.realm, s.name, s.shown, s.y = 0, head, look or 0, false, nil, nil, false, 0
+  -- The words in one ink belong to the line that set them (TallyRemembered).
+  s.plain = nil
   return s
 end
 
