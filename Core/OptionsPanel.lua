@@ -244,6 +244,10 @@ local function HostSkinName()
   -- installed. The Postbox style can claim over a host, and on that session
   -- the old test named the host as the painter -- so the panel would have
   -- reported inheriting, in green, while the Postbox style was on screen.
+  -- ElvUI's skin is the exception that names itself: it holds the slot only
+  -- where ElvUI's look was asked for (the host's, or ElvUI chosen by name
+  -- beside EllesmereUI, which is not the "host" choice).
+  if ns.Skin and ns.Skin == ns.ElvUISkin then return "ElvUI" end
   local UI = ns.MailboxUI
   if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
     return nil
@@ -3584,7 +3588,7 @@ do
         host:SetHeight(hostRoom - Ctx.HOST_GAP)
         T.SetColor(host.Text, "textSecondary")
         -- The words, the host's name in the bright ink.
-        local key, name = S.hostKey, S.installedHost
+        local key, name = S.hostKey, S.hostName or S.installedHost
         local hex = T.InkHex and T.InkHex("textPrimary") or nil
         if host.key ~= key or host.name ~= name or host.hex ~= hex then
           host.key, host.name, host.hex = key, name, hex
@@ -8101,10 +8105,14 @@ function State.Inheritance()
   local stock = eui and type(eui.GetStockLook) == "function" and eui.GetStockLook()
   local stockName = stock == "classic" and L["OPT_STYLE_LOOK_CLASSIC"]
     or stock == "blizzard" and L["OPT_STYLE_LOOK_BLIZZARD"] or nil
-  if HostSkinName() then
+  -- The name the words carry: the host painting, where one is (ElvUI's look
+  -- can be worn beside EllesmereUI), else the installed host.
+  local painter = HostSkinName()
+  S.hostName = painter or host
+  if painter then
     S.badgeGreen, S.hostKey = true, "OPT_STYLE_INHERIT"
-    title = L("OPT_STYLE_INHERIT", host)
-    text = L("OPT_STYLE_INHERIT_DESC", host)
+    title = L("OPT_STYLE_INHERIT", painter)
+    text = L("OPT_STYLE_INHERIT_DESC", painter)
   elseif stockName then
     S.badgeGreen, S.hostKey = true, "OPT_STYLE_FOLLOW"
     title = L("OPT_STYLE_FOLLOW", host)
@@ -8931,6 +8939,11 @@ function Pages.window(col)
   local host = S.installedHost
   local styleItems = {}
   if host then styleItems[#styleItems + 1] = { id = "host", name = host } end
+  -- ElvUI beside EllesmereUI: the host entry names EllesmereUI, so ElvUI's
+  -- look is offered by name after it, wherever its skin loaded.
+  if host == "EllesmereUI" and _G.ElvUI and ns.ElvUISkin then
+    styleItems[#styleItems + 1] = { id = "elvui", name = "ElvUI" }
+  end
   styleItems[#styleItems + 1] = { id = "blizzard", name = L["OPT_STYLE_BLIZZARD"] }
   styleItems[#styleItems + 1] = { id = "postbox",  name = L["OPT_STYLE_POSTBOX"] }
   -- The creative styles (Core/Skin_Creative.lua), after Postbox's own.
