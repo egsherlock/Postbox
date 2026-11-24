@@ -813,11 +813,37 @@ function BV.Apply(panel)
   end
   BV.Bind()
   local none = m.n == 0 and (m.lines or 0) == 0
+  local listEmpty = none and panel.Empty and panel.Empty:IsShown() or false
   if none then
-    local listEmpty = panel.Empty and panel.Empty:IsShown()
     area.Empty:SetText(listEmpty and (panel.Empty:GetText() or "") or L()["BAG_EMPTY"])
   end
   area.Empty:SetShown(none)
+  BV.LendClear(panel, listEmpty)
+end
+
+-- The list's Clear filter (panel.EmptyClear, shown by RV.PaintEmptyClear
+-- while a filter leaves nothing) stands under the list's words in the
+-- list's own frame, which is hidden while the bag is up. While the bag
+-- says the list's words it is lent to the bag, under them, and given back
+-- as the bag goes: one button, one click (RV.ClearFilter).
+function BV.LendClear(panel, lend)
+  local clear, area = panel.EmptyClear, BV.area
+  if not (clear and area and panel.Empty) then return end
+  local owner = lend and area or panel.MailListArea
+  if clear:GetParent() == owner then return end
+  local gap = Th().Metrics.gap
+  if lend then
+    clear._homeLevel = clear._homeLevel or clear:GetFrameLevel()
+    clear:SetParent(area)
+    clear:ClearAllPoints()
+    clear:SetPoint("TOPLEFT", area.Empty, "BOTTOMLEFT", 0, -gap)
+    clear:SetFrameLevel(BV.scroll:GetFrameLevel() + 10)
+  else
+    clear:SetParent(owner)
+    clear:ClearAllPoints()
+    clear:SetPoint("TOPLEFT", panel.Empty, "BOTTOMLEFT", 0, -gap)
+    if clear._homeLevel then clear:SetFrameLevel(clear._homeLevel) end
+  end
 end
 
 function BV.OnSize(scroll, width)
@@ -847,6 +873,7 @@ function BV.Refresh(panel)
   local area = BV.area
   if not BV.Active(panel) then
     if BV.Many.box then BV.Many.Close() end
+    if area then BV.LendClear(panel, false) end
     if area and area:IsShown() then
       area:Hide()
       if GameTooltip:IsShown() then GameTooltip:Hide() end
