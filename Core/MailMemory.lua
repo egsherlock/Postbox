@@ -8280,6 +8280,7 @@ function MM.MailboxSummary(most)
   -- next is the one it counted.
   local t = MM.Tally()
   local count, stuck, unlisted, noted, more = t.count, t.stuck, t.unlisted, t.pending, t.more
+  local finished = t.finished
   local snap = live or StoredSnapshot()
   if not snap then return nil end
 
@@ -8336,6 +8337,8 @@ function MM.MailboxSummary(most)
     waiting     = count - stuck,
     stuck       = stuck,
     unlisted    = unlisted,
+    -- Read mail holding nothing, still in date: in the box, nothing to take.
+    finished    = finished,
     more        = more,
     total       = #mails,
     seenAt      = snap.seenAt,

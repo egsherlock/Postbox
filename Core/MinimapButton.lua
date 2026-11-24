@@ -2262,6 +2262,14 @@ ShowTooltip = function(button, hostMode)
       -- mail it would be the snapshot's stale answer.
       GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED)
     end
+    -- Read mail kept in the box with nothing in it: a line of its own, in
+    -- the Mail tab's word for it, set apart from mail to collect by its
+    -- number, gray where theirs is white.
+    local finished = tonumber(state.finished) or 0
+    if finished > 0 then
+      local m = TIP.MUTED
+      GameTooltip:AddDoubleLine(L["MINIMAP_TIP_DONE"], tostring(finished), m, m, m, m, m, m)
+    end
     TIP.Warning(myWarning)
     TIP.seen.seenAt = state.seenAt
     TIP.Fact(L["MINIMAP_TIP_SEEN"], Memory.AgeText(TIP.seen))
