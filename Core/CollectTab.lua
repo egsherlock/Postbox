@@ -9500,6 +9500,9 @@ do
     if not panel or M.goal ~= 1 then return end
     M.Check()
     if M.goal ~= 1 then return end
+    -- Only once the marks are fully in: a click already on its way as
+    -- Alt went down does nothing.
+    if M.p < 1 then return end
     if RV.Arranging(panel) or CT.IsRunning() then return end
     local index = RV.Acting(row)
     if not index then return end
@@ -9518,12 +9521,15 @@ do
   -- the other button and any row that can do neither do nothing, and
   -- "Left-click opens a mail" does not swap them. Shift- and Ctrl-click on
   -- mail not finished go on to select while kept on; held, nothing. A click
-  -- with Alt held uses the marks, so its press is no tap.
+  -- with Alt held uses the marks, so its press is no tap. While the marks
+  -- are still coming in (M.p under 1, the first 150 ms) a click does
+  -- nothing at all, on either button: it neither acts nor collects.
   function M.Click(row, button, index)
     if M.goal ~= 1 then return false end
     M.Check()
     if M.goal ~= 1 then return false end
     M.Used()
+    if M.p < 1 then return true end
     if IsShiftKeyDown() or IsControlKeyDown() then
       return M.held or button ~= "LeftButton" or row.mailDone == true
     end
