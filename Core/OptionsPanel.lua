@@ -876,7 +876,9 @@ function Tip.Show(owner)
     return
   end
   local dy = (top * own - ftop * fs) / ts
-  local width = (tip:GetWidth() or 0) * ts
+  -- The shared tooltip's width can be a secret (Theme's tipGap): then right.
+  local width = tip:GetWidth()
+  width = (issecretvalue and issecretvalue(width)) and 0 or (width or 0) * ts
   local screen = (UIParent:GetRight() or 0) * (UIParent:GetEffectiveScale() or 1)
   if right * fs + 6 * ts + width > screen and left * fs - 6 * ts - width >= 0 then
     tip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -6, dy)

@@ -19764,8 +19764,10 @@ do
     local ps, ts = plate:GetEffectiveScale(), GameTooltip:GetEffectiveScale()
     GameTooltip:ClearAllPoints()
     local below = false
-    if top and sTop and ps and ts and ps > 0 then
-      below = top + 2 + (GameTooltip:GetHeight() or 0) * ts / ps > sTop
+    -- The shared tooltip's height can be a secret (Theme's tipGap): then above.
+    local th = GameTooltip:GetHeight()
+    if top and sTop and ps and ts and ps > 0 and not (issecretvalue and issecretvalue(th)) then
+      below = top + 2 + (th or 0) * ts / ps > sTop
     end
     if below then
       GameTooltip:SetPoint("TOPLEFT", plate, "BOTTOMLEFT", 0, -2)
