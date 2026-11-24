@@ -690,46 +690,227 @@ end
 -- cannot physically fit is the damaging part, so the room is counted first.
 -------------------------------------------------------------
 
--- -> free slots in the general bags, free slots in the reagent bag; nil when
--- the container API is unavailable -- in which case the caller should skip
--- the check rather than guess.
+-- Special bags and the reagent bag: what each can take of the mail.
+--
+-- An item fits a special bag where the item's family (C_Item.GetItemFamily)
+-- shares a bit with the bag's (the second return of
+-- C_Container.GetContainerNumFreeSlots), as the game's own rule has it; a
+-- bag or quiver mailed as an item reports the family it HOLDS, so it fits
+-- none. An item fits the reagent bag where it is a crafting reagent (the
+-- 17th return of C_Item.GetItemInfo). No list of kinds is kept: a soul bag
+-- takes only soul shards, which can never arrive by mail, so the mail never
+-- fits it and it is never room.
+--
+-- Read for All mail's tooltip, a collect run's pre-flight, and a run keeping
+-- bag slots free once it has reached them; never per frame. The bags are
+-- read afresh each time; an item's family and reagent flag are kept by id,
+-- at most FAMILY_MAX of them, and only once the client has described the
+-- item (an undescribed one fits nothing, this time).
+local special = {
+  -- The bags with room as last read (Mail.SpecialRoom): family (0 for the
+  -- reagent bag) and the room still unspent by the count under way.
+  n = 0, family = {}, left = {}, usedSpecial = 0, usedReagent = 0,
+  fam = {}, reagent = {}, cached = 0, FAMILY_MAX = 512,
+}
+
+-- The bag id of the reagent bag's slot, or nil where the client has none.
+function special.ReagentSlot(lastBag)
+  local slot = type(Enum) == "table" and type(Enum.BagIndex) == "table" and Enum.BagIndex.ReagentBag or nil
+  if slot == nil and type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number" and NUM_TOTAL_EQUIPPED_BAG_SLOTS > lastBag then
+    slot = lastBag + 1
+  end
+  return slot
+end
+
+-- family -> whether the bag in the reagent bag's slot is a reagent bag. On
+-- retail that slot takes nothing else; on WoW Forever a soul bag or a
+-- profession pouch can sit there, known by its family.
+function special.IsReagentBag(family)
+  return ns.IsForever ~= true or (tonumber(family) or 0) == 0
+end
+
+-- a, b -> whether two bag-family bitfields share a bit (Lua 5.1 has no bit
+-- operators; the fields are under 2^28).
+function special.Shares(a, b)
+  while a > 0 and b > 0 do
+    if a % 2 == 1 and b % 2 == 1 then return true end
+    a, b = math.floor(a / 2), math.floor(b / 2)
+  end
+  return false
+end
+
+-- C_Item.GetItemInfo's returns -> the name, and whether the item is a
+-- crafting reagent (its 17th).
+function special.NameAndReagent(name, ...)
+  return name, (select(16, ...)) == true
+end
+
+-- itemID -> its bag family and whether it is a crafting reagent, or nil
+-- while the client has not described it.
+function special.Describe(id)
+  local fam = special.fam[id]
+  if fam ~= nil then return fam, special.reagent[id] end
+  if type(C_Item) ~= "table" or type(C_Item.GetItemFamily) ~= "function" then return nil end
+  fam = tonumber((C_Item.GetItemFamily(id)))
+  if fam == nil then return nil end
+  local name, craft = nil, nil
+  if type(C_Item.GetItemInfo) == "function" then name, craft = special.NameAndReagent(C_Item.GetItemInfo(id)) end
+  -- A bag (class 1) or quiver (class 11) holds its family; it is no part of it.
+  if type(C_Item.GetItemInfoInstant) == "function" then
+    local classID = select(6, C_Item.GetItemInfoInstant(id))
+    if classID == 1 or classID == 11 then fam = 0 end
+  end
+  if name == nil then return fam, false end
+  if special.cached >= special.FAMILY_MAX then
+    for k in pairs(special.fam) do special.fam[k], special.reagent[k] = nil, nil end
+    special.cached = 0
+  end
+  special.fam[id], special.reagent[id] = fam, craft
+  special.cached = special.cached + 1
+  return fam, craft
+end
+
+-- -> free slots in the general bags, free slots in the reagent bag, free
+-- slots in special bags; nil when the container API is unavailable -- in
+-- which case the caller should skip the check rather than guess.
 --
 -- The general bags are the backpack and the four bag slots (NUM_BAG_SLOTS),
--- and of those only the ones of family 0: a profession bag takes only its own
--- trade's goods. That is the room any attachment can use.
+-- and of those only the ones of family 0. That is the room any attachment
+-- can use.
 --
 -- The reagent bag is counted apart. It takes only crafting reagents, so its
 -- free slots are room for some mail and none at all for the rest -- and it
 -- cannot be told apart by family, since it reports family 0 like any ordinary
 -- bag (the client's own container code knows it by its bag id). Added into
 -- one number, as it once was, a reagent bag with room left read as room while
--- every general slot was full. Callers choose: the collect run's pre-flight
--- adds it (reagent mail may well fit, and a run that meets full bags stops
--- cleanly -- "Bags full"), All mail's tooltip names it on a line of its own.
+-- every general slot was full. All mail's tooltip names it on a line of its
+-- own.
+--
+-- Special bags are the bags of a non-zero family: a profession bag (herbs,
+-- enchanting, mining...), a quiver or ammo pouch, a soul bag. Each takes only
+-- the items that share its family. On retail they sit in the bag slots; on
+-- WoW Forever the reagent bag's slot takes a soul bag or a profession pouch
+-- too, so there a bag in that slot is the reagent bag only while its family
+-- is 0. What a special bag can take of the mail is Mail.SpecialRoom's to say.
 function Mail.FreeBagSlots()
   local getFree = (type(C_Container) == "table" and C_Container.GetContainerNumFreeSlots) or nil
   if type(getFree) ~= "function" then return nil end
 
   local lastBag = (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
-  local reagentBag = type(Enum) == "table" and type(Enum.BagIndex) == "table"
-    and Enum.BagIndex.ReagentBag or nil
-  if reagentBag == nil and type(NUM_TOTAL_EQUIPPED_BAG_SLOTS) == "number"
-    and NUM_TOTAL_EQUIPPED_BAG_SLOTS > lastBag then
-    reagentBag = lastBag + 1
-  end
+  local reagentBag = special.ReagentSlot(lastBag)
 
-  local free = 0
+  local free, other = 0, 0
   for bag = 0, lastBag do
     if bag ~= reagentBag then
       local slots, family = getFree(bag)
       if (tonumber(family) or 0) == 0 then
         free = free + (tonumber(slots) or 0)
+      else
+        other = other + (tonumber(slots) or 0)
       end
     end
   end
   local reagent = 0
-  if reagentBag then reagent = tonumber((getFree(reagentBag))) or 0 end
-  return free, reagent
+  if reagentBag then
+    local slots, family = getFree(reagentBag)
+    if special.IsReagentBag(family) then
+      reagent = tonumber(slots) or 0
+    else
+      other = other + (tonumber(slots) or 0)
+    end
+  end
+  return free, reagent, other
+end
+
+-- Begins a count of what the special bags and the reagent bag can take:
+-- reads each that has room, special bags first (an herb fits an herb bag
+-- before it fits the reagent bag). -> the number of special bags with room,
+-- and whether the reagent bag has room.
+function Mail.SpecialRoom()
+  local s = special
+  s.n, s.usedSpecial, s.usedReagent = 0, 0, 0
+  local getFree = (type(C_Container) == "table" and C_Container.GetContainerNumFreeSlots) or nil
+  if type(getFree) ~= "function" then return 0, false end
+  local lastBag = (type(NUM_BAG_SLOTS) == "number" and NUM_BAG_SLOTS) or 4
+  local reagentBag = special.ReagentSlot(lastBag)
+  local reagentFree = 0
+  for bag = 1, (reagentBag and math.max(reagentBag, lastBag) or lastBag) do
+    if bag <= lastBag or bag == reagentBag then
+      local slots, family = getFree(bag)
+      slots, family = tonumber(slots) or 0, tonumber(family) or 0
+      if bag == reagentBag and special.IsReagentBag(family) then
+        reagentFree = slots
+      elseif family ~= 0 and slots > 0 then
+        s.n = s.n + 1
+        s.family[s.n], s.left[s.n] = family, slots
+      end
+    end
+  end
+  local specials = s.n
+  if reagentFree > 0 then
+    s.n = s.n + 1
+    s.family[s.n], s.left[s.n] = 0, reagentFree
+  end
+  return specials, reagentFree > 0
+end
+
+-- itemID [, spend] -> whether a bag of the count under way (Mail.SpecialRoom)
+-- still has room for this item; with `spend`, that room is then spent.
+function Mail.SpecialRoomFits(id, spend)
+  local s = special
+  if s.n == 0 or id == nil then return false end
+  local fam, craft = special.Describe(id)
+  if fam == nil then return false end
+  for k = 1, s.n do
+    local bagFamily = s.family[k]
+    if s.left[k] > 0 and ((bagFamily == 0 and craft) or (bagFamily ~= 0 and special.Shares(fam, bagFamily))) then
+      if spend then
+        s.left[k] = s.left[k] - 1
+        if bagFamily == 0 then s.usedReagent = s.usedReagent + 1 else s.usedSpecial = s.usedSpecial + 1 end
+      end
+      return true
+    end
+  end
+  return false
+end
+
+-- index -> how many of this mail's attachments the bags of the count under
+-- way take, spending their room. Read from the inbox's own item ids, which
+-- are there before the mail is opened.
+function Mail.SpecialRoomMail(index)
+  if special.n == 0 then return 0 end
+  local n = 0
+  for slot = 1, MAX_ATTACHMENTS do
+    local _, id = GetInboxItem(index, slot)
+    if id ~= nil and Mail.SpecialRoomFits(id, true) then n = n + 1 end
+  end
+  return n
+end
+
+-- -> the attachments the count under way has put in special bags, and in
+-- the reagent bag.
+function Mail.SpecialRoomUsed()
+  return special.usedSpecial, special.usedReagent
+end
+
+-- queue, usable -> how many mails from the front of the queue fit, the
+-- attachment slots the whole queue needs, and those of them the general bags
+-- must hold: what the special bags and the reagent bag take is theirs
+-- (Mail.SpecialRoomUsed says how much, after). `usable` is the general
+-- slots the run may fill. The prefix, as Mail.QueuePrefixThatFits.
+function Mail.QueueRoom(queue, usable)
+  local specials, reagent = Mail.SpecialRoom()
+  local scan = specials > 0 or reagent
+  local needed, general, fits, open = 0, 0, 0, true
+  for i = 1, #queue do
+    local count = Mail.AttachmentCount(queue[i])
+    local own = 0
+    if scan and count > 0 then own = math.min(count, Mail.SpecialRoomMail(queue[i])) end
+    needed = needed + count
+    general = general + count - own
+    if open and general <= usable then fits = i else open = false end
+  end
+  return fits, needed, general
 end
 
 -- Letting the bags catch up, for runs that keep bag slots free.
@@ -810,9 +991,9 @@ end
 -- keepFree -> true when a collect run keeping that many general bag slots
 -- free ("Keep bag slots free", UI.GetKeepFreeSlots) must not take another
 -- item: the next one could fill a slot, and there are no more free than
--- that. Counted from the general bags only, as the option says: a reagent
--- that would have gone into the reagent bag waits too, since which bag an
--- item lands in is the client's to decide. 0 or nil keeps nothing free and
+-- that. Counted from the general bags only, as the option says; what may
+-- still go into a special bag or the reagent bag past that point is
+-- Mail.KeepFreeGoesOn's to say. 0 or nil keeps nothing free and
 -- is never reached -- runs then go until the bags are full, as they always
 -- have -- and bags that cannot be counted do not stop a run.
 --
@@ -823,6 +1004,36 @@ function Mail.KeepFreeReached(keepFree)
   if type(keepFree) ~= "number" or keepFree <= 0 then return false end
   local free = Mail.FreeBagSlots()
   return free ~= nil and free - bagsCatch.unconfirmed <= keepFree
+end
+
+-- A run that has reached the slots it keeps free still takes what fits a
+-- special bag or the reagent bag while that has room: the game fills such a
+-- bag first, so the general slots stay as they are. Only while the general
+-- slots are not below those kept: had an item gone to a general slot after
+-- all, the next take finds one fewer, and nothing more goes but gold.
+--
+-- keepFree [, id] -> whether the run may still take an item at all (some
+-- special bag or the reagent bag has room, the general slots are not below
+-- those kept), and, given an item id, whether that item fits such a bag.
+function Mail.KeepFreeGoesOn(keepFree, id)
+  if type(keepFree) ~= "number" or keepFree <= 0 then return false, false end
+  local free = Mail.FreeBagSlots()
+  if free == nil or free - bagsCatch.unconfirmed < keepFree then return false, false end
+  local specials, reagent = Mail.SpecialRoom()
+  if specials == 0 and not reagent then return false, false end
+  return true, id ~= nil and Mail.SpecialRoomFits(id)
+end
+
+-- keepFree, index -> whether any item of this mail may still be taken by a
+-- run that has reached the slots it keeps free (Mail.KeepFreeGoesOn). Read
+-- from the inbox's own item ids: the mail is not opened to ask.
+function Mail.KeepFreeFitsMail(keepFree, index)
+  if not Mail.KeepFreeGoesOn(keepFree) then return false end
+  for slot = 1, MAX_ATTACHMENTS do
+    local _, id = GetInboxItem(index, slot)
+    if id ~= nil and Mail.SpecialRoomFits(id) then return true end
+  end
+  return false
 end
 
 -- Total attachment slots a queue needs.
@@ -2715,8 +2926,8 @@ end
 --
 -- It lasts while the mailbox is open and the bags have no more room than they
 -- had when it was set. BAG_UPDATE_DELAYED is listened to only while it holds,
--- and each one compares the free slots (Mail.FreeBagSlots, general and reagent
--- together: room in either may be what the refused item needed) with the
+-- and each one compares the free slots (Mail.FreeBagSlots, general, reagent
+-- and special together: room in any may be what the refused item needed) with the
 -- fewest seen since: more than that, and it clears -- the shell is told, and
 -- the buttons count those mails again. It never collects by itself; the
 -- player clicks. The mailbox closing ends it quietly, and the listener goes
@@ -2727,9 +2938,9 @@ local bags = { on = false, low = nil, frame = nil }
 
 -- Every free slot the player has, or nil when the bags cannot be counted.
 local function RoomNow()
-  local free, reagent = Mail.FreeBagSlots()
+  local free, reagent, other = Mail.FreeBagSlots()
   if free == nil then return nil end
-  return free + (reagent or 0)
+  return free + (reagent or 0) + (other or 0)
 end
 
 -- The shell repaints its status line and recounts the buttons.
@@ -3063,8 +3274,10 @@ end
 -- `keepFree`, where a collect run passes it: the general bag slots the run
 -- leaves free ("Keep bag slots free", Mail.KeepFreeReached). An item take
 -- that would go below it is not issued; the plan ends there with `kept`
--- (done's sixth value) and nothing recorded against the mail. Money takes
--- need no room and still go.
+-- (done's sixth value) and nothing recorded against the mail -- or, while a
+-- special bag or the reagent bag has room, takes what fits there, passes
+-- over the rest and ends with `kept` after its last (Mail.KeepFreeGoesOn).
+-- Money takes need no room and still go.
 --
 -- `attempt`, where the caller is taking the whole mail (Mail.CollectMail): a
 -- table of its own, { noted = false }, so the first refusal recorded in it
@@ -3107,6 +3320,8 @@ local plan = {
   op = nil, slot = nil, before = 0, takes = nil, takeCount = nil, takeItem = nil,
   purse = nil, inBags = nil, watched = nil, goneAtIssue = 0, retried = false, text = nil,
   pending = nil,
+  -- An item passed over at the slots kept free, while special room was left.
+  kept = false,
   pool = {}, entries = {},
 }
 
@@ -3546,7 +3761,7 @@ function PlanStep()
     if where and p.tookItem and p.paidFingerprint and Fingerprint(p.index) == p.paidFingerprint then
       PlanAdopt(p.paidFingerprint)
     end
-    PlanOver(false)
+    PlanOver(false, false, p.kept)
     return
   end
   local index = p.index
@@ -3594,9 +3809,20 @@ function PlanStep()
   if before <= 0 then return PlanStep() end
   p.before = before
 
+  -- At the slots it keeps free, an item that fits a special bag or the
+  -- reagent bag with room still goes (Mail.KeepFreeGoesOn); one that does not
+  -- is passed over while such room is left -- a later stack may fit it --
+  -- and the plan ends as kept.
   if op.kind == "item" and Mail.KeepFreeReached(p.keepFree) then
-    PlanOver(false, false, true)
-    return
+    local goesOn, fits = Mail.KeepFreeGoesOn(p.keepFree, op.id or select(2, GetInboxItem(index, slot)))
+    if not fits then
+      if goesOn then
+        p.kept = true
+        return PlanStep()
+      end
+      PlanOver(false, false, true)
+      return
+    end
   end
 
   -- What this take is about to move, read before it moves: the sum, or the
@@ -3695,7 +3921,7 @@ local function RunPlan(index, fingerprint, list, done, record, keepFree, whole, 
   p.codPlan = p.paidFingerprint ~= nil
   p.owed, p.moneyBefore, p.paidAmount, p.tookMoney, p.paying = 0, nil, nil, 0, false
   p.markSender, p.markSubject = nil, nil
-  p.op, p.pending = nil, nil
+  p.op, p.pending, p.kept = nil, nil, false
   p.record = HistoryRecord(index, record)
   PlanStep()
 end
@@ -4401,8 +4627,9 @@ end
 --                 can also race a cached response.
 -- opts.keepFree   a collect run's "Keep bag slots free": the general bag slots
 --                 it leaves free (RunPlan). A mail with items met at that
---                 point, with no gold to take, is left as it is -- not even
---                 fetched, so it stays unread.
+--                 point, with no gold to take and nothing that fits a
+--                 special bag or the reagent bag with room, is left as it
+--                 is -- not even fetched, so it stays unread.
 -- opts.moves      a collect run, which keeps what each mail is and finds it
 --                 again when it is answered "moved".
 -- opts.allowCOD   the caller has just had the player confirm this mail's
@@ -4464,7 +4691,10 @@ function Mail.CollectMail(index, onDone, opts)
   -- only items has nothing this run may take, and fetching it would only
   -- mark it read. (One with gold goes on: the gold needs no room, and the
   -- plan stops at its first item.)
-  if itemCount > 0 and money <= 0 and Mail.KeepFreeReached(opts and opts.keepFree) then
+  -- Unless an item of it fits a special bag or the reagent bag that still
+  -- has room (Mail.KeepFreeFitsMail).
+  if itemCount > 0 and money <= 0 and Mail.KeepFreeReached(opts and opts.keepFree)
+    and not Mail.KeepFreeFitsMail(opts.keepFree, index) then
     return JobFinish("refused", 0, nil, "keep")
   end
 
