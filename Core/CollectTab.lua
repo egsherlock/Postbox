@@ -6494,31 +6494,6 @@ function RV.LayChips(panel, row, list, sort, width)
   for i = used + 1, RV.CHIP_MAX do chips[i]:Hide() end
 end
 
--- Where the list starts: a gap under the toolbar, or the tight gap under
--- what stands between them -- the chips while a filter is on, and the
--- one-time line of Core/TSMNotice.lua (panel.Note, which exists only where
--- that line was needed: without it these are the calls as they always
--- were). Run when either comes or goes.
-function CT.PlaceListTop(panel)
-  local M = Th().Metrics
-  local area, row, note = panel.MailListArea, panel.SFStrip, panel.Note
-  local top = panel.ViewToggle
-  if note then
-    if note:IsShown() then top = note end
-    if row then row:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -M.tightGap) end
-  end
-  area:ClearAllPoints()
-  if row and panel._stripOn then
-    area:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -M.tightGap)
-  elseif top ~= panel.ViewToggle then
-    area:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -M.tightGap)
-  else
-    area:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
-  end
-  area:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
-  area:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
-end
-
 -- The row shown or put away with what it stands for (`on`: a filter on
 -- the list on screen), the list re-anchored only when it comes or goes,
 -- and the chips laid out only when what stands (the list, its order, the
@@ -6531,7 +6506,16 @@ function RV.PaintStrip(panel, on)
   if on ~= (panel._stripOn == true) then
     panel._stripOn = on
     row:SetShown(on and not panel._topHidden)
-    CT.PlaceListTop(panel)
+    local area = panel.MailListArea
+    local M = T.Metrics
+    area:ClearAllPoints()
+    if on then
+      area:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -M.tightGap)
+    else
+      area:SetPoint("TOPLEFT", panel.ViewToggle, "BOTTOMLEFT", 0, -M.gap)
+    end
+    area:SetPoint("RIGHT", panel, "RIGHT", -M.inset, 0)
+    area:SetPoint("BOTTOM", panel.Footer, "TOP", 0, M.gap)
   end
   if not on then return end
   local list = RV.SFList(panel)

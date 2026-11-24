@@ -933,13 +933,15 @@ end
 -- the game-menu key (AR.MENU_KEYS); every other key passes untouched.
 -------------------------------------------------------------
 
--- Every Postbox window Escape closes, by name; the first three are the
--- editors that close first.
+-- Every Postbox window Escape closes, by name; the first four are the
+-- editors that close first (the TradeSkillMaster notice, Core/TSMNotice.lua,
+-- with them: it closes alone, before the mail window it stands beside).
 ESC.ALL = {
   "PostboxBugReportFrame", "PostboxCharacterGroupsFrame", "PostboxRecipientManagerFrame",
+  "PostboxTSMNoticeFrame",
   "PostboxOptionsFrame", "PostboxMailMemoryFrame", "PostboxFrame", "PostboxWhatsNewFrame",
 }
-ESC.EDITORS = 3
+ESC.EDITORS = 4
 
 function ESC.Up(name)
   local f = _G[name]

@@ -64,7 +64,7 @@ Core\CharacterGroups.lua
 Core\OptionsPanel.lua
 Core\RecipientManager.lua
 Core\WhatsNew.lua
-# One line, once, for players who also run TradeSkillMaster; inert without it.
+# A notice, once, for players who also run TradeSkillMaster; inert without it.
 Core\TSMNotice.lua
 
 # Skins. Skin_Postbox is first-party (claims only when the style option asks

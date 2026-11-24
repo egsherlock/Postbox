@@ -341,6 +341,11 @@ do
     end)
   end
 
+  -- The address and its box, shared with the TradeSkillMaster notice
+  -- (Core/TSMNotice.lua), which shows the same address the same way.
+  BugReport.URL, BugReport.ReadOnly = BUG_URL, ReadOnly
+  ns.BugReport = BugReport
+
   local function Tip(owner, title, desc)
     owner:HookScript("OnEnter", function(self)
       local T = ns.Theme

@@ -2575,6 +2575,12 @@ local COMMANDS = {
   ["debug text"] = TextReport,
   whatsnew    = ToggleWhatsNew,
   ["whatsnew notice"] = TryNotice,
+  -- The TradeSkillMaster notice (Core/TSMNotice.lua), to try it without
+  -- TSM; writes nothing. Not in the help.
+  ["whatsnew tsm"] = function()
+    local TN = ns.TSMNotice
+    if TN and type(TN.Try) == "function" then TN.Try() end
+  end,
   perf        = function() SetPerfRecording(nil) end,
   ["perf off"] = function() SetPerfRecording("off") end,
   ["perf on"] = function() SetPerfRecording("on") end,

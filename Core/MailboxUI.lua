@@ -616,8 +616,8 @@ local CENSUS_KEEP = {
   newsShown  = true,
   -- And the cogs' dot for that news, gone once the options were opened.
   newsHinted = true,
-  -- And that the TradeSkillMaster line has shown (Core/TSMNotice.lua): a
-  -- notice, said once, not a setting.
+  -- And that the TradeSkillMaster notice has shown (Core/TSMNotice.lua):
+  -- said once, not a setting.
   tsmNoticeShown = true,
   -- And that the category buttons' default was settled for this install
   -- (Postbox.lua, 4b), so a reset gives today's default and not the one an
