@@ -780,15 +780,21 @@ function BV.HeadLook(head, text, plain)
   end
 end
 
--- head, s -> whether the line hears a click, and what it does: the
--- letters' line shows the list (BV.ShowLetters). Every other line takes no
--- pointer. A line that hears one passes every press on, so the window is
--- dragged by it as by the ground under it, and only a press that did not
--- move is its click.
-function BV.HeadPointer(head, s)
+-- head, s, every -> whether the line hears a click, and what it does: the
+-- letters' line shows the list (BV.ShowLetters); a character's heading
+-- among every box's matches (`every`, BV.EveryBox) shows that box, as the
+-- list's heading does (BV.GoBox). Every other line takes no pointer. A
+-- line that hears one passes every press on, so the window is dragged by
+-- it as by the ground under it, and only a press that did not move is its
+-- click.
+function BV.HeadPointer(head, s, every)
   local go = nil
-  if s.letters then go = "letters" end
-  head.go = go
+  if s.letters then
+    go = "letters"
+  elseif every and s.name then
+    go = "box"
+  end
+  head.go, head.realm, head.name = go, s.realm, s.name
   local on = go ~= nil
   if head.pbMouse ~= on then
     head.pbMouse = on
@@ -811,7 +817,29 @@ function BV.HeadUp(head, button)
   if math.abs((x or 0) - (BV.downX or 0)) > 4 or math.abs((y or 0) - (BV.downY or 0)) > 4 then return end
   local P, panel = Parts(), BV.panel
   if not (P and panel) or P.RV.Modified() then return end
-  if head.go == "letters" then BV.ShowLetters(panel) end
+  if head.go == "letters" then
+    BV.ShowLetters(panel)
+  else
+    BV.GoBox(panel, head.realm, head.name)
+  end
+end
+
+-- A character's heading: whose matches these are and what its click does,
+-- as the list's heading says it (nothing on it looks like a button). The
+-- letters' line has none.
+function BV.HeadEnter(head)
+  if head.go ~= "box" then return end
+  local T, Memory = Th(), ns.MailMemory
+  T.TipBegin(head)
+  local name = head.name
+  if Memory and type(Memory.ClassName) == "function" then name = Memory.ClassName(head.realm, head.name, nil, "tooltip") end
+  T.TipTitle(name)
+  T.TipHint(L()["MEMORY_HEADER_TIP"])
+  GameTooltip:Show()
+end
+
+function BV.HeadLeave(head)
+  if GameTooltip:IsOwned(head) then GameTooltip:Hide() end
 end
 
 function BV.NewHead()
@@ -825,6 +853,8 @@ function BV.NewHead()
   if head.SetPropagateMouseClicks then head:SetPropagateMouseClicks(true) end
   head:SetScript("OnMouseDown", BV.HeadDown)
   head:SetScript("OnMouseUp", BV.HeadUp)
+  head:SetScript("OnEnter", BV.HeadEnter)
+  head:SetScript("OnLeave", BV.HeadLeave)
   head.Rule = head:CreateTexture(nil, "ARTWORK")
   head.Rule:SetHeight(1)
   head.Rule:SetPoint("TOPLEFT", head, "TOPLEFT", 0, 0)
@@ -847,6 +877,8 @@ function BV.Bind()
   local offset = scroll:GetVerticalScroll() or 0
   local top, bottom = offset - size, offset + (scroll:GetHeight() or 0)
   local used, lines, remUp, letUp = 0, 0, false, false
+  -- Whether a character's heading goes to that box (a search of every box).
+  local every = m.src == "away" and BV.EveryBox(BV.panel)
   for si = 1, m.sn do
     local s = m.sects[si]
     if s.shown and s.y >= offset - BV.HEAD and s.y <= bottom then
@@ -867,7 +899,7 @@ function BV.Bind()
       else
         BV.HeadLook(head, s.head, s.plain)
       end
-      if not s.rem then BV.HeadPointer(head, s) end
+      if not s.rem then BV.HeadPointer(head, s, every) end
       head:Show()
     end
     local list = s.list
@@ -1425,7 +1457,13 @@ function BV.TipHints(kind)
     local who = BV.who
     local info = BV.panel and BV.panel._avInfo
     who.boxRealm, who.boxName = s.realm or (info and info.realm), s.name or (info and info.name)
-    if Memory and type(Memory.TakeHint) == "function" then T.TipHint(Memory.TakeHint(who)) end
+    -- A search of every box: the click goes to the character's box, said in
+    -- the list's heading's words; where to collect stays after it, but for
+    -- this character at a mailbox, where the click itself lands.
+    local every = s.name ~= nil and BV.EveryBox(BV.panel)
+    if every then T.TipHint(L0["MEMORY_HEADER_TIP"]) end
+    local here = every and BV.Mine(who.boxRealm, who.boxName) and P.MailboxOpen()
+    if not here and Memory and type(Memory.TakeHint) == "function" then T.TipHint(Memory.TakeHint(who)) end
     T.TipHint(mailsHint)
     T.TipHint(linkHint)
   else
@@ -1961,6 +1999,34 @@ function BV.TakeCOD(panel, kind)
   end)
 end
 
+-- panel -> whether the bag shows a search of every box (the people toggle
+-- on and words in the search): each character's matches under its
+-- heading, as Mail Memory was asked for them (AV.Build's options).
+function BV.EveryBox(panel)
+  if model.src ~= "away" or not panel or panel._searchAll ~= true then return false end
+  local opts = panel._avOpts
+  return opts ~= nil and opts.all == true and type(opts.query) == "string" and opts.query ~= ""
+end
+
+-- realm, name -> whether that is the character logged in.
+function BV.Mine(realm, name)
+  local H = ns.Helpers
+  return H ~= nil and name == H.PlayerName() and (realm == nil or realm == H.PlayerRealm())
+end
+
+-- A tile or a heading of a search of every box, clicked: that character's
+-- box, as the list's heading's click shows it (AV.OpenHeader: the search
+-- cleared, and the box shown; this character's own Inbox for its own
+-- name, where a click takes). Nothing is taken or sent, and nothing lights.
+function BV.GoBox(panel, realm, name)
+  if not (panel and name) then return end
+  local arrange = ns.Arrange
+  if arrange and arrange.host then return end
+  if BV.Many.open then BV.Many.Close() end
+  if GameTooltip:IsShown() then GameTooltip:Hide() end
+  Parts().AV.OpenHeader(panel, realm, name)
+end
+
 -- A click on a tile. Right: its mails. Modified left: the game's item
 -- rules (Shift links, Ctrl tries on), never the plain click's take. Plain
 -- left: every stack of the item as one run, at a mailbox, on a tile that
@@ -1995,6 +2061,9 @@ function BV.TileClick(tile, button)
     if split and BV.Many.May(kind) then BV.Many.Open(kind) end
     return
   end
+  -- In a search of every box a tile goes to its character's box, as its
+  -- heading does (BV.GoBox).
+  if kind.sect.name and BV.EveryBox(panel) then return BV.GoBox(panel, kind.sect.realm, kind.sect.name) end
   -- Nothing can be taken from another character's box or from History: a
   -- lock on the tile, and the line under the list lit for a moment
   -- (BV.NoTake), as a mail row there answers.
