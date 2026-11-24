@@ -15235,7 +15235,7 @@ local function FinishRun(left, stopReason)
     ns.Print(ns.Plural("MSG_COLLECT_INCOMPLETE", left))
   else
     -- What All mail left from other senders ("All mail takes"), in words:
-    -- "3 left from other players", or nil.
+    -- "Not taken: 3 from other players", or nil.
     local note = RV.OthersSay(others)
     -- What stayed behind, by mail: the stuck ones, then the ones waiting for
     -- room, then a stop to keep slots free. Any of them, or none. `stuckPart`
@@ -17428,9 +17428,9 @@ function RV.AllTakes()
 end
 
 -- The words for the mail All mail left, as true as the kinds it takes
--- allow: "3 left from other players" while it leaves other players' mail
--- alone (its old second choice), "3 left in your mailbox" for any other
--- mix. A key of the locale's counted strings, for ns.Plural.
+-- allow: "Not taken: 3 from other players" while it leaves other players'
+-- mail alone (its old second choice), "Not taken: 3" for any other mix.
+-- A key of the locale's counted strings, for ns.Plural.
 function RV.OthersKey()
   local takes = RV.AllTakes()
   if takes and takes.ah and takes.game and takes.own and not takes.players then return "STATUS_LEFT_OTHERS" end
@@ -17438,7 +17438,7 @@ function RV.OthersKey()
 end
 
 -- n -> what a run's outcome says of the mail All mail left for who sent it,
--- "3 left from other players", or nil for none (RV.OthersKey). The words
+-- "Not taken: 3 from other players", or nil for none (RV.OthersKey). The words
 -- are kept, so the line can follow the inbox (RV.OthersFollow), and named
 -- to the shell as the line's note, the part a title bar too narrow for the
 -- whole line lets go before it shortens what went wrong (MailboxUI, 3a).

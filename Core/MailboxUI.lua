@@ -2718,7 +2718,7 @@ end
 --
 --   0. A note with a part after it goes whole, first. A note is a part the
 --      line names as one (UI.SetStatusNote): what a run left for who sent
---      it, "3 left from other players", said before what went wrong. The
+--      it, "Not taken: 3", said before what went wrong. The
 --      line is then what it was before there were notes ("Collected: 19 —
 --      Stuck: 1") and gives way from there as below. A note the line ends
 --      on is a part like any other: it is what stayed behind.
@@ -3092,7 +3092,7 @@ end
 -- or with nil goes with its dash. In the line and in what the line reads
 -- once a tagged part has come down (above), so the two never disagree. For
 -- a part that follows the inbox without being a state of its own: a run's
--- "3 left from other players", counted down as the player takes them
+-- "Not taken: 3", counted down as the player takes them
 -- (CollectTab's RV.OthersFollow). An outcome that does not hold the part is
 -- left as it is, and the answer is false.
 do
@@ -5491,13 +5491,22 @@ local function BuildFrame()
       -- Test mail and the preview write their own line over it.
       local kept = status.kept
       if kept and (UI._state.preview or UI.IsTestMail()) then kept = nil end
-      if not details and not full and not truncated and not kept then return end
+      -- The mail All mail left by "All mail takes" ("Not taken: 3", the
+      -- line's note, section 3a): where the setting is, while the line says
+      -- it. Found in the line as it is now, so a later outcome, a run or
+      -- Test mail's own line never carries it.
+      local left = StatusFit.note
+      if left and not (status.full or ""):find(left, 1, true) then left = nil end
+      if not details and not full and not truncated and not kept and not left then return end
 
       -- The house's (Theme section 5b): what waits for room muted, as All
       -- mail's tooltip says it; each stuck mail's reason in the warning
       -- tone, as its row's says it; the click muted after the blank line.
       theme.TipBegin(self, "ANCHOR_BOTTOMRIGHT")
       theme.TipTitle(text)
+      -- Where the setting is, a footnote under the line (Theme.TipNote), as
+      -- the kept slots' is.
+      if left then theme.TipNote(L("STATUS_LEFT_WHERE")) end
       if full then
         local muted = theme.TIP_MUTED
         GameTooltip:AddLine(L("BAGS_FULL_TIP"), muted, muted, muted, true)
