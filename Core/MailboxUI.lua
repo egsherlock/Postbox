@@ -1170,6 +1170,31 @@ do
     Keep(LOOK_KEY[arrangement] or LOOK_KEY.rows, nil, look or "letters", "letters")
   end
 
+  -- (s32 widths) How far down a one-line row writes a sum under a thousand
+  -- gold: "gold" ("8g"), "silver" ("8g 73s"; "73s" with no gold) or
+  -- "copper" ("8g 73s 12c"). The one-line rows' alone (rowGoldDown): Larger
+  -- mail rows write two coins and History its own way, as before. The
+  -- default is the game's: silver on WoW Forever, where a sum's silver is
+  -- worth reading, and gold on Retail; stored only where it differs from
+  -- that. nil sets the default.
+  function UI.GoldDownDefault()
+    return ns.IsForever and "silver" or "gold"
+  end
+  function UI.GetGoldDown()
+    local memo = Settings().gold
+    local down = memo.rowGoldDown
+    if down then return down end
+    down = Stored("rowGoldDown")
+    if down ~= "gold" and down ~= "silver" and down ~= "copper" then down = UI.GoldDownDefault() end
+    memo.rowGoldDown = down
+    return down
+  end
+  function UI.SetGoldDown(down)
+    if down ~= nil and down ~= "gold" and down ~= "silver" and down ~= "copper" then return end
+    local default = UI.GoldDownDefault()
+    Keep("rowGoldDown", nil, down or default, default)
+  end
+
   -- World of Warcraft: Forever: what the Sender column writes for a
   -- character, "full" ("Abla Stone", the default), "first" ("Abla") or
   -- "last" ("Stone"); a first name, or a surname, another sender in the

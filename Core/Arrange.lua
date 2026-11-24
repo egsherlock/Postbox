@@ -4879,6 +4879,45 @@ function AR.ChooseGoldLook(id)
   if ui and ui.SetGoldLook then ui.SetGoldLook(id, AR.ListKind()) end
 end
 
+-- (s32 widths) The gold's third choice, the one-line rows' alone: how far
+-- down a sum under a thousand gold is written (MailboxUI.GetGoldDown). nil
+-- where it does not apply, as Slots offers none there: Larger mail rows
+-- and History write their sums their own way. The list is made once.
+AR.DOWN_EXAMPLE = 87312
+function AR.GoldDowns()
+  local ui = UI()
+  if not (ui and ui.GetGoldDown and ui.SetGoldDown) then return nil end
+  if AR.ListKind() ~= "rows" then return nil end
+  local list = AR._goldDowns
+  if not list then
+    list = {
+      { id = "gold",   name = L()["ARRANGE_GOLD_DOWN_GOLD"] },
+      { id = "silver", name = L()["ARRANGE_GOLD_DOWN_SILVER"] },
+      { id = "copper", name = L()["ARRANGE_GOLD_DOWN_COPPER"] },
+    }
+    AR._goldDowns = list
+  end
+  return list, ui.GetGoldDown(), AR.ChooseGoldDown
+end
+
+function AR.ChooseGoldDown(id)
+  local ui = UI()
+  if ui and ui.SetGoldDown then ui.SetGoldDown(id) end
+end
+
+-- id, look -> an answer's example, uncoloured: 87312 copper written as a
+-- one-line row would write it down to that coin, in the letters or the
+-- coins as "Written as" says.
+function AR.DownExample(id, look)
+  local F = ns.Core and ns.Core.Formatting
+  if not F then return "" end
+  local brief = (id == "gold") or id
+  if look == "coins" and F.FormatMoneyCompactCoins then
+    return F.FormatMoneyCompactCoins(AR.DOWN_EXAMPLE, brief, nil)
+  end
+  return F.FormatMoneyCompact(AR.DOWN_EXAMPLE, brief)
+end
+
 -- History's age is chosen in two steps: first its kind, how long ago or
 -- the day (the card's two segments, AR.AgeKinds), then that kind's formats,
 -- each as the rows write it -- "3d", "3d ago" and "3 days ago" for three
@@ -5317,6 +5356,14 @@ local function PaintRadio(row)
   row.Mark:SetShown(chosen and true or false)
   row.MarkKey:SetShown((chosen and not AR.Light()) and true or false)
   Grey(row.Text, live and ((chosen or hover) and 1 or 0.91) or 0.44)
+  -- An answer's example (AR.PutDown): the chosen one's in the sum's ink,
+  -- the others' in the quiet grey, all grey while the column is hidden.
+  local ex = row.Example
+  if ex and ex:IsShown() then
+    local on = live and chosen
+    ex:SetText(on and row.exOn or row.exOff)
+    Grey(ex, on and 1 or (live and 0.6 or 0.44))
+  end
 end
 
 -- An answer put with a `tip` (its title's key and its description's) says
@@ -6305,10 +6352,37 @@ local function PutRadio(i, choice, chosen, live, y)
   row.choiceId, row.chosen, row.live, row.set, row.tip = choice.id, chosen, live, insp.set, nil
   row.hover = row.hover and row:IsMouseOver() or false
   Th().FitText(row.Text, INSP.INNER - INSP.RADIO_TEXT, choice.name, row)
+  if row.Example then row.Example:Hide() end
   At(row, INSP.PAD, y)
   PaintRadio(row)
   row:Show()
   return y - INSP.RADIO_H
+end
+
+-- (s32 widths) An answer of the gold's "Down to", with its example at the
+-- row's right end (AR.DownExample); its name has what the example leaves.
+function AR.PutDown(i, choice, chosen, live, y)
+  local insp = AR._insp
+  local after = PutRadio(i, choice, chosen, live, y)
+  local row = insp.Radios[i]
+  local ex = row.Example
+  if not ex then
+    ex = Text(row, "bodySmall", "control")
+    ex:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    ex:SetJustifyH("RIGHT")
+    ex:SetWordWrap(false)
+    row.Example = ex
+  end
+  local ui = UI()
+  local look = ui and ui.GetGoldLook and ui.GetGoldLook(AR.ListKind()) or "letters"
+  local words = AR.DownExample(choice.id, look)
+  row.exOff, row.exOn = words, Th().Colorize("positive", words)
+  ex:SetText(words)
+  ex:Show()
+  local w = math.ceil(ex:GetStringWidth() or 0)
+  Th().FitText(row.Text, INSP.INNER - INSP.RADIO_TEXT - w - INSP.MOVE_GAP, choice.name, row)
+  PaintRadio(row)
+  return after
 end
 
 -- The age's two kinds as a pair of segments across the card's width (Seg),
@@ -6976,6 +7050,18 @@ local function FillColumn(id, y)
         y = PutKicker(L()["OPT_GOLD_AS"], y)
         for i = 1, #looks do
           y = PutRadio(#choices + i, looks[i], looks[i].id == look, shown and true or false, y)
+        end
+        insp.set = set
+      end
+      -- And, on the one-line rows, how far down a sum is written, each
+      -- answer with its example (AR.PutDown).
+      local downs, down, setDown = AR.GoldDowns()
+      if downs then
+        local first = #choices + (looks and #looks or 0)
+        insp.set = setDown
+        y = PutKicker(L()["ARRANGE_GOLD_DOWN"], y)
+        for i = 1, #downs do
+          y = AR.PutDown(first + i, downs[i], downs[i].id == down, shown and true or false, y)
         end
         insp.set = set
       end

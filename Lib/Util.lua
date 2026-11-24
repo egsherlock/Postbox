@@ -400,7 +400,19 @@ local function CompactIn(copper, brief, g, s, c, after)
   if gold >= 100000 then return format("%dk%s", floor(gold / 1000), after or "") end
   if gold >= 10000 then return format("%.1fk%s", floor(gold / 100) / 10, after or "") end
   if gold >= 1000 then return format("%d%s", gold, g) end
-  return MoneyIn(copper, brief and 1 or 2, g, s, c)
+  -- `brief`: a one-line row's reading, down to the coin its rows are set
+  -- to (MailboxUI.GetGoldDown): "silver" keeps the silver beside the gold
+  -- ("8g 73s"; "73s" alone with no gold), "copper" every coin; any other
+  -- true value the largest coin alone, as it always has. False: two coins.
+  local parts = 2
+  if brief == "silver" then
+    parts = gold > 0 and 2 or 1
+  elseif brief == "copper" then
+    parts = 3
+  elseif brief then
+    parts = 1
+  end
+  return MoneyIn(copper, parts, g, s, c)
 end
 
 function Formatting.FormatMoneyCompact(copper, brief)

@@ -2511,6 +2511,25 @@ local function RowMoneyText(index, hasCOD, moneyValue, codValue, brief, coins)
   return MoneyText(hasCOD, moneyValue, codValue, nil, brief, index, coins, ns.Theme.ROW)
 end
 
+-- (s32 widths) A one-line row's `brief`: true for the largest coin alone,
+-- as it always was, or "silver" / "copper", down to that coin
+-- (MailboxUI.GetGoldDown; Formatting's CompactIn reads it).
+function RV.Down()
+  local UI = ns.MailboxUI
+  local down = UI and UI.GetGoldDown and UI.GetGoldDown() or "gold"
+  if down == "gold" then return true end
+  return down
+end
+
+-- MoneyText as the rules give it to Mail Memory's rows, another
+-- character's box among them, and to the options' drawing of the window:
+-- a one-line row's reading (`brief` true) goes down to the coin the Mail
+-- tab's one-line rows are set to, as theirs does.
+function RV.RulesMoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex, coins, ground)
+  if brief == true then brief = RV.Down() end
+  return MoneyText(hasCOD, moneyValue, codValue, price, brief, priceIndex, coins, ground)
+end
+
 -- texture, name, quality, mark, count -> one item's line in the tooltip
 -- being built: its icon, its name in its quality's colour with the crafting
 -- mark its link carries, and its count beside it. Mail Memory's icons list
@@ -3087,7 +3106,10 @@ do
       byKey = {}
       texts[coins] = byKey
     end
-    local key = (floor(amount) * 8 + spec[1]) * 2 + (brief and 1 or 0)
+    -- The reading in the key: two coins, the largest alone, or a one-line
+    -- row's down to its silver or its copper (MailboxUI.GetGoldDown).
+    local key = (floor(amount) * 8 + spec[1]) * 4
+      + (brief == "silver" and 2 or brief == "copper" and 3 or brief and 1 or 0)
     local text = byKey[key]
     if text then return text end
     local figure = ns.Core.Formatting.FormatMoneyCompactCoins(amount, brief, coins)
@@ -4405,7 +4427,7 @@ CT.RowRules = {
   DisplaySender = DisplaySender,
   -- Forever's first or last names in the Sender column (RV.Firsts).
   Firsts = RV.Firsts,
-  MoneyText = MoneyText,
+  MoneyText = RV.RulesMoneyText,
   Measure = MeasureWith,
   SenderColumn = SenderColumnWidth,
   -- The one placement (RV.Place) and what it reads.
@@ -8444,7 +8466,7 @@ do
           RV.NoteSender(cols, MeasureWith(panel, sample.Sender, label) + 2, senderCap)
         end
         if compact then
-          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil, RV.RowCoins(layout, sample.ColMoney), ns.Theme.ROW)
+          local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, panel._down, nil, RV.RowCoins(layout, sample.ColMoney), ns.Theme.ROW)
           local shown = true
           if kind == "earned" then shown = showEarned elseif kind == "spent" then shown = showSpent end
           if text and shown then
@@ -8632,7 +8654,7 @@ do
       end
       if compact then
         local hasCOD = m.cod > 0
-        local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil,
+        local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, panel._down, nil,
           RV.RowCoins(nil, sample.ColMoney), ns.Theme.ROW)
         local on = true
         if kind == "earned" then on = showEarned elseif kind == "spent" then on = showSpent end
@@ -10386,7 +10408,7 @@ local function BindRow(panel, row, index, position, compact, done)
   Clear(parts)
 
   local showSlots, showExpiry = layout.shown.slots == true, layout.shown.time == true
-  local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact,
+  local money, moneyKind = S.Money(index, hasCOD, moneyValue, codValue, compact and RV.Down(),
     RV.RowCoins(layout, compact and row.ColMoney or row.Detail))
   local purchaseShown = (moneyKind == "spent")
   -- In the quiet tone the time left wears: a count, not a warning. The
@@ -14096,6 +14118,8 @@ function CT.RefreshMailList(panel)
   panel._measureWalk = panel._measurePass
   RV.MeasureScale(panel)
   local compact = CompactRows()
+  -- How far down a one-line row writes its sums, asked once for the walk.
+  panel._down = RV.Down()
   local sample = AcquireRow(panel, 1)
   -- A packed row measures its own figures where this walk measures their
   -- columns, from the memo it fills (RV.OwnWidth).
@@ -14229,7 +14253,7 @@ function CT.RefreshMailList(panel)
 
       if compact and measured then
         if measureMoney then
-          local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, true,
+          local text, moneyKind = RowMoneyText(index, hasCOD, tonumber(money) or 0, tonumber(cod) or 0, panel._down,
             RV.RowCoins(nil, sample.ColMoney))
           local shown = true
           if moneyKind == "earned" then shown = showEarned elseif moneyKind == "spent" then shown = showSpent end
