@@ -423,6 +423,8 @@ function BV.Tile(i)
   -- A tile bound again under a pointer that has not moved says what it now
   -- shows (Theme.TipFollow).
   tile.__pbTipRow = tile
+  tile:SetScript("OnEnter", BV.TileEnter)
+  tile:SetScript("OnLeave", BV.TileLeave)
   BV.tiles[i] = tile
   return tile
 end
@@ -788,4 +790,170 @@ function BV.BuildSwitch(panel)
   panel._searchW = nil
   P.RV.SizeSearch(panel, panel._searchGiven or 0)
   T.SetPlateSelected(cell, false)
+end
+
+-------------------------------------------------------------
+-- 5. Tooltips
+-------------------------------------------------------------
+
+-- Whether the bag (or, given a kind, that kind) was read at the inbox's
+-- mark as it stands: only then do its indices name the mails it drew
+-- (CollectTab's binding rule).
+function BV.Current(kind)
+  local gen = model.gen
+  if kind and kind.cod then gen = model.wholeGen end
+  return gen ~= nil and gen == Mail().InboxGen()
+end
+
+-- kind -> a listed kind's first stack, while the bag is current and the
+-- slot still holds that item: the mail's index and the slot.
+function BV.LiveSlot(kind)
+  if not (kind.live and kind.index and kind.slot and BV.Current(kind)) then return nil end
+  local _, id = GetInboxItem(kind.index, kind.slot)
+  if id == nil or id ~= kind.id then return nil end
+  return kind.index, kind.slot
+end
+
+-- kind -> a link for it: the stack's own where the game has one, the
+-- record's, or the item's by its id.
+function BV.LinkOf(kind)
+  local index, slot = BV.LiveSlot(kind)
+  local link = index and GetInboxItemLink(index, slot) or kind.link
+  if not link and kind.id and C_Item and type(C_Item.GetItemInfo) == "function" then
+    local _, generic = C_Item.GetItemInfo(kind.id)
+    link = generic
+  end
+  return link
+end
+
+-- kind -> its name, bare (no crafting mark's atlas).
+function BV.NameOf(kind)
+  local name = kind.name
+  if not name and type(kind.link) == "string" then name = kind.link:match("|h%[(.-)%]|h") end
+  if not name and kind.id and C_Item and type(C_Item.GetItemInfo) == "function" then
+    name = C_Item.GetItemInfo(kind.id)
+  end
+  if type(name) ~= "string" then return nil end
+  name = name:gsub("%s*|A:.-|a", "")
+  return name
+end
+
+-- The item's own tooltip as the title: from the mail and slot where it is
+-- listed, by its link or its id otherwise, its name where the game has
+-- nothing for it.
+function BV.TipItem(kind)
+  local index, slot = BV.LiveSlot(kind)
+  if index and type(GameTooltip.SetInboxItem) == "function" then
+    GameTooltip:SetInboxItem(index, slot)
+  elseif type(kind.link) == "string" then
+    GameTooltip:SetHyperlink(kind.link)
+  elseif kind.id and type(GameTooltip.SetItemByID) == "function" then
+    GameTooltip:SetItemByID(kind.id)
+  else
+    Th().TipTitle(BV.NameOf(kind) or RETRIEVING_ITEM_INFO or "?")
+  end
+end
+
+-- One of the kind's mails on a line: who, how many (or how much), and the
+-- time left, in the warning tone when it is short; an entry of History's,
+-- how long ago.
+function BV.TipMail(kind, i)
+  local P, T, H = Parts(), Th(), ns.Helpers
+  local where, count = kind.ref[i], kind.cnt[i]
+  local who, days, age
+  if type(where) == "number" then
+    local _, _, sender, _, _, _, daysLeft = GetInboxHeaderInfo(where)
+    who, days = sender, tonumber(daysLeft)
+  elseif model.src == "history" then
+    who = where.s
+    age = P.HV.EntryAge(where, time(), P.HV.AgeStyle())
+  else
+    who = where.sender
+    local expires = tonumber(where.expires)
+    if expires then days = (expires - time()) / 86400 end
+  end
+  if type(who) ~= "string" or who == "" then who = L()["SENDER_UNKNOWN"] end
+  local right = kind.gold and ns.Core.Formatting.FormatMoneyCompact(count, true) or tostring(count)
+  if age then
+    right = right .. P.RV.SLOT_DOT .. age
+  elseif days and days > 0 then
+    local _, short = P.ExpiryState(days, false)
+    local left = H.TimeLeft(days)
+    right = right .. P.RV.SLOT_DOT .. (short and T.TipTone("warning", left) or left)
+  end
+  GameTooltip:AddDoubleLine(who, right, 0.82, 0.82, 0.82, 1, 1, 1)
+end
+
+BV.FROM = { sold = "ROWS_REM_SOLD", bought = "ROWS_REM_BOUGHT", canceled = "ROWS_REM_CANCELED",
+  expired = "ROWS_REM_EXPIRED", visit = "ROWS_REM_VISIT" }
+-- What Mail Memory's take hint reads of a row (MM.TakeHint): whose box.
+BV.who = {}
+
+-- Why a tile cannot simply be taken, as the last of its facts: not listed
+-- by the game yet, and where Postbox knows it from (the remembered rows'
+-- own words); or held back, in the warning tone.
+function BV.TipWhy(kind)
+  local T, L0 = Th(), L()
+  if kind.sect.look == 2 then
+    T.TipLine(L0["MINIMAP_TIP_UNLISTED"])
+    local first = kind.ref[1]
+    local from = type(first) == "table" and BV.FROM[first.src] or nil
+    if from then T.TipLine(T.TipTone("muted", L0[from])) end
+  elseif model.src == "inbox" and kind.why and (kind.look == 1 or not kind.cod) then
+    -- Some or all of it in mail a run leaves.
+    GameTooltip:AddLine(T.TipTone("warning", BV.Why(kind)), 1, 1, 1, true)
+  end
+end
+
+-- Pointing at a tile: the item (or the gold's sum), how many in how many
+-- mails and which, why it cannot be taken where it cannot, then what the
+-- gestures do. Built on hover, from the bag as it stands.
+function BV.TileEnter(tile)
+  local kind = tile.kind
+  if not kind or kind.look == 3 then return end
+  local T, L0, H = Th(), L(), ns.Helpers
+  local src = model.src
+  T.TipBegin(tile)
+  if kind.gold then
+    T.TipTitle(L0["LABEL_GOLD"] .. H.FormatMoney(kind.n))
+    if kind.mails > 1 then T.TipLine(ns.Plural("COUNT_MAILS", kind.mails)) end
+  else
+    BV.TipItem(kind)
+    if kind.cod then
+      local _, _, _, _, _, cod = GetInboxHeaderInfo(kind.index)
+      if (tonumber(cod) or 0) > 0 and BV.Current(kind) then
+        T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(tonumber(cod))))
+      end
+    else
+      T.TipLine(L0("BAG_IN_MAILS", tostring(kind.n), ns.Plural("COUNT_MAILS", kind.mails)))
+    end
+  end
+  if not kind.cod and (src ~= "inbox" or kind.sect.look == 2 or BV.Current()) then
+    local most = kind.mails
+    if most > BV.TIP_MAILS then most = BV.TIP_MAILS end
+    for i = 1, most do BV.TipMail(kind, i) end
+    if kind.mails > most then T.TipLine(T.TipTone("muted", ns.Plural("TIP_MORE", kind.mails - most))) end
+  end
+
+  BV.TipWhy(kind)
+  GameTooltip:Show()
+end
+
+function BV.TileLeave()
+  GameTooltip:Hide()
+end
+
+-- kind -> why a run leaves it: the bags are full, or the game's own words
+-- for the mail it is stuck in.
+function BV.Why(kind)
+  local P = Parts()
+  if kind.why == "bags" then return L()["FAN_TILE_BAGS"] end
+  if BV.Current() then
+    for i = 1, kind.mails do
+      local where = kind.ref[i]
+      local reason = type(where) == "number" and Mail().StuckReason(where) or nil
+      if reason then return P.StuckLine(reason) end
+    end
+  end
+  return P.StuckLine(true)
 end
