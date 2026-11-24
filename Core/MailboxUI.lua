@@ -4061,6 +4061,18 @@ local function MinWindowWidth()
   return min(need, MAX_WIDTH)
 end
 
+-- How much wider than the smallest window the player has made it: the
+-- window's width less the floor's loan (extraW), past MIN_WIDTH; 0 at the
+-- smallest, or with no window. The Mail tab's Sender column grows by half of
+-- it where a name listed is wider than the column (CollectTab, RV.SenderCol).
+function UI.WidthPastMinimum()
+  local frame = UI._frame
+  if not frame then return 0 end
+  local width = tonumber((frame:GetWidth())) or 0
+  local past = floor(width - (UI._state.extraW or 0) - MIN_WIDTH + 0.5)
+  return past > 0 and past or 0
+end
+
 -- The ceiling, from the one place that owns it. MAX_HEIGHT is taste, so the
 -- derived floor overrides it wherever the two would cross -- a window that
 -- cannot be as tall as its own content needs is not a matter of taste.

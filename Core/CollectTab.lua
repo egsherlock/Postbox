@@ -3378,6 +3378,110 @@ local function SenderColumnWidth(panel, sample)
   return min(max(widest + 2, SENDER_MIN), SENDER_MAX)
 end
 
+-- (s32 widths) THE COLUMN GROWS WITH THE WINDOW. At the smallest window the
+-- column is the widest sender listed up to the labels' ceiling, as it always
+-- was. Where the player has made the window wider, a name wider than that
+-- ceiling may take half of the added width, never past SENDER_MAX:
+--   column = min(widest listed, labels' ceiling + half the width added)
+-- With no name wider than the ceiling listed, nothing changes at any width.
+--
+-- A list's walk measures as it did, up to the ceiling (`cols.sender`); only
+-- while the window is wider than its smallest does it go on measuring the
+-- names past it (`cols.senderWide`, from MeasureWith's kept widths), once per
+-- walk, never per row bound. A row's bind reads the column from the two
+-- numbers and the width added (RV.SenderCol): a few comparisons, so a drag
+-- moves it with the window and makes nothing. A window made wider than its
+-- smallest after a walk that stopped at the ceiling asks for one refresh
+-- (RV.SenderResized), coalesced to the next frame.
+--
+-- Steady while the list stands: the widest name past the ceiling measured
+-- since the list was asked anything else is held (cols._hold), so the column
+-- does not narrow as the long name's mail is taken. Let go when the width,
+-- the view, the search, a filter, the character viewed or the stuck filter
+-- changes, and when the mailbox closes (CT.ClearSearch). Under the ceiling
+-- the column narrows as rows leave, as before.
+
+-- panel -> the width added past the smallest window, kept on the panel for
+-- the binds.
+function RV.SenderPast(panel)
+  local UI = ns.MailboxUI
+  local past = UI and UI.WidthPastMinimum and tonumber((UI.WidthPastMinimum())) or 0
+  panel._senderPast = past
+  return past
+end
+
+-- A walk begins: `cap` is the labels' ceiling (0 while the column is hidden).
+function RV.SenderBegin(panel, cols, cap)
+  local past = RV.SenderPast(panel)
+  cols.sender, cols.senderWide, cols.senderLabel = 0, 0, cap
+  -- How far past the ceiling this walk measures: nowhere at the smallest
+  -- window, so the walk is the one it always was there.
+  local to = (past > 0 and cap > 0) and SENDER_MAX or 0
+  panel._senderTo = to
+  panel._senderFull = to > 0
+end
+
+-- One listed name's (or label's) width, + 2 as the column keeps it.
+function RV.NoteSender(cols, width, cap)
+  if cols.sender < cap then cols.sender = min(max(cols.sender, width), cap) end
+  if width > cols.senderWide then cols.senderWide = min(width, SENDER_MAX) end
+end
+
+-- A walk ends: the hold (above). `view` and `query` say which list it is.
+function RV.SenderEnd(panel, cols, view, query)
+  local h = cols._hold
+  if not h then
+    h = { w = 0 }
+    cols._hold = h
+  end
+  local past = panel._senderPast or 0
+  if h.past ~= past or h.view ~= view or h.q ~= query or h.gen ~= panel._sfGen or h.alt ~= panel._alt
+      or h.all ~= panel._searchAll or h.stuck ~= panel._stuckOnly then
+    h.w, h.past, h.view, h.q, h.gen = 0, past, view, query, panel._sfGen
+    h.alt, h.all, h.stuck = panel._alt, panel._searchAll, panel._stuckOnly
+  end
+  local wide = cols.senderWide or 0
+  if past <= 0 then return end
+  if wide > h.w then
+    h.w = wide
+  elseif h.w > wide and h.w > (cols.senderLabel or 0) then
+    cols.senderWide = h.w
+  end
+end
+
+-- The mailbox closed: nothing held into the next visit.
+function RV.SenderLetGo(panel)
+  local cols = panel._cols
+  if cols and cols._hold then cols._hold.w = 0 end
+  cols = panel._hcols
+  if cols and cols._hold then cols._hold.w = 0 end
+end
+
+-- cols -> the width a row's sender column is drawn at (above).
+function RV.SenderCol(panel, cols)
+  local col = cols.sender or 0
+  local wide = cols.senderWide or 0
+  if wide > col then
+    local past = panel._senderPast or 0
+    if past > 0 then
+      local cap = min(SENDER_MAX, (cols.senderLabel or col) + floor(past / 2))
+      if cap > col then col = min(wide, cap) end
+    end
+  end
+  return col
+end
+
+-- The list's width moved: the width added is read again, and a list last
+-- walked at the smallest window, now wider, is walked once more so its
+-- names past the ceiling are known.
+function RV.SenderResized(panel)
+  local was = panel._senderPast or 0
+  local past = RV.SenderPast(panel)
+  if past > 0 and was <= 0 and not panel._senderFull and CT.RequestRefresh then
+    CT.RequestRefresh(panel)
+  end
+end
+
 -- The spots an anchor can take, by number: a row re-bound where it already
 -- stands -- nearly every bind -- is then left alone without comparing a
 -- string or re-anchoring anything.
@@ -5368,6 +5472,7 @@ function CT.ClearSearch(panel)
     -- on somebody else's mail.
     panel._alt = nil
     panel._searchAll = false
+    RV.SenderLetGo(panel)
     AV.Paint(panel)
     if ns.MailMemory and ns.MailMemory.ClosePicker then ns.MailMemory.ClosePicker() end
     -- And the folded text History's search built: kept only while in use.
@@ -8273,7 +8378,8 @@ do
     local cols, markHas = panel._cols, panel._markHas
     local layout = compact and RV.Layout() or RV.LargeLayout()
     local senderCap = layout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
-    cols.sender, cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0, 0
+    RV.SenderBegin(panel, cols, senderCap)
+    cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0
     markHas.time, markHas.money, markHas.slots = false, false, false
     local showEarned = compact and MoneyShown("earned")
     local showSpent = compact and MoneyShown("spent")
@@ -8333,9 +8439,9 @@ do
             cat[m.kind] = (cat[m.kind] or 0) + 1
           end
         end
-        if cols.sender < senderCap then
+        if cols.sender < senderCap or cols.senderWide < panel._senderTo then
           local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key] or DisplaySender(m.sender)
-          cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+          RV.NoteSender(cols, MeasureWith(panel, sample.Sender, label) + 2, senderCap)
         end
         if compact then
           local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil, RV.RowCoins(layout, sample.ColMoney), ns.Theme.ROW)
@@ -8519,10 +8625,10 @@ do
     local slotsOn, timeOn = compact and RowShows("slots"), compact and RowShows("time")
     for k = 1, #shown do
       local m = shown[k]
-      if cols.sender < senderCap then
+      if cols.sender < senderCap or cols.senderWide < panel._senderTo then
         local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key]
           or DisplaySender(m.sender) or L()["SENDER_UNKNOWN"]
-        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+        RV.NoteSender(cols, MeasureWith(panel, sample.Sender, label) + 2, senderCap)
       end
       if compact then
         local hasCOD = m.cod > 0
@@ -10380,7 +10486,8 @@ local function BindRow(panel, row, index, position, compact, done)
   spec.left, spec.trail, spec.gap = M.inset, trailing, M.gap
   spec.markEnd = (compact and showDelete) and (M.inset + markRoom) or nil
   spec.cols = cols
-  spec.senderCol = ((cols.sender or 0) > 0) and cols.sender or SENDER_MIN
+  spec.senderCol = RV.SenderCol(panel, cols)
+  if spec.senderCol <= 0 then spec.senderCol = SENDER_MIN end
   spec.share = COMPACT_META_SHARE
   -- A C.O.D. price stands on the row even with the gold column hidden.
   spec.force = (moneyKind == "cod" and money) and "money" or nil
@@ -10876,7 +10983,7 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   spec.width = UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH - 2 * M.inset)
   spec.left, spec.trail, spec.gap = M.inset, M.inset, M.gap
   spec.cols = cols
-  spec.senderCol = cols.sender or SENDER_MIN
+  spec.senderCol = cols.sender and RV.SenderCol(panel, cols) or SENDER_MIN
   -- Sent: the name is never cut; another realm gives way first (RV.Place).
   spec.senderLeast = sent and cols.senderLeast or nil
   spec.senderBare = sent and not outcome and (firstName and text.sender or HV.SentWho(entry, true)) or nil
@@ -11338,6 +11445,8 @@ function HV.BuildHistoryList(panel, query)
   cols.sender, cols.money, cols.age, cols.senderLeast = 0, 0, 0, 0
   local layout = HV.Layout()
   local showSender, showAge = layout.shown.sender, layout.shown.age
+  -- Received only: a sent row's names are never cut (RV.Place).
+  RV.SenderBegin(panel, cols, (showSender and not sent) and cap or 0)
   local style = HV.AgeStyle()
   -- Whether the gold column shows each kind, asked once for the list rather
   -- than once per entry: a month of History is a thousand of them.
@@ -11449,7 +11558,7 @@ function HV.BuildHistoryList(panel, query)
             if least > colLeast then colLeast = least end
           end
         end
-      elseif colSender < cap and showSender then
+      elseif showSender and (colSender < cap or cols.senderWide < panel._senderTo) then
         -- An outcome's words, kept under the outcome; a sender's, under
         -- the name as recorded (a system mail's "" among them). Never past
         -- the cap.
@@ -11461,6 +11570,7 @@ function HV.BuildHistoryList(panel, query)
           width = HV.Keep(senderW, key, MeasureWith(panel, sample.Sender, label) + 2)
         end
         if width > colSender then colSender = min(width, cap) end
+        if width > cols.senderWide then cols.senderWide = min(width, SENDER_MAX) end
       end
       -- Its sum's class (HV.LetterText), and whether the column shows its
       -- kind: earned and spent as the column's choice says, a C.O.D. always.
@@ -11515,6 +11625,7 @@ function HV.BuildHistoryList(panel, query)
     end
   end
   cols.sender, cols.senderLeast, cols.money, cols.age = colSender, colLeast, colMoney, colAge
+  RV.SenderEnd(panel, cols, sent and "sent" or VIEW_HISTORY, query)
   -- Whether this client counts the coins' room is found (RV.CoinExtra)
   -- before the first coin text is measured, so what was measured here was
   -- measured knowing it.
@@ -13992,7 +14103,7 @@ function CT.RefreshMailList(panel)
   -- The arrangement the inbox's rows follow at this size (BindRow).
   local rowLayout = compact and RV.Layout() or RV.LargeLayout()
   local senderCap = rowLayout.shown.sender and SenderColumnWidth(panel, sample.Sender) or 0
-  cols.sender = 0
+  RV.SenderBegin(panel, cols, senderCap)
   cols.money, cols.slots, cols.time, cols.timeMark = 0, 0, 0, 0
   -- The inbox's own columns are measured only while its rows are what is on
   -- screen: History and another character's box measure their own, and the
@@ -14110,10 +14221,10 @@ function CT.RefreshMailList(panel)
       -- the ceiling; an auction outcome shows its label, not "Auction House".
       -- (senderCap is zero while the arrangement hides the column.)
       local measured = finished and measureDone or (not finished and measureOpen)
-      if measured and cols.sender < senderCap then
+      if measured and (cols.sender < senderCap or cols.senderWide < panel._senderTo) then
         local label = AUCTION_OUTCOME[kind] and L()[AUCTION_OUTCOME[kind].key]
           or DisplaySender(sender or L()["SENDER_UNKNOWN"])
-        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+        RV.NoteSender(cols, MeasureWith(panel, sample.Sender, label) + 2, senderCap)
       end
 
       if compact and measured then
@@ -14202,6 +14313,9 @@ function CT.RefreshMailList(panel)
     earned, spent = RV.PreviewList(panel, sample, compact, view)
     previewed = panel._pvList
   end
+  -- The sender's column held while this list stands (RV.SenderEnd); the
+  -- arrange mode's samples are a list of their own.
+  if measuring then RV.SenderEnd(panel, cols, previewed and "preview" or view, query) end
   -- A stuck mail's mark stands in its read mark's place and needs no room;
   -- the room the rows keep for a read mail's delete mark is decided as they
   -- are placed (RV.MarkReserve), from what this walk found.
@@ -20808,6 +20922,8 @@ function CT.Build(parent)
   -- replacing them desynchronises the scroll bar.
   scroll:HookScript("OnSizeChanged", function(_, width)
     if width and width > 10 then panel.MailListChild:SetWidth(width) end
+    -- The width added to the window, for the sender's column (RV.SenderCol).
+    RV.SenderResized(panel)
     UpdateVisibleRows(panel)
   end)
   scroll:HookScript("OnVerticalScroll", function() UpdateVisibleRows(panel) end)
