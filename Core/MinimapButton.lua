@@ -1999,12 +1999,57 @@ local function HostRedressed()
   return btn._upAtlas ~= want
 end
 
+-- The icon's last repaints this session, for /postbox debug (MB.Diagnose):
+-- when, which kind -- "whole" (Refresh, and why), "count" (the number alone),
+-- "event" (a pending-mail event before the icon was painted), "flash" (the
+-- arrival halo) -- and the unread flag, shown and the number before and
+-- after. Eight records made once and written over in turn: a repaint
+-- builds nothing. Read only by the debug line; nothing is saved.
+do
+  local SIZE = 8
+  local log = { n = 0 }
+  for i = 1, SIZE do
+    log[i] = { at = 0, g = 0, kind = false, lit0 = false, lit1 = false, shown0 = false, shown1 = false,
+      n0 = 0, n1 = 0, red = false }
+  end
+  MB.PaintLog = log
+
+  function log.Note(kind, lit0, shown0, n0, red)
+    local n = log.n + 1
+    log.n = n
+    local e = log[(n - 1) % SIZE + 1]
+    e.at, e.g = time(), type(GetTime) == "function" and GetTime() or 0
+    e.kind, e.lit0, e.shown0, e.n0, e.red = kind, lit0 and true or false, shown0 and true or false, n0 or 0, red and true or false
+    e.lit1, e.shown1, e.n1 = view.lit and true or false, view.shown and true or false, view.count or 0
+  end
+
+  local function YN(v) return v and "y" or "n" end
+
+  -- -> the repaints, newest first, one line each, after a line break each.
+  function log.Lines()
+    local out = ""
+    for k = 0, math.min(log.n, SIZE) - 1 do
+      local e = log[(log.n - 1 - k) % SIZE + 1]
+      out = out .. string.format("\n  icon %s.%02d %s | flag %s>%s shown %s>%s count %d>%d%s",
+        date("%H:%M:%S", e.at), math.floor((e.g % 1) * 100), tostring(e.kind), YN(e.lit0), YN(e.lit1),
+        YN(e.shown0), YN(e.shown1), e.n0, e.n1, e.red and " | their art again" or "")
+    end
+    return out
+  end
+end
+
 local function Reevaluate()
   local lit, shown, alert, count, alone = view.lit, view.shown, view.alert, view.count, view.alone
   Evaluate()
-  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone or HostRedressed() then
+  local redressed = false
+  if not (view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone) then
+    redressed = HostRedressed()
+  end
+  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone or redressed then
+    MB.PaintLog.Note("whole", lit, shown, count, redressed)
     MB.Refresh()
   elseif view.count ~= count then
+    MB.PaintLog.Note("count", lit, shown, count, false)
     if view.holder then
       PaintCount(view.holder, view.anchor, view.side, (not view.alone) and view.count or 0)
     else
@@ -2496,7 +2541,9 @@ local function OnMailEvent()
     SetDefaultSuppressed(true)
     Reevaluate()
   else
+    local lit, shown, count = view.lit, view.shown, view.count
     Refresh()
+    MB.PaintLog.Note("event", lit, shown, count, false)
   end
   FlushFlash()
 end
@@ -2701,7 +2748,7 @@ function MB.Diagnose()
     tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
     ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet",
     MarkerShape(), MarkerColorMode(), MarkerCorner(), MarkerOffset(Settings().markerX), MarkerOffset(Settings().markerY),
-    MarkerLarge() and " large" or "", GlowColorMode())
+    MarkerLarge() and " large" or "", GlowColorMode()) .. MB.PaintLog.Lines()
 end
 
 -- Called by Skin_EllesmereUI.RefreshAccents so an accent retune repaints a
@@ -3019,6 +3066,7 @@ local function PlayFlash(prefs)
   -- phase's start; the stop settles it first.
   if flash:IsPlaying() then flash:Stop() end
   flash:Play()
+  MB.PaintLog.Note("flash", view.lit, view.shown, view.count, false)
   return true
 end
 

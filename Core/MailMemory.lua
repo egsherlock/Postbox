@@ -8759,13 +8759,15 @@ local CLOSE_SETTLE = 5
 do
   local SIZE = 8
   local ring = {}
-  for i = 1, SIZE do ring[i] = { at = 0 } end
+  for i = 1, SIZE do ring[i] = { at = 0, bare = false } end
   -- `n`: events written this session. `played`: the event being handled
   -- played the sound (OnPendingMail, MB.NotifyArrival's answer).
   local log = { n = 0, played = false }
   MM.PendingLog = log
 
-  function log.Note(verdict, played)
+  -- `bare`: an auction house notice, recorded for its moment only (the
+  -- record's mail fields are a pending-mail event's).
+  function log.Note(verdict, played, bare)
     local n = log.n + 1
     log.n = n
     local e = ring[(n - 1) % SIZE + 1]
@@ -8773,6 +8775,8 @@ do
     e.at, e.verdict, e.played = now, verdict, played and true or false
     e.closed = closedAt > 0 and now - closedAt or nil
     e.loaded = loginAt and now - loginAt or nil
+    e.bare = bare and true or false
+    if bare then return end
     local snap = StoredSnapshot()
     e.unread = snap and snap.baseNew
     e.changed = nil
@@ -8792,10 +8796,15 @@ do
     local out = {}
     for k = 0, math.min(log.n, SIZE) - 1 do
       local e = ring[(log.n - 1 - k) % SIZE + 1]
+      -- A notice says only when it came.
+      if e.bare then
+        out[#out + 1] = string.format("  %s %s", date("%H:%M:%S", e.at), tostring(e.verdict))
+      else
       out[#out + 1] = string.format("  %s %s | sound %s | closed %s | loaded %s | unread left %s | senders changed %s",
         date("%H:%M:%S", e.at), tostring(e.verdict), YesNo(e.played),
         e.closed and (e.closed .. "s ago") or "never", e.loaded and (e.loaded .. "s ago") or "?",
         YesNo(e.unread), YesNo(e.changed))
+      end
     end
     return out
   end
@@ -8984,11 +8993,16 @@ if bus then
     local E = type(Enum) == "table" and Enum.AuctionHouseNotification or nil
     if not E then return end
     local A = MM.Auctions
+    -- In the pending-mail events' record too, so /postbox debug shows what
+    -- the client sent around a notice, in order.
     if notification == E.AuctionSold then
+      MM.PendingLog.Note("sold notice", false, true)
       A.Sold(item, auctionID)
     elseif notification == E.AuctionExpired then
+      MM.PendingLog.Note("expired notice", false, true)
       A.Ended("expired", A.SRC.notice, auctionID, item)
     elseif notification == E.AuctionWon then
+      MM.PendingLog.Note("won notice", false, true)
       A.Won(item, auctionID)
     end
   end)
