@@ -133,6 +133,9 @@ local SCHEMA = {
   "recipientPin",             -- realm -> name -> the name that character's
                               -- Recipient box starts with (Core/SendTab.lua,
                               -- ST.Pin); Reset everything clears it
+  "subjectPin",               -- realm -> name -> the subject that character's
+                              -- Subject box starts with (Core/SendTab.lua,
+                              -- ST.Pin); Reset everything clears it
 }
 
 local function EnsureDB()

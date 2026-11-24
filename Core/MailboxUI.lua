@@ -178,9 +178,9 @@ local OPTION_DEFAULTS = {
   -- under the list close up and the window's floor comes down with them
   -- (CollectTab, CT.MinPanelHeight). The arrange mode hides and shows it too.
   showTotals      = true,
-  -- (keepRecipient, "leave the recipient in the To: box after a send", is
-  -- now one of three answers: UI.GetAfterSendKeep, which reads it once to
-  -- carry an old profile over.)
+  -- (keepRecipient, "leave the recipient in the To: box after a send",
+  -- became "After sending, keep", which the Send tab's pins replaced:
+  -- neither is read now.)
   -- The stack count on a mail row's item icon, and the edge of a second card
   -- behind it when the mail holds more than one item (CollectTab,
   -- RV.PaintCount), in the Mail tab, History and Mail Memory. On: it is how
@@ -1711,34 +1711,17 @@ do
   end
 end
 
--- What the Send tab keeps once a mail has gone: "nothing" (the default: a
--- cleared form, so a name left standing cannot send the next mail to the
--- wrong person), "recipient", or "subject" -- the recipient and the subject,
--- for a run of mails to one bank alt. Stored only when it is not nothing.
--- The old switch, profile.keepRecipient, read as "recipient" until a choice
--- is made here, which is when it is dropped. Read once per send, so no memo.
-local AFTER_SEND_KEEP = { recipient = true, subject = true }
-function UI.GetAfterSendKeep()
-  local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
-  if type(profile) ~= "table" then return "nothing" end
-  local stored = profile.afterSendKeep
-  if AFTER_SEND_KEEP[stored] then return stored end
-  if stored == nil and profile.keepRecipient == true then return "recipient" end
-  return "nothing"
-end
-function UI.SetAfterSendKeep(mode)
-  if mode ~= "nothing" and not AFTER_SEND_KEEP[mode] then return end
-  local profile = ns.Store and ns.Store.EnsurePath and ns.Store.EnsurePath("profile")
-  if not profile then return end
-  profile.afterSendKeep = AFTER_SEND_KEEP[mode] and mode or nil
-  profile.keepRecipient = nil
-end
+-- (What stays in the Send tab's form after a send is its pins' now, SendTab
+-- 19a. The setting that said it before, profile.afterSendKeep, and its
+-- older switch, profile.keepRecipient, are no longer read; a saved one is
+-- left where it is.)
 
--- The Send tab's recipient pin offered (Options > Send tab, Recipient pin):
--- on unless switched off, stored only as `false`. A setting, so under
--- profile and account-wide; the pins themselves are the root's
--- `recipientPin`, per character, which this never touches. Off, the pin is
--- not drawn and no pinned name fills the To box (SendTab, 19a).
+-- The Send tab's pins offered (Options > Send tab, Recipient pin): on
+-- unless switched off, stored only as `false`. A setting, so under profile
+-- and account-wide; the pins themselves are the root's `recipientPin` and
+-- `subjectPin`, per character, which this never touches. Off, the pins are
+-- not drawn and nothing pinned fills the Recipient or Subject box
+-- (SendTab, 19a).
 function UI.GetShowRecipientPin()
   local profile = ns.Store and ns.Store.Get and ns.Store.Get("profile")
   return not (type(profile) == "table" and profile.showRecipientPin == false)
@@ -6150,7 +6133,6 @@ function UI.DiagnoseOptions()
   Named("historyDays", UI.GetHistoryDays(), "7")
   Named("historyCap", UI.GetHistoryCap(), "1000")
   Named("characterOrder", UI.GetCharacterOrder(), "warnings")
-  Named("afterSend", UI.GetAfterSendKeep(), "nothing")
   Named("keepFree", UI.GetKeepFreeSlots(), "0")
   -- All mail takes: the kinds as stored, "all" for every mail.
   do

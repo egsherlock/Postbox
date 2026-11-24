@@ -479,24 +479,14 @@ local function ClearSendMailMoneyState()
 end
 
 -- Blank every composed field. Shared by ST.Reset and by the post-send cleanup,
--- which only runs once the send is KNOWN to have succeeded.
---
--- `keep` is what the post-send cleanup leaves standing, from the "After
--- sending, keep" option (UI.GetAfterSendKeep): "recipient" leaves the To: box
--- alone, "subject" the To: box and the subject, so a player mailing a run of
--- things to one bank alt is not made to address every one. nil clears it all.
--- ST.Reset never passes it: a fresh mailbox visit starts from nothing,
--- whatever the option says.
-local function ClearDraftFields(panel, keep)
+-- which only runs once the send is KNOWN to have succeeded. What a box keeps
+-- after a send is its pin's (section 19a, Pin.Fill), put back after this.
+local function ClearDraftFields(panel)
   if not panel then return end
-  if keep ~= "recipient" and keep ~= "subject" then
-    panel.ToBox:SetText("")
-    panel.ToBox:SetCursorPosition(0)
-    ResetInlineCompletion(panel, "")
-  end
-  if keep ~= "subject" then
-    panel.SubjectBox:SetText("")
-  end
+  panel.ToBox:SetText("")
+  panel.ToBox:SetCursorPosition(0)
+  ResetInlineCompletion(panel, "")
+  panel.SubjectBox:SetText("")
   panel.SubjectBox:SetCursorPosition(0)
   panel.BodyBox:SetText("")
   panel.BodyBox:SetCursorPosition(0)
@@ -506,7 +496,7 @@ local function ClearDraftFields(panel, keep)
   if panel.CODCheck then panel.CODCheck:SetChecked(false) end
   -- The placeholders answer to OnTextChanged, which SetText fires; this is only
   -- belt and braces for a field that was already empty.
-  if panel.SubjectPlaceholder and keep ~= "subject" then panel.SubjectPlaceholder:Show() end
+  if panel.SubjectPlaceholder then panel.SubjectPlaceholder:Show() end
   if panel.BodyPlaceholder then panel.BodyPlaceholder:Show() end
 end
 
@@ -1067,14 +1057,12 @@ local function AbandonPendingSend(panel)
 end
 
 -- The draft after the LAST mail of a press has gone: blanked, apart from
--- what the "After sending, keep" option says to keep.
+-- the boxes this character has pinned.
 local function SettleDraftAfterSuccess(panel)
-  local UI = ns.MailboxUI
-  local keep = UI ~= nil and type(UI.GetAfterSendKeep) == "function" and UI.GetAfterSendKeep() or nil
   panel._run = nil
-  ClearDraftFields(panel, keep)
-  -- A To box the option left empty goes back to this character's pin
-  -- (19a), before the line below reads the draft as it now stands.
+  ClearDraftFields(panel)
+  -- A pinned box takes its pinned words again (19a), before the line below
+  -- reads the draft as it now stands.
   ST.Pin.Fill(panel)
   -- What the send left in the form, for the next visit's start (19a).
   ST.Pin.NoteSent(panel)
@@ -1607,7 +1595,7 @@ do
   end
 
   -- Whether the draft is still what the last send left: the recipient and
-  -- subject After sending, keep kept, and nothing else.
+  -- subject the pins put back, and nothing else.
   function ST.SentDraftUntouched(panel)
     local S = ST.sent
     local base = S.base
@@ -7249,9 +7237,9 @@ local function StashDraft(panel)
     return
   end
   -- `sent`: the form is still as this visit's last send left it, with
-  -- nothing of the player's in it since (19a, Pin.AsSent). Its name is the
-  -- one a pin takes the place of at the next visit; any other draft is the
-  -- player's own and comes back whole.
+  -- nothing of the player's in it since (19a, Pin.AsSent). Its name and
+  -- subject are what the pins take the place of at the next visit; any
+  -- other draft is the player's own and comes back whole.
   panel._draftStash = { to = to, subject = subject, body = body,
     sent = ST.Pin.AsSent(panel, to, subject, body) }
 end
@@ -7260,13 +7248,16 @@ local function RestoreDraft(panel)
   local stash = panel._draftStash
   panel._draftStash = nil
   if not stash then return end
-  -- The name is put back, with one exception: the name the last send left
-  -- in a form not touched since (`sent`, StashDraft) stands aside on a
-  -- character whose visit starts with a pin (19a; ST.Reset fills the
-  -- pinned name next). A draft the player wrote keeps the name they gave
-  -- it, pin or no pin; the subject and message below come back as ever.
-  if stash.to ~= "" and not (stash.sent and ST.Pin.Starts()) then ST.SetRecipient(panel, stash.to) end
-  panel.SubjectBox:SetText(stash.subject)
+  -- The name and subject are put back, with one exception: what the last
+  -- send left in a box of a form not touched since (`sent`, StashDraft)
+  -- stands aside where this character's visit starts that box with a pin
+  -- (19a; ST.Reset fills the pinned words next). A draft the player wrote
+  -- keeps the name and subject they gave it, pin or no pin; the message
+  -- below comes back as ever.
+  local Pin = ST.Pin
+  local sent = stash.sent
+  if stash.to ~= "" and not (sent and Pin.Starts(Pin.TO)) then ST.SetRecipient(panel, stash.to) end
+  if not (sent and Pin.Starts(Pin.SUBJECT)) then panel.SubjectBox:SetText(stash.subject) end
   panel.SubjectBox:SetCursorPosition(0)
   panel.BodyBox:SetText(stash.body)
   panel.BodyBox:SetCursorPosition(0)
@@ -7289,8 +7280,8 @@ function ST.Reset(panel, reason)
   ClearDraftFields(panel)
   if reason == "open" then
     RestoreDraft(panel)
-    -- A pinned character's visit starts with its pin (19a) wherever the
-    -- draft put back left the box empty (RestoreDraft).
+    -- A pinned character's visit starts with its pins (19a) wherever the
+    -- draft put back left a box empty (RestoreDraft).
     ST.Pin.Fill(panel)
     -- A new visit: the tab's first appearance in it refreshes the contact
     -- sources once more (the panel's OnShow, CS.RefreshForVisit).
@@ -7322,47 +7313,61 @@ function ST.Reset(panel, reason)
 end
 
 -------------------------------------------------------------
--- 19a. The pin
+-- 19a. The pins
 --
--- What the Recipient box starts with on this character. "After sending,
--- keep" (Options > Send tab) says what stays in the form after a send, for
--- the whole account; the pin is this one character's name to start from.
--- A mailbox visit on a pinned character opens with the pinned name, as the
--- pin's tooltip says, wherever the box would be empty or would hold only
--- the name "keep" left after the last send: that name is not put back at
--- the next visit while the form is still as the send left it (Pin.AsSent),
--- though a subject "keep" left is. An unsent draft is the player's own: a
--- form touched since the last send (a name, subject, message or gold
--- typed, C.O.D. ticked, an item attached) comes back whole at the next
--- visit, under the name it had, and the pin does not replace it. And
--- after a send that left the box empty ("keep" Nothing) the box holds the
--- pinned name again; a name "keep" left stands until the mailbox closes.
--- It goes in the way a picked name does (ST.SetRecipient: no type-ahead
--- list, no focus); the subject and body are never the pin's, and it never
--- sends or attaches.
--- The name is the player's own word: it fills whether or not it is hidden
--- or deleted as a recipient, and pinning it adds it to no list.
+-- What the Recipient and Subject boxes hold on this character. A pinned
+-- box keeps its words: every mailbox visit opens with them and every send
+-- leaves them in the box for the next mail, until the pin is clicked again.
+-- A box with no pin starts empty and is cleared after each send, as the
+-- rest of the form is. Each box has its own pin; each character its own
+-- pins.
+-- A mailbox visit opens with the pinned words wherever the box would be
+-- empty, or would hold only what the last send left in it while the form
+-- is still as that send left it (Pin.AsSent). An unsent draft is the
+-- player's own: a form touched since the last send (a name, subject,
+-- message or gold typed, C.O.D. ticked, an item attached) comes back whole
+-- at the next visit, as it was, and no pin replaces any of it.
+-- The name goes in the way a picked name does (ST.SetRecipient: no
+-- type-ahead list, no focus), the subject as it was pinned; the message is
+-- never a pin's, and a pin never sends or attaches. The name is the
+-- player's own word: it fills whether or not it is hidden or deleted as a
+-- recipient, and pinning it adds it to no list.
 --
--- Saved per character at the root, PostboxDB.recipientPin[realm][name]
--- (the realm and name as Mail Memory keys a character: Helpers.PlayerRealm
--- and PlayerName, Forever's ruleset and full name), as "Name-Realm"
--- (Recipients.Qualify; Forever's full name). Reset everything clears it;
--- Reset settings keeps it, as it keeps the recipients.
+-- Saved per character at the root, PostboxDB.recipientPin[realm][name] and
+-- PostboxDB.subjectPin[realm][name] (the realm and name as Mail Memory keys
+-- a character: Helpers.PlayerRealm and PlayerName, Forever's ruleset and
+-- full name): the name as "Name-Realm" (Recipients.Qualify; Forever's full
+-- name), the subject as it stood in the box. Reset everything clears both;
+-- Reset settings keeps them, as it keeps the recipients.
 --
--- The key: a small cell inside the box at its right end, standing from the
--- box's own cell (left of the Manage Recipients key) as the search box's
--- every-character toggle stands from the sort cell, a little smaller than
--- Manage Recipients' glyph, with no plate of its own. Four states, which
--- follow the box as it is typed in (its OnTextChanged; nothing is built per
--- keystroke):
+-- The key: a small cell inside the box at its right end (in the Recipient
+-- box, standing from the box's own cell, left of the Manage Recipients key,
+-- as the search box's every-character toggle stands from the sort cell), a
+-- little smaller than Manage Recipients' glyph, with no plate of its own.
+-- Its states follow the box as it is typed in (its OnTextChanged; nothing is
+-- built per keystroke):
 --   dim    nothing typed and no pin: dim, and a click does nothing
---   live   a name that is not this character's pin: grey; a click pins it
---          (in place of another pinned name, which its tooltip names)
---   lit    the pinned name: in the accent; a click unpins
+--   self   (Recipient) the name of the character being played, not pinned:
+--          dim, and its tooltip says a character cannot pin its own name
+--   live   words that are not this character's pin: grey; a click pins them
+--          (in place of other pinned words, which its tooltip names)
+--   lit    the pinned words: in the accent; a click unpins
 --   clear  nothing typed, but a pin: grey; a click unpins
 -------------------------------------------------------------
 
-ST.Pin = {}
+ST.Pin = {
+  -- The two boxes, each with its saved root, the panel's key for it, its
+  -- tooltip's line while there is nothing to pin, and the pinned words'
+  -- forms (Pin.Forms). The Recipient box compares names as the Send tab
+  -- does (Recipients.Key); the Subject box its words exactly.
+  TO = { store = "recipientPin", box = "ToBox", wrap = "ToWrap", key = "PinKey", name = true,
+    empty = "PIN_TIP_EMPTY", forms = { saved = nil, shown = nil, short = nil, key = nil } },
+  SUBJECT = { store = "subjectPin", box = "SubjectBox", wrap = "SubjectWrap", key = "SubjectPinKey",
+    empty = "PIN_TIP_EMPTY_SUBJECT", forms = { saved = nil, shown = nil } },
+  -- The character being played, in the forms a pinned name has (Pin.Me):
+  -- the name the Recipient pin will not take.
+  ME = { saved = nil, shown = nil, short = nil, key = nil },
+}
 do
   local Pin = ST.Pin
   local byte = string.byte
@@ -7374,10 +7379,6 @@ do
   -- Its ink: at rest and hovered as the every-character toggle's at rest,
   -- and dim while there is nothing to pin.
   local REST, HOVER, DIM = 0.45, 0.85, 0.25
-  -- The saved name's forms, worked out when it changes: `shown` as the box
-  -- writes it (Recipients.Display), `short` its name half, `key` its
-  -- recipient key.
-  local forms = { saved = nil, shown = nil, short = nil, key = nil }
 
   local function Me()
     local H = Helpers()
@@ -7387,25 +7388,25 @@ do
     return realm, name
   end
 
-  -- This character's pinned name as saved, or nil.
-  function Pin.Saved()
+  -- This character's pinned words for the box `spec`, as saved, or nil.
+  function Pin.Saved(spec)
     local realm, name = Me()
     if not realm then return nil end
     local store = ns.Store
-    local root = store and store.Get and store.Get("recipientPin")
+    local root = store and store.Get and store.Get(spec.store)
     local byRealm = type(root) == "table" and root[realm] or nil
     local saved = type(byRealm) == "table" and byRealm[name] or nil
     if type(saved) == "string" and saved ~= "" then return saved end
     return nil
   end
 
-  -- `value` saved as this character's pin; nil unpins.
-  function Pin.Save(value)
+  -- `value` saved as this character's pin for the box `spec`; nil unpins.
+  function Pin.Save(spec, value)
     local realm, name = Me()
     local store = ns.Store
     if not (realm and store) then return end
     if value then
-      local root = store.EnsurePath and store.EnsurePath("recipientPin")
+      local root = store.EnsurePath and store.EnsurePath(spec.store)
       if type(root) ~= "table" then return end
       local byRealm = root[realm]
       if type(byRealm) ~= "table" then
@@ -7414,7 +7415,7 @@ do
       end
       byRealm[name] = value
     else
-      local root = store.Get and store.Get("recipientPin")
+      local root = store.Get and store.Get(spec.store)
       local byRealm = type(root) == "table" and root[realm] or nil
       if type(byRealm) ~= "table" then return end
       byRealm[name] = nil
@@ -7422,24 +7423,53 @@ do
     end
   end
 
-  -- saved, forms; worked out again when the saved name has changed, or
-  -- whenever `fresh` asks (a mailbox open: its casing may have been learnt).
-  function Pin.Forms(fresh)
-    local saved = Pin.Saved()
-    if fresh or saved ~= forms.saved then
-      forms.saved = saved
-      forms.shown, forms.short, forms.key = nil, nil, nil
-      if saved then
-        local R = ns.Recipients
-        local shown = R and R.Display and R.Display(saved) or ""
-        forms.shown = shown ~= "" and shown or saved
-        if R and R.Key then
-          local key, short = R.Key(saved)
-          forms.key, forms.short = key, short
-        end
+  -- A name's forms into `f`: `saved`, `shown` as the box writes it
+  -- (Recipients.Display), `short` its name half, `key` its recipient key.
+  local function NameForms(f, saved)
+    f.saved, f.shown, f.short, f.key = saved, nil, nil, nil
+    if not saved then return end
+    local R = ns.Recipients
+    local shown = R and R.Display and R.Display(saved) or ""
+    f.shown = shown ~= "" and shown or saved
+    if R and R.Key then
+      local key, short = R.Key(saved)
+      f.key, f.short = key, short
+    end
+  end
+
+  -- saved, forms for the box `spec`; worked out again when the saved words
+  -- have changed, or whenever `fresh` asks (a mailbox open: a name's casing
+  -- may have been learnt).
+  function Pin.Forms(spec, fresh)
+    local saved = Pin.Saved(spec)
+    local f = spec.forms
+    if fresh or saved ~= f.saved then
+      if spec.name then
+        NameForms(f, saved)
+      else
+        f.saved, f.shown = saved, saved
       end
     end
-    return saved, forms
+    return saved, f
+  end
+
+  -- The character being played, in a pinned name's forms; worked out when
+  -- they are missing or `fresh` asks (each mailbox open and send, Pin.Fill),
+  -- never per keystroke. nil before the client knows the name.
+  function Pin.Me(fresh)
+    local me = Pin.ME
+    if fresh or not me.key or me.key == "" then
+      local H = Helpers()
+      local name = H and H.PlayerName and H.PlayerName() or nil
+      if type(name) ~= "string" or name == "" then
+        NameForms(me, nil)
+        return nil
+      end
+      local R = ns.Recipients
+      local saved = R and R.Qualify and R.Qualify(name) or ""
+      NameForms(me, saved ~= "" and saved or name)
+    end
+    return me.key and me.key ~= "" and me or nil
   end
 
   -- The box's text without the spaces round it: its first and last byte.
@@ -7451,30 +7481,32 @@ do
   end
 
   -- A letter A to Z in either case one; on Forever a hyphen a space, as
-  -- "Abla-Stone" is "Abla Stone".
-  local function Fold(c, two)
+  -- "Abla-Stone" is "Abla Stone". `exact`: every byte as it is.
+  local function Fold(c, two, exact)
+    if exact then return c end
     if c >= 65 and c <= 90 then return c + 32 end
     if two and c == 45 then return 32 end
     return c
   end
 
   -- Whether text[i..j] is `want` by Fold. Byte by byte: nothing is built.
-  local function Same(text, i, j, want, two)
+  local function Same(text, i, j, want, two, exact)
     if not want or j - i + 1 ~= #want then return false end
     for k = 0, j - i do
-      if Fold(byte(text, i + k), two) ~= Fold(byte(want, k + 1), two) then return false end
+      if Fold(byte(text, i + k), two, exact) ~= Fold(byte(want, k + 1), two, exact) then return false end
     end
     return true
   end
 
-  -- Whether the box's text names the pinned name, as the Send tab compares
-  -- recipients (Recipients.Key). The forms the box writes it in (as filled,
-  -- as picked, as typed in any case of A to Z, with or without this realm)
-  -- are compared byte by byte, so the check that follows each keystroke
-  -- builds nothing. The key itself, which builds strings, is asked only of
-  -- text that can still be the name: a letter past A to Z (Cyrillic, an
-  -- accent, whose case Fold leaves alone) in a text of the name's length,
-  -- or the name with a realm written another way ("Twisting Nether").
+  -- Whether the box's text names the name `f` holds, as the Send tab
+  -- compares recipients (Recipients.Key). The forms the box writes it in (as
+  -- filled, as picked, as typed in any case of A to Z, with or without this
+  -- realm) are compared byte by byte, so the check that follows each
+  -- keystroke builds nothing. The key itself, which builds strings, is asked
+  -- only of text that can still be the name: a letter past A to Z
+  -- (Cyrillic, an accent, whose case Fold leaves alone) in a text of the
+  -- name's length, or the name with a realm written another way ("Twisting
+  -- Nether").
   local function Holds(text, i, j, f)
     local two = Helpers().TwoPartNames()
     if Same(text, i, j, f.shown, two) or Same(text, i, j, f.saved, two) then return true end
@@ -7506,25 +7538,32 @@ do
       icon:SetAlpha(1)
     else
       icon:SetVertexColor(Theme.InkFor(1, 1, 1))
-      icon:SetAlpha(key.state == "dim" and DIM or (key.hover and HOVER or REST))
+      local dim = key.state == "dim" or key.state == "self"
+      icon:SetAlpha(dim and DIM or (key.hover and HOVER or REST))
     end
   end
 
-  -- The key's state for the box as it stands; its ink when that changed
-  -- (or `force`), and its tooltip while the pointer is on it.
-  function Pin.Paint(panel, force)
-    local key = panel and panel.PinKey
+  -- One key's state for its box as it stands; its ink when that changed (or
+  -- `force`), and its tooltip while the pointer is on it.
+  function Pin.PaintKey(key, force)
     if not key or key.off then return end
-    local saved, f = Pin.Forms()
-    local text = panel.ToBox:GetText() or ""
+    local spec = key.spec
+    local saved, f = Pin.Forms(spec)
+    local text = key.box:GetText() or ""
     local i, j = Bounds(text)
     local state
     if j < i then
       state = saved and "clear" or "dim"
-    elseif saved and Holds(text, i, j, f) then
+    elseif saved and (spec.name and Holds(text, i, j, f) or (not spec.name and Same(text, i, j, f.saved, false, true))) then
       state = "lit"
     else
       state = "live"
+      -- The name of the character being played: the game takes no mail to
+      -- yourself, so a pin of it could only fill a name the send refuses.
+      if spec.name then
+        local me = Pin.Me()
+        if me and Holds(text, i, j, me) then state = "self" end
+      end
     end
     if force or state ~= key.state then
       key.state = state
@@ -7533,45 +7572,59 @@ do
     if GameTooltip:IsOwned(key) then Pin.Tip(key) end
   end
 
+  -- Both keys, as their boxes stand.
+  function Pin.Paint(panel, force)
+    if not panel then return end
+    Pin.PaintKey(panel.PinKey, force)
+    Pin.PaintKey(panel.SubjectPinKey, force)
+  end
+
   function Pin.Tip(key)
     local state = key.state
-    local _, f = Pin.Forms()
+    local _, f = Pin.Forms(key.spec)
     Theme.TipBegin(key, "ANCHOR_RIGHT")
     if state == "lit" or state == "clear" then
       Theme.TipTitle(L("PIN_TITLE_SET", f.shown or ""))
       if state == "lit" then Theme.TipLine(L("PIN_BODY_SET", f.shown or "")) end
+      -- Whose pin it is, and for how long.
+      Theme.TipLine(Theme.TipTone("muted", L["PIN_SCOPE"]))
       Theme.TipHint(L["PIN_HINT_CLEAR"])
     else
       Theme.TipTitle(L["PIN_TITLE"])
       if state == "dim" then
-        Theme.TipLine(Theme.TipTone("muted", L["PIN_TIP_EMPTY"]))
+        Theme.TipLine(Theme.TipTone("muted", L[key.spec.empty]))
+      elseif state == "self" then
+        Theme.TipLine(Theme.TipTone("muted", L["PIN_TIP_SELF"]))
       else
-        -- Another name pinned: the click pins this one in its place.
+        -- Other words pinned: the click pins these in their place.
         if f.shown then Theme.TipLine(L("PIN_TITLE_SET", f.shown)) end
-        Theme.TipHint(L("PIN_HINT_SET", FieldText(key.panel.ToBox)))
+        Theme.TipHint(L("PIN_HINT_SET", FieldText(key.box)))
       end
     end
     GameTooltip:Show()
   end
 
   function Pin.Click(key)
-    local panel = key.panel
     local state = key.state
+    local spec = key.spec
     if state == "lit" or state == "clear" then
-      Pin.Save(nil)
+      Pin.Save(spec, nil)
     elseif state == "live" then
-      local text = FieldText(panel.ToBox)
+      local text = FieldText(key.box)
       if text == "" then return end
-      local R = ns.Recipients
-      local saved = R and R.Qualify and R.Qualify(text) or ""
-      -- A bare name before the client knows the realm: the box's own
-      -- answer, this character's realm, is the one a pin here means.
-      if saved == "" then saved = text end
-      Pin.Save(saved)
+      local saved = text
+      if spec.name then
+        local R = ns.Recipients
+        saved = R and R.Qualify and R.Qualify(text) or ""
+        -- A bare name before the client knows the realm: the box's own
+        -- answer, this character's realm, is the one a pin here means.
+        if saved == "" then saved = text end
+      end
+      Pin.Save(spec, saved)
     else
       return
     end
-    Pin.Paint(panel, true)
+    Pin.PaintKey(key, true)
   end
 
   function Pin.Enter(key)
@@ -7586,30 +7639,40 @@ do
     GameTooltip:Hide()
   end
 
-  -- The box left empty on a pinned character takes the pinned name, put in
-  -- as a picked name is; the key follows either way.
+  -- Each box left empty on a character with a pin for it takes the pinned
+  -- words: the name put in as a picked name is, the subject as it was
+  -- pinned. The keys follow either way.
   function Pin.Fill(panel)
     if not (panel and panel.ToBox) then return end
-    -- With the pin switched off (Options > Send tab, Recipient pin) no
-    -- pinned name fills the box; the pins themselves stay saved.
+    -- With the pins switched off (Options > Send tab, Recipient pin) nothing
+    -- pinned fills a box; the pins themselves stay saved.
     if not Pin.On() then return end
-    local saved = Pin.Forms(true)
+    Pin.Me(true)
+    local saved = Pin.Forms(Pin.TO, true)
     if saved and FieldText(panel.ToBox) == "" then ST.SetRecipient(panel, saved) end
+    local box = panel.SubjectBox
+    if box then
+      saved = Pin.Forms(Pin.SUBJECT, true)
+      if saved and FieldText(box) == "" then
+        box:SetText(saved)
+        box:SetCursorPosition(0)
+      end
+    end
     Pin.Paint(panel, true)
   end
 
-  -- Whether a mailbox visit on this character starts with a pinned name:
-  -- the pin offered, and a name saved (what Pin.Fill fills an empty box
-  -- with). The draft put back at the open asks, for its own name to stand
-  -- aside (RestoreDraft).
-  function Pin.Starts()
-    return Pin.On() and Pin.Saved() ~= nil
+  -- Whether a mailbox visit on this character starts the box `spec` with
+  -- pinned words: the pins offered, and words saved for it (what Pin.Fill
+  -- fills it with). The draft put back at the open asks, for what the last
+  -- send left in that box to stand aside (RestoreDraft).
+  function Pin.Starts(spec)
+    return Pin.On() and Pin.Saved(spec) ~= nil
   end
 
-  -- The form as a send has just left it (SettleDraftAfterSuccess, after
-  -- "keep" and the pin have had their say): the name and subject standing,
-  -- kept on the panel until the mailbox closes. `_sentBare` waits for the
-  -- sent mail's items to be seen gone from the slots (Pin.NoteSlots).
+  -- The form as a send has just left it (SettleDraftAfterSuccess, after the
+  -- pins have filled it): the name and subject standing, kept on the panel
+  -- until the mailbox closes. `_sentBare` waits for the sent mail's items to
+  -- be seen gone from the slots (Pin.NoteSlots).
   function Pin.NoteSent(panel)
     panel._sentTo, panel._sentSubject = FieldText(panel.ToBox), FieldText(panel.SubjectBox)
     panel._sentBare = nil
@@ -7631,15 +7694,15 @@ do
 
   -- Whether the form being put aside as the mailbox closes (to, subject,
   -- body as StashDraft read them) is still exactly what this visit's last
-  -- send left: the same name and subject, no message, no gold typed, no
-  -- C.O.D. ticked, nothing attached or queued. Read by comparing, at the
-  -- close, so no keystroke is watched; a form typed in and then put back
-  -- exactly as the send left it holds nothing of the player's either.
-  -- False with no send this visit. Any doubt answers false, and the draft
-  -- comes back whole.
+  -- send left: the same name and subject (the pins' words, or nothing), no
+  -- message, no gold typed, no C.O.D. ticked, nothing attached or queued.
+  -- Read by comparing, at the close, so no keystroke is watched; a form
+  -- typed in and then put back exactly as the send left it holds nothing of
+  -- the player's either. False with no send this visit. Any doubt answers
+  -- false, and the draft comes back whole.
   function Pin.AsSent(panel, to, subject, body)
     local sentTo = panel._sentTo
-    if not sentTo or to == "" or to ~= sentTo or subject ~= panel._sentSubject or body ~= "" then return false end
+    if not sentTo or to ~= sentTo or subject ~= panel._sentSubject or body ~= "" then return false end
     local gold, silver, copper = panel.GoldBox, panel.SilverBox, panel.CopperBox
     if (gold and FieldText(gold) ~= "") or (silver and FieldText(silver) ~= "")
        or (copper and FieldText(copper) ~= "") then
@@ -7651,10 +7714,13 @@ do
     return true
   end
 
-  -- The key, inside the To box left of the Manage Recipients key, and the
-  -- typed text's right end short of it.
-  function Pin.Build(panel)
-    local wrap, manage = panel.ToWrap, panel.ManageRecipients
+  -- The key for the box `spec`, inside its box at the right end (in the
+  -- Recipient box, left of the Manage Recipients key), and the typed text's
+  -- right end short of it.
+  function Pin.Build(panel, spec)
+    local wrap, box = panel[spec.wrap], panel[spec.box]
+    if not (wrap and box) then return end
+    local manage = spec.name and panel.ManageRecipients or nil
     local key = CreateFrame("Button", nil, wrap)
     key:SetSize(SIZE, SIZE)
     key:SetFrameLevel(wrap:GetFrameLevel() + 5)
@@ -7664,41 +7730,48 @@ do
     key:SetPoint("RIGHT", wrap, "RIGHT", -IN - endW, 0)
     key.Icon = Theme.Glyph and Theme.Glyph(key, "pin", SIZE, "ARTWORK") or nil
     if key.Icon then key.Icon:SetPoint("CENTER", key, "CENTER", 0, 0) end
-    key.panel = panel
+    key.panel, key.spec, key.box = panel, spec, box
     key:SetScript("OnClick", Pin.Click)
     key:SetScript("OnEnter", Pin.Enter)
     key:SetScript("OnLeave", Pin.Leave)
-    panel.PinKey = key
+    panel[spec.key] = key
     -- The typed text's right inset (the box ends M.gap in from the wrap,
-    -- CreateFieldRow): short of the pin while it is shown; without it, IN
-    -- short of the divider, the room the pin kept from it.
+    -- CreateFieldRow): short of the pin while it is shown; without it, in
+    -- the Recipient box IN short of the divider, the room the pin kept from
+    -- it, and in the Subject box none, as it has always had.
     key.insetOn = IN + endW + SIZE + GAP - M.gap
-    key.insetOff = max(0, IN + endW - M.gap)
-    Pin.Apply(panel)
+    key.insetOff = manage and max(0, IN + endW - M.gap) or 0
+    Pin.ApplyKey(key)
   end
 
-  -- Whether the pin is offered (Options > Send tab, Recipient pin): on
-  -- unless switched off.
+  -- Whether the pins are offered (Options > Send tab, Recipient pin): on
+  -- unless switched off. One switch for both.
   function Pin.On()
     local UI = ns.MailboxUI
     if not (UI and type(UI.GetShowRecipientPin) == "function") then return true end
     return UI.GetShowRecipientPin()
   end
 
-  -- The key shown or put away as the option says, the text's room with it.
-  -- Off, the key neither paints nor fills; the saved pins are not touched.
-  function Pin.Apply(panel)
-    local key = panel and panel.PinKey
+  -- A key shown or put away as the option says, its box's text room with
+  -- it. Off, the key neither paints nor fills; the saved pins are not
+  -- touched.
+  function Pin.ApplyKey(key)
     if not key then return end
     local on = Pin.On()
     key.off = not on
     key:SetShown(on)
-    panel.ToBox:SetTextInsets(0, on and key.insetOn or key.insetOff, 0, 0)
+    key.box:SetTextInsets(0, on and key.insetOn or key.insetOff, 0, 0)
     if on then
-      Pin.Paint(panel, true)
+      Pin.PaintKey(key, true)
     elseif GameTooltip:IsOwned(key) then
       GameTooltip:Hide()
     end
+  end
+
+  function Pin.Apply(panel)
+    if not panel then return end
+    Pin.ApplyKey(panel.PinKey)
+    Pin.ApplyKey(panel.SubjectPinKey)
   end
 end
 
@@ -7794,7 +7867,7 @@ local function BuildRecipientField(panel)
 
   -- The pin, inside the box left of the key; the typed text stops short of
   -- both instead of running under them (ST.Pin.Build).
-  ST.Pin.Build(panel)
+  ST.Pin.Build(panel, ST.Pin.TO)
 end
 
 -- The Manage Recipients key lit while its window is open, as the Mail
@@ -8605,7 +8678,7 @@ function ST.Build(parent)
     end
     ST.UpdateSendGuidance(panel)
     -- The pin follows the box (19a).
-    ST.Pin.Paint(panel)
+    ST.Pin.PaintKey(panel.PinKey)
   end)
   panel.ToBox:SetScript("OnTabPressed", function() RecipientTabPressed(panel) end)
   -- Two stages: cancel the completion, then -- with nothing left to cancel --
@@ -8655,7 +8728,11 @@ function ST.Build(parent)
     self._placeholder:SetShown(self:GetText() == "")
     -- The line saying what went stands only over the draft the send left.
     if ST.sent.line then Invalidate(panel, "guidance") end
+    -- The pin follows the box (19a).
+    ST.Pin.PaintKey(panel.SubjectPinKey)
   end)
+  -- Its pin, inside the box at its right end (ST.Pin.Build).
+  ST.Pin.Build(panel, ST.Pin.SUBJECT)
   panel.SubjectBox:SetScript("OnEditFocusGained", function(self)
     if self:GetText() ~= "" then self:HighlightText() end
   end)

@@ -8971,22 +8971,10 @@ function Pages.send(col)
     title = L["RM_OPT_BUTTON"], text = L["RM_OPT_BUTTON_DESC"], caption = L["OPT_RECIPIENTS_NONE"],
     onClick = function() Ctx.OpenRecipients() end, minWidth = DD_W, chevron = true, glyph = "recipients-10",
   })
-  -- What a sent mail leaves in the form: nothing, the recipient, or the
-  -- recipient and the subject. Nothing to refresh: it is read at the moment
-  -- a send succeeds.
-  Rows.Dropdown(col, {
-    title = L["OPT_AFTER_SEND_TITLE"], text = L["OPT_AFTER_SEND_DESC"],
-    items = {
-      { id = "nothing",   name = L["OPT_AFTER_SEND_NOTHING"] },
-      { id = "recipient", name = L["OPT_AFTER_SEND_RECIPIENT"] },
-      { id = "subject",   name = L["OPT_AFTER_SEND_SUBJECT"] },
-    },
-    get = function() return ns.MailboxUI.GetAfterSendKeep and ns.MailboxUI.GetAfterSendKeep() or "nothing" end,
-    set = function(id) if ns.MailboxUI.SetAfterSendKeep then ns.MailboxUI.SetAfterSendKeep(id) end end,
-  })
-  -- The pin in the Recipient box, offered or not: off, it is hidden and no
-  -- pinned name fills the box; the pins stay saved. Shown at once on an
-  -- open Send tab.
+  -- The pins in the Recipient and Subject boxes, offered or not: off, they
+  -- are hidden and nothing pinned fills a box; the pins stay saved. Shown
+  -- at once on an open Send tab. (What a sent mail leaves in the form is
+  -- the pins' to say: a pinned box keeps its words, the rest clears.)
   Rows.Check(col, {
     title = L["OPT_RECIPIENT_PIN_TITLE"], text = L["OPT_RECIPIENT_PIN_DESC"],
     get = function() return not ns.MailboxUI.GetShowRecipientPin or ns.MailboxUI.GetShowRecipientPin() end,
@@ -12636,7 +12624,7 @@ local function Build()
   S.weekEntry.offText = L["OPT_WEEK_OFF"]
   S.weekEntry.tab = "general"
   S.idle.mail = Entry(L["OPT_ARRANGE_BUTTON"], L["ARRANGE_TIP"])
-  S.idle.send = Entry(L["OPT_AFTER_SEND_TITLE"], L["OPT_AFTER_SEND_DESC"])
+  S.idle.send = Entry(L["OPT_RECIPIENT_PIN_TITLE"], L["OPT_RECIPIENT_PIN_DESC"])
   S.idle.window = Entry(L["OPT_STYLE_TITLE"], L["OPT_STYLE_DESC"])
   S.idle.minimap = Entry(L["OPT_MINIMAP_TITLE"], L["OPT_MINIMAP_DESC"])
 
