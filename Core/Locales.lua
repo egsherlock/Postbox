@@ -349,6 +349,7 @@ L["STATUS_LEFT_KINDS_ONE"]     = "Not taken: %d"
 L["STATUS_LEFT_KINDS_OTHER"]   = "Not taken: %d"
 -- s33 words
 L["STATUS_LEFT_WHERE"]         = "Options > Mail tab: All mail takes"
+L["STATUS_LEFT_WHY"]           = "All mail left the kinds of mail you unticked."
 L["OPT_ATTACH_HOVER_TITLE"]    = "Attachments on hover"
 L["OPT_ATTACH_HOVER_DESC"]     = "What pointing at the icon of a mail with several items shows.\n\nTooltip: a list of what it holds. Fan out: the items spread beside the icon and a click takes one; a C.O.D. mail still asks first."
 L["OPT_ATTACH_HOVER_TOOLTIP"]  = "Tooltip"
@@ -2174,6 +2175,7 @@ if GetLocale() == "frFR" then
   L["STATUS_LEFT_KINDS_OTHER"]   = "Non récupérés : %d"
   -- s33 words
   L["STATUS_LEFT_WHERE"]         = "Options > Onglet Courrier : Tous les courriers prend"
+  L["STATUS_LEFT_WHY"]           = "Tous les courriers a laissé les types de courrier que tu as décochés."
   L["OPT_ATTACH_HOVER_TITLE"]    = "Pièces jointes au survol"
   L["OPT_ATTACH_HOVER_DESC"]     = "Ce qu'affiche le pointeur posé sur l'icône d'un courrier à plusieurs objets.\n\nInfobulle : la liste de son contenu. Éventail : les objets s'étalent à côté de l'icône et un clic en prend un ; un courrier C.R. demande toujours avant."
   L["OPT_ATTACH_HOVER_TOOLTIP"]  = "Infobulle"
@@ -3424,6 +3426,7 @@ if GetLocale() == "deDE" then
   L["STATUS_LEFT_KINDS_OTHER"]   = "Nicht abgeholt: %d"
   -- s33 words
   L["STATUS_LEFT_WHERE"]         = "Optionen > Post-Tab: Alle Post nimmt"
+  L["STATUS_LEFT_WHY"]           = "Alle Post hat die Arten von Post liegen lassen, bei denen du den Haken entfernt hast."
   L["OPT_ATTACH_HOVER_TITLE"]    = "Anhänge beim Darüberfahren"
   L["OPT_ATTACH_HOVER_DESC"]     = "Was der Mauszeiger auf dem Symbol eines Briefs mit mehreren Gegenständen zeigt.\n\nTooltip: eine Liste des Inhalts. Auffächern: Die Gegenstände breiten sich neben dem Symbol aus, und ein Klick nimmt einen; ein NN-Brief fragt weiterhin zuerst."
   L["OPT_ATTACH_HOVER_TOOLTIP"]  = "Tooltip"
@@ -4798,6 +4801,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["STATUS_LEFT_KINDS_OTHER"]   = "No recogidos: %d"
   -- s33 words
   L["STATUS_LEFT_WHERE"]         = "Opciones > Pestaña Correo: Todo el correo recoge"
+  L["STATUS_LEFT_WHY"]           = "Todo el correo dejó los tipos de correo que desmarcaste."
   L["OPT_ATTACH_HOVER_TITLE"]    = "Adjuntos al pasar el ratón"
   L["OPT_ATTACH_HOVER_DESC"]     = "Lo que muestra el puntero sobre el icono de un correo con varios objetos.\n\nInformación: una lista de lo que contiene. En abanico: los objetos se despliegan junto al icono y un clic recoge uno; un correo C.R. sigue preguntando antes."
   L["OPT_ATTACH_HOVER_TOOLTIP"]  = "Información"
@@ -6215,6 +6219,7 @@ L["STATUS_LEFT_KINDS_FEW"]     = "Не забрано: %d"
 L["STATUS_LEFT_KINDS_MANY"]    = "Не забрано: %d"
 -- s33 words
 L["STATUS_LEFT_WHERE"]         = "Настройки > Вкладка Почта: «Вся почта» забирает"
+L["STATUS_LEFT_WHY"]           = "«Вся почта» оставила виды почты, с которых вы сняли отметку."
 L["OPT_ATTACH_HOVER_TITLE"]    = "Вложения при наведении"
 L["OPT_ATTACH_HOVER_DESC"]     = "Что показывает указатель, наведённый на иконку письма с несколькими предметами.\n\nПодсказка: список содержимого. Веер: предметы раскладываются рядом с иконкой, и щелчок забирает один; письмо с наложенным платежом по-прежнему сначала спрашивает."
 L["OPT_ATTACH_HOVER_TOOLTIP"]  = "Подсказка"
@@ -7432,6 +7437,7 @@ if GetLocale() == "zhCN" then
   L["STATUS_LEFT_KINDS_OTHER"]  = "未收取：%d 封"
   -- s33 words
   L["STATUS_LEFT_WHERE"]        = "选项 > 邮件标签：全部邮件收取"
+  L["STATUS_LEFT_WHY"]          = "全部邮件留下了你取消勾选的邮件类别。"
   L["OPT_ATTACH_HOVER_TITLE"]  = "悬停时的附件"
   L["OPT_ATTACH_HOVER_DESC"]   = "将指针停留在含有多件物品的邮件图标上时显示的内容。\n\n提示：列出其中的物品。展开：物品在图标旁展开，点击即可拿取一件；货到付款邮件仍会先询问。"
   L["OPT_ATTACH_HOVER_TOOLTIP"] = "提示"
@@ -8783,6 +8789,7 @@ if GetLocale() == "zhTW" then
   L["STATUS_LEFT_KINDS_OTHER"]  = "未領取：%d 封"
   -- s33 words
   L["STATUS_LEFT_WHERE"]        = "選項 > 郵件索引標籤：全部郵件領取"
+  L["STATUS_LEFT_WHY"]          = "全部郵件留下了你取消勾選的郵件類別。"
   L["OPT_ATTACH_HOVER_TITLE"]  = "滑鼠停留時的附件"
   L["OPT_ATTACH_HOVER_DESC"]   = "將指標停留在含有多件物品的郵件圖示上時顯示的內容。\n\n提示：列出其中的物品。展開：物品在圖示旁展開，點擊即可領取一件；貨到付款郵件仍會先詢問。"
   L["OPT_ATTACH_HOVER_TOOLTIP"] = "提示"

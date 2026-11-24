@@ -5504,9 +5504,13 @@ local function BuildFrame()
       -- tone, as its row's says it; the click muted after the blank line.
       theme.TipBegin(self, "ANCHOR_BOTTOMRIGHT")
       theme.TipTitle(text)
-      -- Where the setting is, a footnote under the line (Theme.TipNote), as
-      -- the kept slots' is.
-      if left then theme.TipNote(L("STATUS_LEFT_WHERE")) end
+      -- Why that mail stayed (one sentence, true of both forms: only other
+      -- players' kind unticked, or any other), then where the setting is, a
+      -- footnote under it (Theme.TipNote), as the kept slots' is.
+      if left then
+        theme.TipLine(L("STATUS_LEFT_WHY"))
+        theme.TipNote(L("STATUS_LEFT_WHERE"))
+      end
       if full then
         local muted = theme.TIP_MUTED
         GameTooltip:AddLine(L("BAGS_FULL_TIP"), muted, muted, muted, true)
