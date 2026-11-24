@@ -10077,8 +10077,9 @@ do
     line:Show()
   end
 
-  -- Its tooltip, the lit Alt key's: kept on, what it is and that a click or
-  -- Alt ends it; held, what it is and how to keep it on.
+  -- Its tooltip, the lit Alt key's: kept on, what it is, what a click and
+  -- a right-click on the list now do (f72 B04), and that a click or Alt
+  -- turns it off; held, what it is and how to keep it on.
   function M.KeyEnter(self)
     local T = Th()
     self.hover = true
@@ -10087,6 +10088,7 @@ do
     T.TipTitle(L()["MARKS_KEY_TITLE"])
     if self.state == "lit" then
       T.TipLine(L()["MARKS_KEY_TIP"])
+      T.TipLine(L()["MARKS_KEY_KEPT_DOES"])
       T.TipHint(L()["MARKS_KEY_HINT"])
     else
       T.TipHint(L()["HINT_MARKS_KEEP"])
