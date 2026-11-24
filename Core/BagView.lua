@@ -1659,10 +1659,7 @@ function BV.Flash(panel)
   local T = Th()
   local wash = BV.wash
   if not wash then
-    -- The note's slot: the footer's width, a button tall, about the note.
     wash = CreateFrame("Frame", nil, panel.Footer)
-    wash:SetPoint("TOPLEFT", panel.Footer, "LEFT", 0, BV.FLASH_H / 2)
-    wash:SetPoint("BOTTOMRIGHT", panel.Footer, "RIGHT", 0, -BV.FLASH_H / 2)
     wash:EnableMouse(false)
     wash.Tex = wash:CreateTexture(nil, "BACKGROUND")
     wash.Tex:SetAllPoints()
@@ -1691,6 +1688,16 @@ function BV.Flash(panel)
   -- Another note was lit (History's, then a box's): that one first.
   if BV.flashNote and BV.flashNote ~= note then BV.FlashEnd() end
   BV.flashNote = note
+  -- The note's slot, wherever the stack has put it (RV.PlaceStack: the
+  -- note stands in the middle of All mail's slot, inset from the footer's
+  -- sides, and the band may sit above or below it): the footer's width, a
+  -- button tall, about the note itself. Anchored to the note on every
+  -- flash, never to the footer's middle, which is the slot's only while
+  -- the slot is the whole footer.
+  local inset, half = T.Metrics.inset, BV.FLASH_H / 2
+  wash:ClearAllPoints()
+  wash:SetPoint("TOPLEFT", note, "LEFT", -inset, half)
+  wash:SetPoint("BOTTOMRIGHT", note, "RIGHT", inset, -half)
   T.SetColor(note, "textPrimary", "window")
   wash:Show()
   if wash.Fade then
