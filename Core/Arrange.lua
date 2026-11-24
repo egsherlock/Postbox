@@ -983,8 +983,8 @@ end
 -- The Mail tab's marks chip (Core/CollectTab.lua, RV.Marks; f63 A01): a
 -- bare key as wide as its caller set it, wearing its glyphs
 -- (button.Glyphs, the Return arrow and the x) where the word would be.
--- Not lit (Alt held), the cog key at rest: the glyphs in its rest grey, and
--- pointed at, white on its faint plate. Lit (kept on by a double-tap): the
+-- Not lit (Alt held): the glyphs white on the cog key's faint plate, shown
+-- the whole time the chip shows (f77 B04), lifted under the pointer. Lit (kept on by a double-tap): the
 -- selected plate under the accent's wash at CHIP_WASH, a ring in the
 -- accent's mark (AR.MarkRGB), the black keyline on a dark palette, the
 -- glyphs in the accent's bright tone (its mark tone on a light palette,
@@ -1019,24 +1019,39 @@ function AR.PaintChip(button, lit, hover)
       button.Lift:Hide()
     end
   else
+    -- Held (f77 B04 "plate", his idea): the chip stands on the plate the
+    -- cog key wears under the pointer whenever it shows, not only pointed
+    -- at -- the 7% white fill, the gray ring, the black keyline on a dark
+    -- palette -- its marks white; pointed at, the plate's lift over that,
+    -- as the lit chip lifts.
     AR.Chrome(button.Fill, 0.07)
-    button.Fill:SetShown(hover)
+    button.Fill:Show()
     if light then
       local ring = T.Colors.plateEdgeHover
       AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], 1)
     else
       AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
     end
-    AR.ShowEdges(button.Ring, hover)
+    AR.ShowEdges(button.Ring, true)
     AR.TintEdges(button.Key, 0, 0, 0, 0.8)
-    AR.ShowEdges(button.Key, hover and not light)
+    AR.ShowEdges(button.Key, not light)
     button.Wash:Hide()
-    button.Lift:Hide()
+    local lift = T.Colors.plateHighlight
+    if lift and hover then
+      button.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
+      button.Lift:Show()
+    else
+      button.Lift:Hide()
+    end
   end
-  local token = lit and (light and "accent" or "accentBright") or (hover and "textPrimary" or KEY_REST)
+  local token = lit and (light and "accent" or "accentBright") or "textPrimary"
   local glyphs = button.Glyphs
   for i = 1, #glyphs do T.SetColor(glyphs[i], token) end
-  if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, lit) end
+  -- A skin that draws keys its own way draws the held chip's plate too,
+  -- at rest or pointed at.
+  if ns.Skin and type(ns.Skin.PaintKey) == "function" then
+    ns.Skin.PaintKey(button, lit, not lit and (hover and "over" or "up") or nil)
+  end
 end
 
 -- Every look the key has, from its state: at rest the mark alone; pointed

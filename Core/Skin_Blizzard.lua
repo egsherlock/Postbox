@@ -3959,10 +3959,15 @@ do
 
   -- The key, lit: the selected art alone, laid by its rim on the key; the
   -- house's lit plate (fill, wash, ring, keyline, edge, underline, lift)
-  -- put away. Unlit, the house shows what it shows and the art goes.
-  function Skin.PaintKey(button, lit)
+  -- put away. Unlit, the house shows what it shows and the art goes --
+  -- except where the caller asks for a plate at rest (`plate`, "up" or
+  -- "over": the Mail tab's marks chip while Alt is held, AR.PaintChip,
+  -- f77 B04): the small dark button's normal art, its hover art under the
+  -- pointer, the house's plate put away the same way, the marks white.
+  function Skin.PaintKey(button, lit, plate)
     local art = button.__pbBlizzKey
-    if not lit then
+    local state = lit and "lit" or plate
+    if not state then
       if art then
         for i = 1, 3 do art[i]:Hide() end
       end
@@ -3975,9 +3980,9 @@ do
     if not art then return end
     local h = button:GetHeight()
     if type(h) ~= "number" or h <= 0 then return end
-    if art.h ~= h then
-      art.h = h
-      Parts.LaySmall(art, button, "lit", "alone", 0, h)
+    if art.h ~= h or art.state ~= state then
+      art.h, art.state = h, state
+      Parts.LaySmall(art, button, state, "alone", 0, h)
     end
     for i = 1, 3 do art[i]:Show() end
     if button.Fill then button.Fill:Hide() end
