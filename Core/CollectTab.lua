@@ -13840,6 +13840,10 @@ local Run = {
   -- Handed to every CollectMail of the run: { keepFree = N, moves = true }
   -- (BeginRun).
   opts = {},
+  -- Mails a run keeping bag slots free left as they were once it reached
+  -- them, while it went on for what fits a special bag or the reagent bag
+  -- (Run.OnCollected).
+  kept = 0,
 }
 
 function CT.IsRunning()
@@ -14031,7 +14035,7 @@ local function ResetRun()
   Clear(Run.lost)
   for i in pairs(Run.again) do Run.again[i] = nil end
   Clear(Run.queue)
-  Run.dropped, Run.subset = 0, false
+  Run.dropped, Run.subset, Run.kept = 0, false, 0
   for i in pairs(Run.econE) do Run.econE[i], Run.econS[i] = nil, nil end
   for i in pairs(Run.tallied) do Run.tallied[i] = nil end
   for i in pairs(Run.took) do Run.took[i] = nil end
@@ -14399,8 +14403,13 @@ local function RunStep()
   repeat
     Run.cursor = Run.cursor + 1
     if Run.cursor > #Run.queue then
-      -- The end of the queue: every place given up on is still in the box.
-      FinishRun(Run.dropped)
+      -- The end of the queue: every place given up on is still in the box,
+      -- and the mails left to keep bag slots free are said as that stop.
+      if Run.kept > 0 then
+        FinishRun(Run.dropped + Run.kept, "keep")
+      else
+        FinishRun(Run.dropped)
+      end
       return
     end
     local why
@@ -14466,7 +14475,7 @@ function Run.OnCollected(status, refused, reason, refusal, _, took, record)
     -- all. Either way the next command could be silently discarded. Stop, and
     -- count this mail plus everything still queued as left behind.
     if Run.took[i] then Run.Tally(i) end
-    FinishRun(Remaining() + 1 + Run.dropped, "timeout")
+    FinishRun(Remaining() + 1 + Run.dropped + Run.kept, "timeout")
     return
   end
 
@@ -14474,9 +14483,17 @@ function Run.OnCollected(status, refused, reason, refusal, _, took, record)
   -- it ends here, as a bags stop does, with this mail and the rest still
   -- in the mailbox. Only the gold of a mail that had some came out -- a
   -- mail holding only items was not touched -- so only then is it tallied.
+  -- While a special bag or the reagent bag still has room and the general
+  -- slots are not below those kept, the run goes on past this mail: a later
+  -- one may hold what fits there (MailService, Mail.KeepFreeGoesOn).
   if status == "refused" and refusal == "keep" then
     if Run.took[i] then Run.Tally(i) end
-    FinishRun(Remaining() + 1 + Run.dropped, "keep")
+    local M = Mail()
+    if M.KeepFreeGoesOn and M.KeepFreeGoesOn(Run.opts.keepFree) then
+      Run.kept = Run.kept + 1
+      return Run.Next()
+    end
+    FinishRun(Remaining() + 1 + Run.dropped + Run.kept, "keep")
     return
   end
 
@@ -14506,7 +14523,7 @@ function Run.OnCollected(status, refused, reason, refusal, _, took, record)
     -- further take would be refused too, and each mail walked past would be
     -- marked read for nothing. The mail just refused still holds its items,
     -- so it counts as left alongside everything still queued.
-    FinishRun(Remaining() + 1 + Run.dropped, "bags")
+    FinishRun(Remaining() + 1 + Run.dropped + Run.kept, "bags")
     return
   elseif status == "refused" then
     -- A fact about those items, not about the run: record them and keep
@@ -14707,25 +14724,24 @@ local function StartCategoryRun(panel, category)
     return
   end
 
-  -- The general bags and the reagent bag together, as this check has always
-  -- counted: reagent mail may well fit there, and a run that meets full bags
-  -- anyway stops cleanly as a bags stop. What it says is the general bags'
-  -- number, as All mail's tooltip does, with the reagent bag's room said
-  -- apart: only reagents go there (RV.ReagentExtra).
+  -- The general bags, and of the special bags and the reagent bag only what
+  -- the queued attachments fit (MailService.QueueRoom: a reagent in the
+  -- reagent bag, an herb in an herb bag; a soul bag takes nothing mail
+  -- brings). What it says is the general bags' number, as All mail's tooltip
+  -- does, with the reagent bag's room and what special bags take said apart
+  -- (RV.ReagentExtra, RV.SpecialExtra).
   local free, reagent = Mail().FreeBagSlots()
   if free ~= nil then
     -- "Keep bag slots free": the run fills only the general slots above
-    -- that, so they are the room it has (0 keeps none, and this is exactly
-    -- the check it always was). Said as the slots it may fill, with the kept
-    -- ones after them: "you have 3 slots free (+2 kept free)".
+    -- that, so they are the room it has (0 keeps none). Said as the slots it
+    -- may fill, with the kept ones after them: "you have 3 slots free (+2
+    -- kept free)".
     local keep = RV.KeepFreeSlots()
     local usable = math.max(0, free - keep)
-    local room = usable + (reagent or 0)
-    local needed = Mail().QueueAttachmentSlots(queue)
-    if needed > room then
-      local fits = Mail().QueuePrefixThatFits(queue, room)
+    local fits, needed, general = Mail().QueueRoom(queue, usable)
+    if general > usable then
       local need, have = ns.Plural("COUNT_SLOTS", needed), ns.Plural("COUNT_SLOTS", usable)
-      local extra = RV.KeptExtra(free, keep) .. RV.ReagentExtra(reagent)
+      local extra = RV.KeptExtra(free, keep) .. RV.ReagentExtra(reagent) .. RV.SpecialExtra()
       if fits <= 0 and usable < free then
         -- Nothing fits above the slots kept free, and there are free slots:
         -- no dialog about bag space the player can see is there, just the
@@ -16179,12 +16195,58 @@ end
 -- the tooltip is up, and nothing kept but the lines themselves. The slots are
 -- the general bags' (MailService.FreeBagSlots: backpack and bag slots), the
 -- room every attachment can use; a reagent bag with room says so on a line
--- of its own, since only reagents can go there.
+-- of its own, since only reagents can go there, and so do special bags (an
+-- herb bag, a quiver) for the attachments that fit them, never for room
+-- nothing in the mail fits (a soul bag). The warning compares with the
+-- general slots what those bags do not take.
 -- The reagent bag's room as the bags-full messages add it after the
 -- general slots: " (+10 in the reagent bag, for reagents only)", or "".
 function RV.ReagentExtra(reagent)
   if (tonumber(reagent) or 0) <= 0 then return "" end
   return L()("BAGS_REAGENT_EXTRA", reagent)
+end
+
+-- What special bags take of the attachments just counted
+-- (MailService.QueueRoom), as the bags-full messages add it: " (+4 in
+-- special bags, for the items that fit them)", or "".
+function RV.SpecialExtra()
+  local M = Mail()
+  local used = M.SpecialRoomUsed and M.SpecialRoomUsed() or 0
+  if used <= 0 then return "" end
+  return L()("BAGS_SPECIAL_EXTRA", used)
+end
+
+-- panel, scan -> the attachments All mail would take (RV.AllMailRoom's
+-- mails), and with `scan` how many of them the special bags and the reagent
+-- bag take, in the count MailService.SpecialRoom began.
+function RV.RoomCount(panel, scan)
+  local M = Mail()
+  local items, fitted = 0, 0
+  if Selecting(panel) and panel._selected then
+    for index in pairs(panel._selected) do
+      local n = RV.RoomItems(index, true)
+      items = items + n
+      if scan and n > 0 then fitted = fitted + math.min(n, M.SpecialRoomMail(index)) end
+    end
+  else
+    -- Under the stuck filter the rows are retried as picks would be. A list
+    -- of samples (Preview mail) holds no mail to ask about.
+    local list, done, retry = panel._filtered, panel._filteredDone, StuckOnly(panel)
+    if panel._preview then list = RV.NONE end
+    -- Over the whole box, not the mail it leaves for who sent it ("All
+    -- mail takes"): its items are not its sweep's to find room for.
+    local takes = nil
+    if not (retry or Searching(panel) or RV.Filtering(panel)) then takes = RV.AllTakes() end
+    for i = 1, #list do
+      local index = list[i]
+      if done[i] == false and type(index) == "number" and not (takes and not takes[M.SenderKind(index)]) then
+        local n = RV.RoomItems(index, retry)
+        items = items + n
+        if scan and n > 0 then fitted = fitted + math.min(n, M.SpecialRoomMail(index)) end
+      end
+    end
+  end
+  return items, fitted
 end
 
 -- "Keep bag slots free" (Options, Mail tab): the general bag slots a collect
@@ -16265,32 +16327,26 @@ function RV.AllMailRoom(panel, tooltip)
   -- the items with those; the line under it says how many are kept.
   local keep = RV.KeepFreeSlots()
   local usable = math.max(0, free - keep)
-  local items = 0
-  if Selecting(panel) and panel._selected then
-    for index in pairs(panel._selected) do items = items + RV.RoomItems(index, true) end
-  else
-    -- Under the stuck filter the rows are retried as picks would be. A list
-    -- of samples (Preview mail) holds no mail to ask about.
-    local list, done, retry = panel._filtered, panel._filteredDone, StuckOnly(panel)
-    if panel._preview then list = RV.NONE end
-    -- Over the whole box, not the mail it leaves for who sent it ("All
-    -- mail takes"): its items are not its sweep's to find room for.
-    local takes = nil
-    if not (retry or Searching(panel) or RV.Filtering(panel)) then takes = RV.AllTakes() end
-    for i = 1, #list do
-      local index = list[i]
-      if done[i] == false and type(index) == "number" and not (takes and not takes[M.SenderKind(index)]) then
-        items = items + RV.RoomItems(index, retry)
-      end
-    end
+  local items, fitted = RV.RoomCount(panel, false)
+  -- What the special bags and the reagent bag take of it is asked of each
+  -- attachment only where it can matter: a special bag has room (its line
+  -- names what fits it), or the reagent bag has and the items are more than
+  -- the general slots (the warning).
+  local specials, reagentRoom = 0, false
+  if items > 0 and M.SpecialRoom then specials, reagentRoom = M.SpecialRoom() end
+  local special = 0
+  if specials > 0 or (reagentRoom and items > usable) then
+    items, fitted = RV.RoomCount(panel, true)
+    special = M.SpecialRoomUsed()
   end
   local text = ns.Plural("ROOM_FREE", free)
   if items > 0 then text = ns.Plural("ROOM_ITEMS", items) .. " \194\183 " .. text end
   local T = Th()
   local muted = T.TIP_MUTED or 0.7
-  T.TipLine(items > usable and T.TipTone("warning", text) or text)
+  T.TipLine(items - fitted > usable and T.TipTone("warning", text) or text)
   if keep > 0 then tooltip:AddLine(ns.Plural("ROOM_KEPT", keep), muted, muted, muted, true) end
   if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), muted, muted, muted, true) end
+  if special > 0 then tooltip:AddLine(ns.Plural("ROOM_SPECIAL", special), muted, muted, muted, true) end
   -- While the bags are full the mails with items wait, and the count above
   -- is only what needs no room: say why.
   if M.BagsFull and M.BagsFull() then tooltip:AddLine(L()["BAGS_FULL_TIP"], muted, muted, muted, true) end
