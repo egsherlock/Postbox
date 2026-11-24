@@ -9492,6 +9492,11 @@ do
 
   -- Made with the row: the arrow, on a button of its own over the row.
   function M.Build(row)
+    -- The mail under the pointer at the press, on the row and on each part
+    -- that takes its clicks (M.Down; shared scripts, nothing per press).
+    row:HookScript("OnMouseDown", M.Down)
+    if row.IconHit then row.IconHit:HookScript("OnMouseDown", M.PartDown) end
+    if row.Delete then row.Delete:HookScript("OnMouseDown", M.PartDown) end
     local T = Th()
     if not (T.Glyph and T.GLYPHS and T.GLYPHS["expiry-back"]) then return end
     local b = CreateFrame("Button", nil, row)
@@ -9504,8 +9509,31 @@ do
     b:SetScript("OnEnter", M.ReturnEnter)
     b:SetScript("OnLeave", M.ReturnLeave)
     b:SetScript("OnClick", M.ReturnClick)
+    b:SetScript("OnMouseDown", M.PartDown)
     b.__pbTipRow = row
     row.Return = b
+  end
+
+  -- A press on the row, or on its icon, x or arrow: the mail the row shows
+  -- now (its fingerprint, as the service follows a mail), kept for the
+  -- click that ends it (M.Pressed).
+  function M.Down(self)
+    self._mkPress = self.fingerprint
+  end
+
+  function M.PartDown(self)
+    local row = self:GetParent()
+    row._mkPress = row.fingerprint
+  end
+
+  -- row -> whether it shows the mail it showed at the press that ends in
+  -- this click; the press is used up either way. A row bound again between
+  -- press and release (new mail arriving) shows another mail, and the
+  -- marks' click then does nothing.
+  function M.Pressed(row)
+    local pressed = row._mkPress
+    row._mkPress = nil
+    return pressed ~= nil and pressed == row.fingerprint
   end
 
   -- The house tooltip: the title, what the click does, and how to keep the
@@ -9539,7 +9567,9 @@ do
   end
 
   function M.ReturnClick(self)
-    return M.ReturnRow(self:GetParent())
+    local row = self:GetParent()
+    if not M.Pressed(row) then return end
+    return M.ReturnRow(row)
   end
 
   -- Return, only while the marks show, on the mail this row is bound to as
@@ -9576,6 +9606,7 @@ do
   -- are still coming in (M.p under 1, the first 150 ms) a click does
   -- nothing at all, on either button: it neither acts nor collects.
   function M.Click(row, button, index)
+    local same = M.Pressed(row)
     M.Check()
     if M.goal ~= 1 then return false end
     M.Used()
@@ -9583,6 +9614,9 @@ do
     if IsShiftKeyDown() or IsControlKeyDown() then
       return M.held or button ~= "LeftButton" or row.mailDone == true
     end
+    -- Only on the mail pressed: a row bound again under the pointer
+    -- between press and release does nothing.
+    if not same then return true end
     if button == "LeftButton" then
       if row._mkKind == "back" and not row.mailDone then M.ReturnRow(row) end
     elseif button == "RightButton" and row.mailDone and not M.Calm() then
