@@ -2705,17 +2705,19 @@ end
 --      line is then what it was before there were notes ("Collected: 19 —
 --      Stuck: 1") and gives way from there as below. A note the line ends
 --      on is a part like any other: it is what stayed behind.
---   1. A part that says "word: what" -- a count ("Bags full: 1 left",
---      "Stuck: 2", "Collected: 21"), or what happened ("Cut short: the
---      mailbox closed") -- keeps its word and drops the rest, the line's
---      last part first: "Collected: 21 — Bags full", then "Collected —
---      Bags full".
+--   1. The numbers stay longest. A part that says "word: N more" says
+--      "word: N" -- "Kept free: 6 slots" is "Kept free: 6", "Bags full: 4
+--      left" is "Bags full: 4" -- every such part at once. A part whose
+--      number does not follow its word (Spanish "quedan 3") keeps its text.
 --   2. Still too long: whole parts go -- what was sent, the line's tail,
---      first, then from the line's start -- so what it ends on, what stayed
---      behind and why, is what stays.
---   3. One part left, of more than one sentence: its first sentence, as
---      Test mail's "Sample mail. None of it can be collected." gives way to
---      "Sample mail." (". ", or the CJK full stop).
+--      first, then from the line's start -- each time the rest whole, then
+--      as in 1, so what it ends on, what stayed behind and how many, is
+--      what stays: "Collected: 11 — Kept free: 6", "Stuck: 2 — Bags full:
+--      4 left", "Bags full: 4". The last part alone, wider still: its word
+--      ("Cut short: the mailbox closed" is "Cut short").
+--   3. One part left, of more than one sentence, with no word: its first
+--      sentence, as Test mail's "Sample mail. None of it can be collected."
+--      gives way to "Sample mail." (". ", or the CJK full stop).
 --   4. One part left with no word to keep and wider than the room: the
 --      client cuts it at its end, as before. Measured in seven locales, the
 --      one that could be was "Stopped to keep N bag slots free", near the
@@ -2740,9 +2742,10 @@ local StatusFit = {
   cands = {},        -- the candidates, longest first
   widths = {},       -- each one's measured width, in the face below
   path = false, size = false, flags = false, shadow = false,
-  -- The line in parts, the join before each, each part's word and the parts
+  -- The line in parts, the join before each, each part's word and number
+  -- form (rule 1), and the parts
   -- as a candidate has them: m of each, kept from the last line built.
-  parts = {}, seps = {}, words = {}, cur = {}, buf = {}, m = 0,
+  parts = {}, seps = {}, words = {}, nums = {}, cur = {}, buf = {}, m = 0,
   -- The part that is a note (rule 0), as written into the line, or nil.
   note = nil,
 }
@@ -2771,6 +2774,22 @@ do
     return head
   end
 
+  -- "word: N more" (or "word：N more") -> "word: N", in the part's colour;
+  -- nil where no number follows the word, or nothing follows the number.
+  local function Number(part)
+    if not Word(part) then return nil end
+    local at, len = part:find(COLON, 1, true), #COLON
+    local wide = part:find(WIDE_COLON, 1, true)
+    if wide and (not at or wide < at) then at, len = wide, #WIDE_COLON end
+    local _, to = part:find("^ *%d+%+?", at + len)
+    if not to then return nil end
+    local rest = (part:sub(to + 1):gsub("|r", ""))
+    if not rest:find("^%s+%S") then return nil end
+    local head = part:sub(1, to)
+    if head:find("^|c%x%x%x%x%x%x%x%x") and part:sub(-2) == "|r" then head = head .. "|r" end
+    return head
+  end
+
   -- The parts `first`..`last` as they stand now, with their joins.
   local function Join(first, last)
     local buf, n = SF.buf, 0
@@ -2792,6 +2811,14 @@ do
       SF.n = SF.n + 1
       SF.cands[SF.n] = s
     end
+  end
+
+  -- The parts `first`..`last` whole, then each in its number form (rule 1).
+  local function Forms(first, last)
+    for i = first, last do SF.cur[i] = SF.parts[i] end
+    Add(Join(first, last))
+    for i = first, last do SF.cur[i] = SF.nums[i] or SF.parts[i] end
+    Add(Join(first, last))
   end
 
   -- The shorter candidates of SF.text, in the order the line gives way.
@@ -2823,39 +2850,40 @@ do
     end
     for i = 1, count do
       SF.words[i] = Word(parts[i])
-      SF.cur[i] = parts[i]
+      SF.nums[i] = Number(parts[i])
     end
-    -- 1. Words, from the line's end.
-    for i = count, 1, -1 do
-      if SF.words[i] then
-        SF.cur[i] = SF.words[i]
-        Add(Join(1, count))
-      end
-    end
-    -- 2. Whole parts: the sent tail, then from the start.
+    -- 1. Every part's number form.
+    Forms(1, count)
+    -- 2. Whole parts: the sent tail, then from the start, each time the
+    -- rest whole and then in its number forms.
     local first, last = 1, count
     if count > 1 and seps[count] == DOT then
       last = count - 1
-      Add(Join(first, last))
+      Forms(first, last)
     end
     while first < last do
       first = first + 1
-      Add(Join(first, last))
+      Forms(first, last)
     end
-    -- 3. The part left, where it says more than one sentence: its first
-    -- (Test mail's "Test mail."), the sentence's stop kept. Plain words
-    -- only: a part with a colour or a link keeps its client cut.
-    local left = SF.cands[SF.n]
-    if not left:find("|", 1, true) then
-      local stop = left:find(". ", 1, true)
-      local wide = left:find(FULL_STOP, 1, true)
-      if wide and (not stop or wide < stop) then
-        Add(left:sub(1, wide + #FULL_STOP - 1))
-      elseif stop and stop < #left - 1 then
-        Add(left:sub(1, stop))
+    -- The last part alone, wider than the room: its word.
+    if SF.words[last] then
+      Add(SF.words[last])
+    else
+      -- 3. The part left, where it says more than one sentence: its first
+      -- (Test mail's "Test mail."), the sentence's stop kept. Plain words
+      -- only: a part with a colour or a link keeps its client cut.
+      local left = SF.cands[SF.n]
+      if not left:find("|", 1, true) then
+        local stop = left:find(". ", 1, true)
+        local wide = left:find(FULL_STOP, 1, true)
+        if wide and (not stop or wide < stop) then
+          Add(left:sub(1, wide + #FULL_STOP - 1))
+        elseif stop and stop < #left - 1 then
+          Add(left:sub(1, stop))
+        end
       end
     end
-    for i = count + 1, SF.m do parts[i], seps[i], SF.words[i], SF.cur[i] = nil, nil, nil, nil end
+    for i = count + 1, SF.m do parts[i], seps[i], SF.words[i], SF.nums[i], SF.cur[i] = nil, nil, nil, nil, nil end
     SF.m = count
   end
 
