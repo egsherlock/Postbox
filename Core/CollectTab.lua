@@ -15092,6 +15092,10 @@ local function BeginRun(panel, queue, ids, subset, others)
   -- for every mail of every run, not one per mail. And a take that meets
   -- another mail at its index answers "moved": the run finds it again.
   Run.opts.keepFree = RV.KeepFreeSlots()
+  -- And the general slots free as it begins: a run that begins below the
+  -- kept number still takes what fits a special bag (MailService,
+  -- Mail.KeepFreeGoesOn), as its question counted.
+  Mail().KeepFreeFloor((Mail().FreeBagSlots()))
   Run.opts.moves = true
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
@@ -15231,16 +15235,20 @@ local function StartCategoryRun(panel, category)
         return
       end
       -- Snapshot what the dialog is about to describe, in queue order (the
-      -- order the list shows, so what fits is its first mails), and what each
-      -- mail is. The player can click a different category before answering,
-      -- and this run must collect what the dialog said it would.
+      -- order the list shows; what fits is every mail that fits, wherever it
+      -- stands: MailService.QueueRoom), and what each mail is. The player can
+      -- click a different category before answering, and this run must
+      -- collect what the dialog said it would.
       local planned = {}
       -- What each mail is, and a stamp of the inbox as the question went up:
       -- the run follows them from here to the answer.
       local ids = { sender = {}, subject = {}, cod = {}, stamp = Mail().Stamp() }
-      for i = 1, fits do
-        planned[i] = queue[i]
-        ids.sender[i], ids.subject[i], ids.cod[i] = Mail().QueuedIdentity(queue[i])
+      for i = 1, #queue do
+        if Mail().QueueRoomFit(i) then
+          local n = #planned + 1
+          planned[n] = queue[i]
+          ids.sender[n], ids.subject[n], ids.cod[n] = Mail().QueuedIdentity(queue[i])
+        end
       end
       Confirm(POPUP_BAGSPACE, L()["BAGSPACE_CONFIRM_ACCEPT"], L()["COD_CONFIRM_CANCEL"],
         ns.Plural("MSG_BAGSPACE_PARTIAL", fits, ns.Plural("COUNT_MAILS", #queue), need, have, extra),
@@ -16799,13 +16807,38 @@ function RV.ReagentExtra(reagent)
 end
 
 -- What special bags take of the attachments just counted
--- (MailService.QueueRoom), as the bags-full messages add it: " (+4 in
--- special bags, for the items that fit them)", or "".
+-- (MailService.QueueRoom), as the bags-full messages add it, by the bag's
+-- own name where one bag takes them all: " (+4 in Herb Pouch)"; where two or
+-- more do, or the client gives no name, " (+4 in special bags, for the items
+-- that fit them)", one number in a sentence already full of them (All mail's
+-- tooltip names each bag); or "".
 function RV.SpecialExtra()
   local M = Mail()
   local used = M.SpecialRoomUsed and M.SpecialRoomUsed() or 0
   if used <= 0 then return "" end
+  if M.SpecialRoomBags and M.SpecialRoomBags() == 1 then
+    local n, name = M.SpecialRoomBag(1)
+    if name then return L()("BAGS_SPECIAL_BAG_EXTRA", n, name) end
+  end
   return L()("BAGS_SPECIAL_EXTRA", used)
+end
+
+-- All mail's tooltip: what the special bags take of the attachments just
+-- counted (RV.RoomCount), one line for each bag by the client's own name for
+-- it ("8 of these items fit in Herb Pouch"), in the order of the bag slots;
+-- two bags of one name are one line. At most one line a bag slot, so never
+-- more than five. A bag the client gives no name keeps the general line.
+-- The reagent bag is never one of them: its room has its own line.
+function RV.SpecialLines(tooltip, muted)
+  local M = Mail()
+  for i = 1, M.SpecialRoomBags() do
+    local n, name = M.SpecialRoomBag(i)
+    if name then
+      tooltip:AddLine(ns.Plural("ROOM_SPECIAL_BAG", n, name), muted, muted, muted, true)
+    else
+      tooltip:AddLine(ns.Plural("ROOM_SPECIAL", n), muted, muted, muted, true)
+    end
+  end
 end
 
 -- panel, scan -> the attachments All mail would take (RV.AllMailRoom's
@@ -16938,7 +16971,7 @@ function RV.AllMailRoom(panel, tooltip)
   T.TipLine(items - fitted > usable and T.TipTone("warning", text) or text)
   if keep > 0 then tooltip:AddLine(ns.Plural("ROOM_KEPT", keep), muted, muted, muted, true) end
   if (reagent or 0) > 0 then tooltip:AddLine(ns.Plural("ROOM_REAGENT", reagent), muted, muted, muted, true) end
-  if special > 0 then tooltip:AddLine(ns.Plural("ROOM_SPECIAL", special), muted, muted, muted, true) end
+  if special > 0 then RV.SpecialLines(tooltip, muted) end
   -- While the bags are full the mails with items wait, and the count above
   -- is only what needs no room: say why.
   if M.BagsFull and M.BagsFull() then tooltip:AddLine(L()["BAGS_FULL_TIP"], muted, muted, muted, true) end

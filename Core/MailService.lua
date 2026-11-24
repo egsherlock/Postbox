@@ -783,6 +783,11 @@ local special = {
   -- reagent bag) and the room still unspent by the count under way.
   n = 0, family = {}, left = {}, usedSpecial = 0, usedReagent = 0,
   fam = {}, reagent = {}, cached = 0, FAMILY_MAX = 512,
+  -- Each bag's id and the attachments the count has put in it; the room as
+  -- it stood before a mail (special.Fit gives back a mail that does not
+  -- fit); which mails of a queue fit (Mail.QueueRoomFit); and the special
+  -- bags by name (Mail.SpecialRoomBags).
+  bag = {}, used = {}, save = {}, saveUsed = {}, fit = {}, names = {}, counts = {},
 }
 
 -- The bag id of the reagent bag's slot, or nil where the client has none.
@@ -914,14 +919,14 @@ function Mail.SpecialRoom()
         reagentFree = slots
       elseif family ~= 0 and slots > 0 then
         s.n = s.n + 1
-        s.family[s.n], s.left[s.n] = family, slots
+        s.family[s.n], s.left[s.n], s.bag[s.n], s.used[s.n] = family, slots, bag, 0
       end
     end
   end
   local specials = s.n
   if reagentFree > 0 then
     s.n = s.n + 1
-    s.family[s.n], s.left[s.n] = 0, reagentFree
+    s.family[s.n], s.left[s.n], s.bag[s.n], s.used[s.n] = 0, reagentFree, reagentBag, 0
   end
   return specials, reagentFree > 0
 end
@@ -937,7 +942,7 @@ function Mail.SpecialRoomFits(id, spend)
     local bagFamily = s.family[k]
     if s.left[k] > 0 and ((bagFamily == 0 and craft) or (bagFamily ~= 0 and special.Shares(fam, bagFamily))) then
       if spend then
-        s.left[k] = s.left[k] - 1
+        s.left[k], s.used[k] = s.left[k] - 1, s.used[k] + 1
         if bagFamily == 0 then s.usedReagent = s.usedReagent + 1 else s.usedSpecial = s.usedSpecial + 1 end
       end
       return true
@@ -965,24 +970,119 @@ function Mail.SpecialRoomUsed()
   return special.usedSpecial, special.usedReagent
 end
 
--- queue, usable -> how many mails from the front of the queue fit, the
--- attachment slots the whole queue needs, and those of them the general bags
--- must hold: what the special bags and the reagent bag take is theirs
--- (Mail.SpecialRoomUsed says how much, after). `usable` is the general
--- slots the run may fill. The prefix, as Mail.QueuePrefixThatFits.
+-- -> how many names the special bags of the count under way go by, among
+-- those it put attachments in (never the reagent bag, whose room is said on
+-- its own line; never a bag nothing fits, such as a soul bag). Each is then
+-- Mail.SpecialRoomBag(i). Two bags of one name are one, their counts added.
+-- The names are the client's own, so in the player's language
+-- (C_Container.GetBagName); a bag whose name the client does not give is
+-- named false.
+function Mail.SpecialRoomBags()
+  local s = special
+  local getName = type(C_Container) == "table" and C_Container.GetBagName or nil
+  local m = 0
+  for k = 1, s.n do
+    if s.family[k] ~= 0 and s.used[k] > 0 then
+      local name = type(getName) == "function" and getName(s.bag[k]) or nil
+      if type(name) ~= "string" or name == "" then name = false end
+      local j = 0
+      for q = 1, m do
+        if s.names[q] == name then j = q end
+      end
+      if j > 0 then
+        s.counts[j] = s.counts[j] + s.used[k]
+      else
+        m = m + 1
+        s.names[m], s.counts[m] = name, s.used[k]
+      end
+    end
+  end
+  return m
+end
+
+-- i -> the attachments the count put in the i-th name of
+-- Mail.SpecialRoomBags, and the name (false where the client gives none).
+function Mail.SpecialRoomBag(i)
+  return special.counts[i], special.names[i]
+end
+
+-- queue, usable -> the mails of the queue that fit, in its order, and that
+-- many; a mail fits when all its attachments do, in the special bags and the
+-- reagent bag where they fit and in the general slots left of `usable` for
+-- the rest. A mail that does not fit is passed over and takes nothing of the
+-- room: a later one may fit what is left. Each attachment counts as a slot of
+-- its own, as the count always has (one that joins a stack in the bags uses
+-- none, so the bags only ever hold more than counted). Gold and a mail with
+-- nothing attached need no room.
+function special.Fit(queue, usable)
+  local s = special
+  local specials, reagent = Mail.SpecialRoom()
+  local scan = specials > 0 or reagent
+  local fits, general = 0, 0
+  for i = 1, #queue do
+    local count = Mail.AttachmentCount(queue[i])
+    local own = 0
+    if scan and count > 0 then
+      for k = 1, s.n do s.save[k], s.saveUsed[k] = s.left[k], s.used[k] end
+      local usedS, usedR = s.usedSpecial, s.usedReagent
+      own = math.min(count, Mail.SpecialRoomMail(queue[i]))
+      if general + count - own > usable then
+        for k = 1, s.n do s.left[k], s.used[k] = s.save[k], s.saveUsed[k] end
+        s.usedSpecial, s.usedReagent = usedS, usedR
+      end
+    end
+    if general + count - own <= usable then
+      general = general + count - own
+      fits = fits + 1
+      s.fit[i] = true
+    else
+      s.fit[i] = false
+    end
+  end
+  return fits
+end
+
+-- queue, usable -> how many mails of the queue fit (Mail.QueueRoomFit says
+-- which), the attachment slots the whole queue needs, and those of them the
+-- general bags must hold: what the special bags and the reagent bag take is
+-- theirs (Mail.SpecialRoomUsed and Mail.SpecialRoomBags say how much, after,
+-- of the whole queue). `usable` is the general slots the run may fill.
+--
+-- Where it all fits, every mail does and nothing more is asked. Where it does
+-- not, the mails that fit are found in the queue's order, passing over each
+-- that does not (special.Fit): a mail of gear that needs a general slot no
+-- longer keeps the cloth behind it from the reagent bag. Worked out once
+-- before a run, never per take.
 function Mail.QueueRoom(queue, usable)
   local specials, reagent = Mail.SpecialRoom()
   local scan = specials > 0 or reagent
-  local needed, general, fits, open = 0, 0, 0, true
+  local needed, general = 0, 0
   for i = 1, #queue do
     local count = Mail.AttachmentCount(queue[i])
     local own = 0
     if scan and count > 0 then own = math.min(count, Mail.SpecialRoomMail(queue[i])) end
     needed = needed + count
     general = general + count - own
-    if open and general <= usable then fits = i else open = false end
+  end
+  if general <= usable then
+    for i = 1, #queue do special.fit[i] = true end
+    return #queue, needed, general
+  end
+  local fits = special.Fit(queue, usable)
+  -- The count of the whole queue again, for what the messages say beside the
+  -- slots it needs (Mail.SpecialRoomUsed, Mail.SpecialRoomBags).
+  Mail.SpecialRoom()
+  if scan then
+    for i = 1, #queue do
+      if Mail.AttachmentCount(queue[i]) > 0 then Mail.SpecialRoomMail(queue[i]) end
+    end
   end
   return fits, needed, general
+end
+
+-- i -> whether the i-th mail of the queue Mail.QueueRoom last counted fits.
+function Mail.QueueRoomFit(i)
+  return special.fit[i] == true
 end
 
 -- Letting the bags catch up, for runs that keep bag slots free.
@@ -1082,7 +1182,10 @@ end
 -- special bag or the reagent bag while that has room: the game fills such a
 -- bag first, so the general slots stay as they are. Only while the general
 -- slots are not below those kept: had an item gone to a general slot after
--- all, the next take finds one fewer, and nothing more goes but gold.
+-- all, the next take finds one fewer, and nothing more goes but gold. A run
+-- that began with fewer general slots free than it keeps measures from those
+-- (Mail.KeepFreeFloor): what fits a special bag still goes, as the run's
+-- question counted it, and nothing goes once a general slot is used.
 --
 -- keepFree [, id] -> whether the run may still take an item at all (some
 -- special bag or the reagent bag has room, the general slots are not below
@@ -1090,10 +1193,18 @@ end
 function Mail.KeepFreeGoesOn(keepFree, id)
   if type(keepFree) ~= "number" or keepFree <= 0 then return false, false end
   local free = Mail.FreeBagSlots()
-  if free == nil or free - bagsCatch.unconfirmed < keepFree then return false, false end
+  if free == nil or free - bagsCatch.unconfirmed < math.min(keepFree, bagsCatch.floor or keepFree) then
+    return false, false
+  end
   local specials, reagent = Mail.SpecialRoom()
   if specials == 0 and not reagent then return false, false end
   return true, id ~= nil and Mail.SpecialRoomFits(id)
+end
+
+-- free -> nothing. A collect run's general slots free as it begins
+-- (Mail.KeepFreeGoesOn); nil forgets them.
+function Mail.KeepFreeFloor(free)
+  bagsCatch.floor = tonumber(free)
 end
 
 -- keepFree, index -> whether any item of this mail may still be taken by a
