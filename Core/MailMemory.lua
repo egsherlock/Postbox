@@ -9173,11 +9173,14 @@ function MM.Diagnose()
     -- And the one before it, with how long before: two entries for one
     -- purchase show here as the same kind seconds apart.
     local prior = pending and pending[#pending - 1]
-    parts[#parts + 1] = string.format("auctions noted %d%s%s%s", LivePendingCount(watch, time()),
+    local over = watch and type(watch.over) == "table" and watch.over or nil
+    parts[#parts + 1] = string.format("auctions noted %d%s%s%s%s", LivePendingCount(watch, time()),
       last and string.format(" (last %s, signals %s, id %s)", tostring(last.k), tostring(last.s), tostring(last.a)) or "",
       (last and prior) and string.format(" (before it %s, signals %s, %ds earlier)", tostring(prior.k), tostring(prior.s),
         (tonumber(last.t) or 0) - (tonumber(prior.t) or 0)) or "",
-      (watch and type(watch.unlisted) == "table") and string.format(", %d known unlisted", #watch.unlisted) or "")
+      (watch and type(watch.unlisted) == "table") and string.format(", %d known unlisted", #watch.unlisted) or "",
+      -- s33 tiles: the notes past the cap, in their items' tallies (2g).
+      over and string.format(", %d in %d item tallies", MM.Auctions.OverMails(over), #over) or "")
   end
   -- The two structural tells: a stranded live capture means a close signal
   -- was missed; a false registration means this client refused an event
