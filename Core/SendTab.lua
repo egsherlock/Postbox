@@ -7759,7 +7759,7 @@ do
   -- pinned. The keys follow either way.
   function Pin.Fill(panel)
     if not (panel and panel.ToBox) then return end
-    -- With the pins switched off (Options > Send tab, Recipient pin) nothing
+    -- With the pins switched off (Options > Send tab, Recipient and Subject pins) nothing
     -- pinned fills a box; the pins themselves stay saved.
     if not Pin.On() then return end
     Pin.Me(true)
@@ -7859,7 +7859,7 @@ do
     Pin.ApplyKey(key)
   end
 
-  -- Whether the pins are offered (Options > Send tab, Recipient pin): on
+  -- Whether the pins are offered (Options > Send tab, Recipient and Subject pins): on
   -- unless switched off. One switch for both.
   function Pin.On()
     local UI = ns.MailboxUI

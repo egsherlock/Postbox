@@ -1719,7 +1719,7 @@ end
 -- older switch, profile.keepRecipient, are no longer read; a saved one is
 -- left where it is.)
 
--- The Send tab's pins offered (Options > Send tab, Recipient pin): on
+-- The Send tab's pins offered (Options > Send tab, Recipient and Subject pins): on
 -- unless switched off, stored only as `false`. A setting, so under profile
 -- and account-wide; the pins themselves are the root's `recipientPin` and
 -- `subjectPin`, per character, which this never touches. Off, the pins are
