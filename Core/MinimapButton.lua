@@ -579,7 +579,12 @@ local function MemoryOn()
   return UI.GetOption("mailMemory") and true or false
 end
 
-local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false }
+-- `holder`, `anchor`, `side`: where the count was last painted (PaintCount's
+-- holder, the icon it stands on, the icon's side), set by ApplyLook and
+-- ApplyEuiSkin and dropped as each Refresh begins: a change of the number
+-- alone repaints only the number there (Reevaluate).
+local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false,
+  holder = nil, anchor = nil, side = nil }
 
 -- Warn about (General, Expiring mail): what the marker warns of, by the
 -- rule the chat line at login follows too (MailMemory.lua, MM.Warns).
@@ -710,7 +715,7 @@ local function PaintCount(holder, anchor, size, n)
   if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor or fs.__pbOff ~= off then
     fs.__pbSize, fs.__pbAnchor, fs.__pbOff = size, anchor, off
     -- Measured again, in the font of the new size.
-    fs.__pbN, fs.__pbStep = nil, nil
+    fs.__pbN, fs.__pbStep, fs.__pbRoom = nil, nil, nil
     fs:SetTextColor(1, 1, 1, 1)
     fs:ClearAllPoints()
     fs:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT",
@@ -722,8 +727,14 @@ local function PaintCount(holder, anchor, size, n)
     local step = n >= 100 and 1 or 0
     CountFont(fs, size, step)
     if step > 0 then
-      fs:SetText(COUNT_RULER)
-      local room = math.max(size, fs:GetStringWidth() or 0)
+      -- The ruler's width, measured once in this font and size: a new
+      -- number writes only itself.
+      local room = fs.__pbRoom
+      if not room then
+        fs:SetText(COUNT_RULER)
+        room = math.max(size, fs:GetStringWidth() or 0)
+        fs.__pbRoom = room
+      end
       fs:SetText(text)
       while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1, off) < CountFontSize(size, step, off) do
         step = step + 1
@@ -1626,6 +1637,7 @@ local function ApplyEuiSkin()
   -- there, by its box: the style's, and on Blizzard their own stock art,
   -- which is the same atlas at the same 19.5 : 15 (their indicator's ratio).
   PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
+  view.holder, view.anchor, view.side = btn.__pbOverlay, icon, side
   PaintMark(btn.__pbOverlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
     view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
@@ -1901,6 +1913,7 @@ local function ApplyLook(button)
 
   -- Nor a count: there is no icon for the number to belong to.
   PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
+  view.holder, view.anchor, view.side = button.art, icon, size
   PaintMark(button.art, icon, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
     view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
@@ -1969,13 +1982,33 @@ end
 
 -- A look at the tooltip is a look at the icon: Mail Memory's warnings move
 -- with the clock, so the reading is made again here, and the icon repainted
--- only when something it shows has changed.
+-- only when something it shows has changed. Where only the number moved
+-- (an auction noted, a mail taken at the mailbox) only the number is
+-- painted, on the art that is up: the icon, its glow and its place are
+-- left as they stand, so the icon holds still while its count changes.
+-- Whether a pass of EllesmereUI's has dressed their button again since it
+-- was skinned (their WoW Forever header look sets its art and hover fields
+-- on each of their passes): then it is skinned again whole, as every
+-- reading used to.
+local function HostRedressed()
+  local btn = euiSkin.applied and euiSkin.button
+  if not btn then return false end
+  local saved = euiSkin.saved
+  local want = (Settings().icon == "blizzard" and saved) and saved.up or nil
+  return btn._upAtlas ~= want
+end
+
 local function Reevaluate()
   local lit, shown, alert, count, alone = view.lit, view.shown, view.alert, view.count, view.alone
   Evaluate()
-  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.count ~= count
-    or view.alone ~= alone then
+  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone or HostRedressed() then
     MB.Refresh()
+  elseif view.count ~= count then
+    if view.holder then
+      PaintCount(view.holder, view.anchor, view.side, (not view.alone) and view.count or 0)
+    else
+      MB.Refresh()
+    end
   end
 end
 
@@ -2437,8 +2470,19 @@ local FlushFlash
 -- Mail Memory hears this event first and announces the arrival
 -- (MB.NotifyArrival) before this brings the icon up for it; the flash that
 -- arrival asked for plays here, once the icon is on the map.
+-- With the icon already painted, the event is read as any other reading
+-- (Reevaluate): repainted whole only when something it shows has changed,
+-- the number alone where only the number has, and not touched at all
+-- otherwise. A mail landing beside mail already waiting changes nothing the
+-- icon shows.
 local function OnMailEvent()
-  Refresh()
+  if view.holder then
+    -- Refresh's one invariant, where the game built its indicator late.
+    SetDefaultSuppressed(true)
+    Reevaluate()
+  else
+    Refresh()
+  end
   FlushFlash()
 end
 
@@ -2554,6 +2598,8 @@ end
 
 Refresh = function()
   local prefs = Settings()
+  -- Painted again below, where the art is applied (ApplyLook, ApplyEuiSkin).
+  view.holder, view.anchor, view.side = nil, nil, nil
 
   if prefs.enabled ~= true or NotificationsRuledOut() then
     -- First, so nothing below (the default indicator's resync pokes
