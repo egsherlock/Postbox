@@ -8953,7 +8953,10 @@ end
 -- few comparisons and makes nothing (measured: 0 bytes a pass, marks off
 -- or on). Alt is read again at each row's hover and at each click
 -- (IsAltKeyDown), so an Alt whose release never reached the client
--- (Alt-Tab) cannot leave the list armed.
+-- (Alt-Tab) cannot leave the list armed. While a text box has the
+-- keyboard an Alt press arms nothing and counts toward no double-tap
+-- (AltGr types letters as Alt); an Alt still down once the box lets go
+-- brings the marks in at the next hover or click.
 -------------------------------------------------------------
 do
   local M = {
@@ -9077,7 +9080,7 @@ do
         M.watching = true
         -- A press made before the list came up shows the marks, and is no
         -- tap.
-        M.held = M.AltDown(false)
+        M.held = M.AltDown(false) and not M.Typing()
         M.downAt, M.tapAt, M.ended, M.used = nil, nil, M.held, false
       end
     elseif M.watching then
@@ -9100,14 +9103,20 @@ do
 
   -- Alt down or up. A press while kept on ends it; a press starting within
   -- TAP of a short press's end keeps them on; a press ending within TAP of
-  -- its start, with no mark clicked in it, is a tap.
+  -- its start, with no mark clicked in it, is a tap. While a text box has
+  -- the keyboard (M.Typing) a press is neither a hold nor a tap: it brings
+  -- no marks, counts toward no double-tap and keeps nothing on (AltGr
+  -- reports as Alt); like any press it still ends a kept-on mode. The
+  -- marks come in once the box lets go with Alt still down (M.Check).
   function M.OnEvent(_, _, key, down)
     if key ~= "LALT" and key ~= "RALT" then return end
     local panel = M.panel
     if not M.Eligible(panel) then return M.Sync(panel) end
     local now = GetTime()
     local alt = M.AltDown(down == 1)
-    if alt and not M.held then
+    if alt and not M.held and M.Typing() then
+      M.latched, M.downAt, M.tapAt = false, nil, nil
+    elseif alt and not M.held then
       M.held, M.used = true, false
       if M.latched then
         M.latched, M.ended = false, true
@@ -9117,9 +9126,16 @@ do
         M.downAt, M.ended = now, false
       end
     elseif not alt and M.held then
-      M.Release(now)
+      -- Let go while typing: no tap.
+      M.Release(not M.Typing() and now or nil)
     end
     M.Aim(M.held or M.latched)
+  end
+
+  -- Whether a text box has the keyboard (the Search box, the Send tab's
+  -- fields, the chat box, any edit box).
+  function M.Typing()
+    return type(GetCurrentKeyBoardFocus) == "function" and GetCurrentKeyBoardFocus() ~= nil
   end
 
   function M.Release(now)
@@ -9133,11 +9149,19 @@ do
   end
 
   -- An Alt the client says is up, though no release came (Alt-Tab): let
-  -- go now. Read at each row's hover and each click.
+  -- go now. An Alt still down that no hold took, as a text box had the
+  -- keyboard at its press, and no box has it now: held from here, as a
+  -- press made before the list came up (no tap). Read at each row's hover
+  -- and each click.
   function M.Check()
-    if M.held and not M.AltDown(true) then
-      M.Release(nil)
-      M.Aim(M.latched)
+    if M.held then
+      if not M.AltDown(true) then
+        M.Release(nil)
+        M.Aim(M.latched)
+      end
+    elseif M.watching and M.AltDown(false) and not M.Typing() and M.Eligible(M.panel) then
+      M.held, M.downAt, M.ended, M.used = true, nil, true, false
+      M.Aim(true)
     end
   end
 
@@ -9525,7 +9549,6 @@ do
   -- are still coming in (M.p under 1, the first 150 ms) a click does
   -- nothing at all, on either button: it neither acts nor collects.
   function M.Click(row, button, index)
-    if M.goal ~= 1 then return false end
     M.Check()
     if M.goal ~= 1 then return false end
     M.Used()
