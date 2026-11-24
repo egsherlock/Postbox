@@ -2110,18 +2110,24 @@ end
 --   * the line at the foot in its bright ink, and in the accent a line
 --     drawn out from the middle under its words (0.15 s), held, faded with
 --     the lock. Where the line does not say why nothing was taken (History,
---     the matches of a search of every character), it says so while lit
---     (NOTHING_TO_TAKE_SUFFIX) and loses it again.
+--     the matches of a search of every character), it says so while lit on
+--     a second line under it (NOTHING_TO_TAKE): the line's own words, whole
+--     and unchanged, step up half a line (NT_STEP) in the slot they stand
+--     in, the reason stands a line (NT_UNDER) under them, lit as they are,
+--     and the accent line goes under the reason. When the light ends both
+--     are put back. Another character's box says why already
+--     ("Log in on ... to collect it"): one line there, as before.
 -- No chat line, no sound, no gray band over the line.
 --
--- One answer at a time, on one lock frame and one line texture made the
--- first time (nothing is built per click, no closure per click). The fades
--- are the client's own animations; the answer is ended by ONE
--- C_Timer.After of its length, told from an older one by two counts, so a
--- second click starts it again on the thing newly clicked (the old one put
--- back at once) and only the last timer ends it. The tab, the window or the
--- mailbox hidden, the view changed, the list scrolled or bound again under
--- it: it ends there, everything as it was. Nothing runs between answers.
+-- One answer at a time, on one lock frame, one line texture and one reason
+-- text made the first time (nothing is built per click, no closure per
+-- click). The fades are the client's own animations; the answer is ended
+-- by ONE C_Timer.After of its length, told from an older one by two counts,
+-- so a second click starts it again on the thing newly clicked (the old one
+-- put back at once) and only the last timer ends it. The tab, the window or
+-- the mailbox hidden, the window resized, the view changed, the list
+-- scrolled or bound again under it: it ends there, everything as it was.
+-- Nothing runs between answers.
 -------------------------------------------------------------
 BV.NT_IN, BV.NT_HOLD, BV.NT_OUT = 0.10, 0.60, 0.40
 -- The darkening under the lock; the black copy's alpha under the glyph.
@@ -2130,11 +2136,17 @@ BV.NT_DIM, BV.NT_SHADE = 0.58, 0.9
 -- under the words' middle (3 under their baseline), NT_RULE_PAD wider than
 -- the words each side.
 BV.NT_GROW, BV.NT_RULE_H, BV.NT_RULE_Y, BV.NT_RULE_PAD = 0.15, 2, 9, 4
+-- The two lines (f79): the words' middle NT_STEP over the slot's middle,
+-- the reason's middle NT_UNDER under the words' (a line of the 13 note).
+-- In the 26 slot the pair spans it to its edges, the accent line's top
+-- NT_RULE_Y under the reason's middle, 3 into the gap or margin under it.
+BV.NT_STEP, BV.NT_UNDER = 7, 14
 -- What is lit: the note, the panel, the frame clicked and which of its
 -- fields says what it shows (a tile's `kind`, a box row's `mail`, a History
--- row's `entry`), and that thing; the two timer counts; the lit words kept
--- for the note, the words and the room they were fitted to.
-BV.NT = { armed = 0, fired = 0 }
+-- row's `entry`), and that thing; the two timer counts; whether the reason
+-- stands under the words (`two`) and half the slot's height then (`half`);
+-- the footer's size at the click.
+BV.NT = { armed = 0, fired = 0, two = false, fw = 0, fh = 0 }
 
 -- panel -> the note standing in All mail's place, if one is.
 function BV.Note(panel)
@@ -2147,72 +2159,31 @@ end
 
 -- The notes' words are set here (CollectTab's AV.Build and the History
 -- view): `why` where they do not say why nothing can be taken here, so a
--- lit line adds it. Set while lit, the line keeps its light.
+-- lit line says it under them. Set while lit, the line keeps its light;
+-- its words are never changed for the answer.
 function BV.SetNote(note, text, why)
   if not note then return end
-  note.__pbBase, note.__pbWhy = text, why and true or nil
-  local NT = BV.NT
-  if NT.note == note and why then
-    BV.LitText(note)
-  else
-    note:SetText(text)
-  end
-  if NT.note == note then BV.PlaceRule(note) end
+  note.__pbWhy = why and true or nil
+  note:SetText(text)
+  if BV.NT.note == note then BV.PlaceRule(note) end
 end
 
--- The note's words while lit: its own and the suffix after them. Where
--- both do not fit the note's width, its own words give way (cut, with
--- "...") and the suffix is kept whole; only that case is measured further.
--- Worked out once for the words and the room.
-function BV.LitText(note)
+-- panel, note, up: the note's middle `up` over its slot's middle, where
+-- CollectTab's RV.PlaceStack last stood it (its `placed` offset; the slot
+-- as tall as the stack has it while the note stands in it, kept from the
+-- click, as a view without notes has a taller one); 0 puts it back exactly
+-- there. Anchored as PlaceStack anchors it, so its next placing replaces
+-- this one. False where the stack has not placed the note.
+function BV.StepNote(panel, note, up)
+  local s, footer = panel and panel._stack, panel and panel.Footer
   local NT = BV.NT
-  local base = note.__pbBase or ""
-  local room = BV.NoteRoom(note)
-  if NT.litNote ~= note or NT.litBase ~= base or NT.litRoom ~= room then
-    local suffix = L()["NOTHING_TO_TAKE_SUFFIX"]
-    local whole = base .. suffix
-    note:SetText(whole)
-    if room > 0 and Th().TextWidth(note) > room then whole = BV.FitLit(note, base, suffix, room) end
-    NT.litNote, NT.litBase, NT.litRoom, NT.lit = note, base, room, whole
-  end
-  note:SetText(NT.lit)
-end
-
--- note, base, suffix, room -> the longest start of `base` (whole letters,
--- a colour code never cut and always closed) that fits with "..." and the
--- suffix after it; the suffix's words alone if none does.
-function BV.FitLit(note, base, suffix, room)
-  local cuts, open, opens = {}, false, {}
-  local i, n = 1, #base
-  while i <= n do
-    local c = base:sub(i, i)
-    if c == "|" and base:sub(i + 1, i + 1) == "c" then
-      i = i + 10
-      open = true
-    elseif c == "|" and base:sub(i + 1, i + 1) == "r" then
-      i = i + 2
-      open = false
-    else
-      local b = base:byte(i)
-      i = i + ((b >= 240 and 4) or (b >= 224 and 3) or (b >= 192 and 2) or 1)
-      cuts[#cuts + 1] = i - 1
-      opens[#cuts] = open
-    end
-  end
-  local T = Th()
-  local function Try(k)
-    local head = base:sub(1, cuts[k]):gsub("%s+$", "")
-    local text = head .. (opens[k] and "|r" or "") .. "..." .. suffix
-    note:SetText(text)
-    return T.TextWidth(note) <= room, text
-  end
-  local lo, hi, best = 1, #cuts, nil
-  while lo <= hi do
-    local mid = floor((lo + hi) / 2)
-    local fits, text = Try(mid)
-    if fits then best, lo = text, mid + 1 else hi = mid - 1 end
-  end
-  return best or (suffix:gsub("^[%s%p\194\183]+", ""))
+  if up ~= 0 then NT.half = s and s.h.all and s.h.all / 2 end
+  local y, half = s and s.placed.all, NT.half
+  if not (y and half and footer) then return false end
+  local inset, mid = Th().Metrics.inset, -(y + half) + up
+  note:SetPoint("LEFT", footer, "TOPLEFT", inset, mid)
+  note:SetPoint("RIGHT", footer, "TOPRIGHT", -inset, mid)
+  return true
 end
 
 -- The room the note's words have: the footer's width, inset each side as
@@ -2224,12 +2195,13 @@ function BV.NoteRoom(note)
   return (w or 0) - 2 * Th().Metrics.inset
 end
 
--- The accent line under the note's words, as wide as they are (never
--- wider than the note) and NT_RULE_PAD more each side, centred under them.
+-- The accent line under the note's words, or under the reason while it
+-- stands under them, as wide as those words are (never wider than the
+-- note) and NT_RULE_PAD more each side, centred under them.
 function BV.PlaceRule(note)
   local rule = BV.rule
   if not rule then return end
-  local w = Th().TextWidth(note)
+  local w = Th().TextWidth(BV.NT.two and rule.Reason or note)
   local room = BV.NoteRoom(note)
   if room > 0 and w > room then w = room end
   rule.Tex:SetWidth(w + 2 * BV.NT_RULE_PAD)
@@ -2293,7 +2265,20 @@ function BV.NoTakeParts(panel)
       if g.SetToFinalAlpha then g:SetToFinalAlpha(true) end
       rule.Grow = g
     end
+    -- The reason's line, in the note's face, lit; its words set once.
+    local reason = T.CreateText(rule, "secondary")
+    if reason then
+      reason:SetJustifyH("CENTER")
+      reason:SetWordWrap(false)
+      reason:SetText(L()["NOTHING_TO_TAKE"])
+      T.SetColor(reason, "textPrimary", "window")
+      reason:Hide()
+      if T.OnWindow then T.OnWindow(reason, "window", "CENTER") end
+      rule.Reason = reason
+    end
     rule:SetScript("OnHide", BV.NoTakeEnd)
+    -- The window resized (the footer is the rule frame's size): it ends.
+    rule:SetScript("OnSizeChanged", BV.NoTakeSized)
     rule:Hide()
     BV.rule = rule
   end
@@ -2346,13 +2331,25 @@ function BV.NoTake(panel, owner, region, size, field)
     lock.Fade:Play()
   end
 
-  if note.__pbWhy then BV.LitText(note) end
+  -- Where the line does not say why: its words up half a line, the reason
+  -- under them, the accent line under the reason.
+  local reason = rule.Reason
+  NT.two = (note.__pbWhy and reason and BV.StepNote(panel, note, BV.NT_STEP)) and true or false
+  if NT.two then
+    reason:ClearAllPoints()
+    reason:SetPoint("LEFT", note, "LEFT", 0, -BV.NT_UNDER)
+    reason:SetPoint("RIGHT", note, "RIGHT", 0, -BV.NT_UNDER)
+    reason:Show()
+  elseif reason and reason:IsShown() then
+    reason:Hide()
+  end
   T.SetColor(note, "textPrimary", "window")
   local tex = rule.Tex
   T.FillColor(tex, "accent")
   tex:ClearAllPoints()
-  tex:SetPoint("TOP", note, "CENTER", 0, -BV.NT_RULE_Y)
+  tex:SetPoint("TOP", NT.two and reason or note, "CENTER", 0, -BV.NT_RULE_Y)
   BV.PlaceRule(note)
+  NT.fw, NT.fh = panel.Footer:GetWidth() or 0, panel.Footer:GetHeight() or 0
   rule:Show()
   if rule.Grow then
     rule.Grow:Stop()
@@ -2363,14 +2360,14 @@ function BV.NoTake(panel, owner, region, size, field)
   C_Timer.After(BV.NT_IN + BV.NT_HOLD + BV.NT_OUT, BV.NoTakeDue)
 end
 
--- The answer is over: the words as they were, in their own ink, the lock
--- and the line put away.
+-- The answer is over: the words where they were, in their own ink, the
+-- reason, the lock and the line put away.
 function BV.NoTakeEnd()
   local NT = BV.NT
   local note = NT.note
   if not note then return end
-  NT.note, NT.panel, NT.on, NT.field, NT.what = nil, nil, nil, nil, nil
-  if note.__pbWhy then note:SetText(note.__pbBase or "") end
+  if NT.two then BV.StepNote(NT.panel, note, 0) end
+  NT.note, NT.panel, NT.on, NT.field, NT.what, NT.two = nil, nil, nil, nil, nil, false
   Th().SetColor(note, "textSecondary", "window")
   local lock, rule = BV.lock, BV.rule
   if lock then
@@ -2379,8 +2376,18 @@ function BV.NoTakeEnd()
   end
   if rule then
     if rule.Grow then rule.Grow:Stop() end
+    if rule.Reason and rule.Reason:IsShown() then rule.Reason:Hide() end
     if rule:IsShown() then rule:Hide() end
   end
+end
+
+-- The rule frame, the footer's size, changed while lit (the window resized,
+-- the band shown or hidden): the answer ends, everything put back.
+function BV.NoTakeSized(_, w, h)
+  local NT = BV.NT
+  if not NT.note then return end
+  w, h = tonumber(w) or 0, tonumber(h) or 0
+  if w - NT.fw > 0.5 or NT.fw - w > 0.5 or h - NT.fh > 0.5 or NT.fh - h > 0.5 then BV.NoTakeEnd() end
 end
 
 function BV.NoTakeDue()
