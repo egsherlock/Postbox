@@ -8500,7 +8500,10 @@ do
     local hex = T.InkHex("textSecondary")
     if panel._lineN ~= more or panel._lineHex ~= hex then
       panel._lineN, panel._lineHex = more, hex
-      panel._lineText = ns.Plural("ROWS_MORE", more) .. "|cff" .. hex .. RV.SLOT_DOT .. L()["ROWS_MORE_WHY"] .. "|r"
+      local words, why = ns.Plural("ROWS_MORE", more), L()["ROWS_MORE_WHY"]
+      panel._lineText = words .. "|cff" .. hex .. RV.SLOT_DOT .. why .. "|r"
+      -- In one ink, for a look that grounds the line (RV.PlaceLine).
+      panel._linePlain = words .. RV.SLOT_DOT .. why
     end
     if not measuring or #shown == 0 then return slotsMost end
     -- Their figures, measured as the walk measures listed mail's.
@@ -8536,7 +8539,10 @@ do
 
   -- The line, in its slot `y` of the list, a row's `height` tall: its words
   -- centred on the list's own ground, no ground of its own and nothing
-  -- under the pointer. Made the first time it shows.
+  -- under the pointer. Made the first time it shows. A look that grounds a
+  -- line of words between its papers (Theme.LineGround: the Blizzard look
+  -- on a parchment, as Mail Memory's lines are) lays it here and inks the
+  -- words on it, all in its one ink.
   function RV.PlaceLine(panel, y, height)
     local line = panel.MoreLine
     if not line then
@@ -8551,8 +8557,16 @@ do
     line:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
     line:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
     line:SetHeight(height)
-    local inset = Th().Metrics.inset
-    Th().FitText(line.Text, UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH) - 2 * inset, panel._lineText, nil)
+    local T = Th()
+    local grounded = T.LineGround and T.LineGround(line) or false
+    if line.grounded ~= grounded then
+      -- Off the ground again: the words' own ink back.
+      if not grounded and line.grounded ~= nil then T.ApplyTextRole(line.Text, "value") end
+      line.grounded = grounded
+    end
+    local inset = T.Metrics.inset
+    T.FitText(line.Text, UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH) - 2 * inset,
+      grounded and panel._linePlain or panel._lineText, nil)
     line:Show()
     panel._lineUp = true
   end

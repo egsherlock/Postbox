@@ -4348,6 +4348,7 @@ do
     T.RowGround = Skin.RowGround
     T.ListGround = Skin.ListGround
     T.NoteGround = Skin.NoteGround
+    T.LineGround = Skin.LineGround
     T.RuleGround = Skin.RuleGround
     T.RowQuiet = Skin.RowQuiet
     -- The game's UI scale or the screen moved: the papered rows laid again
@@ -4735,32 +4736,70 @@ do
   end
 
   -- Theme.NoteGround: `row` was just bound as such a line, its words set
-  -- and inked by the binder.
-  function Skin.NoteGround(row)
+  -- and inked by the binder (`words`: the text they stand in, else the
+  -- row's Sender; `box`: the frame the ground is laid in, else the row).
+  function Skin.NoteGround(row, words, box)
     local mode = R.mode
     if mode ~= "light" and mode ~= "dark" then return end
-    local h = row:GetHeight()
+    box = box or row
+    local h = box:GetHeight()
     if type(h) ~= "number" or h <= 0 then h = 26 end
     local n = row.__pbNote
     if not n then
-      local pieces, marble = Parts.GoldEdge(row, row, h * 0.8, "BACKGROUND", 2, "BORDER", -1, h * 0.1)
+      local pieces, marble = Parts.GoldEdge(row, box, h * 0.8, "BACKGROUND", 2, "BORDER", -1, h * 0.1)
       n = pieces
       n[4] = marble
       n.h = h
       row.__pbNote = n
     elseif n.h ~= h then
       n.h = h
-      Parts.EdgeOn(n, row, h * 0.8, h * 0.1)
-      Parts.MarbleIn(n[4], row, h * 0.1)
+      Parts.EdgeOn(n, box, h * 0.8, h * 0.1)
+      Parts.MarbleIn(n[4], box, h * 0.1)
     end
     if not row.__pbNoteOn then
       row.__pbNoteOn = true
       for i = 1, 4 do n[i]:Show() end
     end
-    local words = row.Sender
+    words = words or row.Sender
     if words and type(words.SetTextColor) == "function" then
       words:SetTextColor(Parts.FontRGB("GameFontNormal", 1, 0.82, 0))
     end
+  end
+
+  -- Theme.LineGround: the Mail tab's line over the mail the game does not
+  -- list yet (CollectTab's RV.PlaceLine) is such a line too, on a frame of
+  -- its own rather than a row, laid again at every place: the same ground
+  -- and gold on a parchment, and put away on the dark list, where it is the
+  -- words it was. The line is a mail row's height, two lines' in two-line
+  -- rows; the ground keeps the height of Mail Memory's lines (NOTE_H, its
+  -- rows' height, where the rule was drawn), centred, as the island's bar
+  -- keeps its own. -> whether it wears the ground.
+  local NOTE_H = 26
+  function Skin.LineGround(line)
+    local mode = R.mode
+    if mode ~= "light" and mode ~= "dark" then
+      if line.__pbNoteOn then
+        NoteOff(line)
+        line.__pbNoteBox:Hide()
+      end
+      return false
+    end
+    local box = line.__pbNoteBox
+    if not box then
+      box = CreateFrame("Frame", nil, line)
+      box:SetPoint("LEFT", line, "LEFT", 0, 0)
+      box:SetPoint("RIGHT", line, "RIGHT", 0, 0)
+      line.__pbNoteBox = box
+    end
+    box:Show()
+    local h = line:GetHeight()
+    if type(h) ~= "number" or h <= 0 or h > NOTE_H then h = NOTE_H end
+    if box.__pbH ~= h then
+      box.__pbH = h
+      box:SetHeight(h)
+    end
+    Skin.NoteGround(line, line.Text, box)
+    return true
   end
 
   -- Theme.RowGround: the row bound at displayed `position` (nil: not a
