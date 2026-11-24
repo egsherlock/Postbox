@@ -965,8 +965,11 @@ function BV.SwitchLeave(cell)
   GameTooltip:Hide()
 end
 
-function BV.SwitchClick(cell)
+-- A right-click is the way back to the list: while the bag is lit it is the
+-- click itself; while the list is up it does nothing.
+function BV.SwitchClick(cell, button)
   if cell._gray then return end
+  if button == "RightButton" and not cell.isSelected then return end
   BV.Set(cell._panel, not BV.On())
   if GameTooltip:IsOwned(cell) then BV.SwitchTip(cell) end
 end
@@ -991,6 +994,7 @@ function BV.BuildSwitch(panel)
   else
     cell:SetText("#")
   end
+  cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   cell:SetScript("OnClick", BV.SwitchClick)
   cell:HookScript("OnEnter", BV.SwitchEnter)
   cell:HookScript("OnLeave", BV.SwitchLeave)
