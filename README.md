@@ -99,13 +99,14 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   to say which. Double-tap Alt to keep them on (a small chip in the title
   bar and a line along the top of the list say so); one tap, or a click
   on the chip, ends it. Alt does nothing while you are typing, and a
-  click acts only once the marks are fully showing.
+  click acts only once the marks are fully showing. **Return and Delete
+  with Alt** (Options > Mail tab > Collecting) turns it off.
 - **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
-  mail All mail takes: **Auction house**, **The game**, **My characters**
+  mail All mail takes: **Auction house**, **The game**, **My alts**
   and **Other players**, all four by default (**Every mail**). What you
   untick stays in your mailbox, unread, for you to take yourself, and the
-  title bar says how many it left; one kind always stays ticked. Your
-  characters are the ones you have logged into with Postbox installed.
+  title bar says "Not taken: 3"; one kind always stays ticked. Your
+  alts are the characters you have logged into with Postbox installed.
   Collect shown, the other buttons and a click on a mail take what they
   always do.
 - **Sort and filter:** the button at the end of the search box sorts by
@@ -136,16 +137,18 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   a bag: one tile for each kind of item with its total, gold first. A
   click takes every stack of that item as one collect run and leaves the
   rest of each mail; Shift-click asks how many (with a chat box open it
-  links the item), right-click shows its mails and the bag is back when
+  links the item), right-click lists its mails and the bag is back when
   you clear the search. A C.O.D. mail has one tile for each item and asks
-  once before anything is paid. It follows a search, the sort and the
-  filters, and shows another character's box and History too. Click or
+  once before anything is paid; unread letters with nothing attached have
+  a line under the tiles. It follows a search, the sort and the filters,
+  and shows another character's box and History too, where a click takes
+  nothing and a small lock says so. Click or
   right-click the button for the list; Options > Mail tab > One-bag
   button takes it away.
 - **All mail can show a slot count** at its right end ("94 slots"), off
   by default: **Show slot count on All mail button** (Options > Mail tab).
 - **Past the 100 mails the game lists at a time**, the list ends with a
-  line such as `45 more mails · not listed by the game yet`, and under it
+  line such as `45 more mails · the game lists 100 at a time`, and under it
   the mail Postbox already knows of, as gray rows you can read and search
   but not click. They come out as the game lists them.
 - **An opened mail's Delete is grayed** where the game will not delete the
@@ -234,7 +237,8 @@ too):
 - **A column header takes the top row's place**, each heading over its column.
   Drag a column by its heading or straight from any row; right-click to hide
   it, click it for its card, which holds that column's own settings: what
-  Gold, Time left and Slots show (gold **Written as** letters or coins),
+  Gold, Time left and Slots show (gold **Written as** letters or coins,
+  and **Down to** Gold, Silver or Copper),
   stack counts and quality marks, expiry marks, and on the Item icon's card
   **Attachments on hover** and **AH Sold icon**.
 - **The blocks under the list lift off:** the totals, All mail and the

@@ -6,9 +6,10 @@
 
 - **All mail can leave the kinds of mail you untick** (Options > Mail tab >
   Collecting > All mail takes): its list ticks Auction house, The game, My
-  characters and Other players, all four by default (Every mail). What you
+  alts and Other players, all four by default (Every mail). What you
   untick stays in your mailbox, unread, for you to take yourself, and the
-  title bar says how many were left. Only All mail follows the choice:
+  title bar says "Not taken: 3", with the reason and where the setting is
+  in its tooltip. Only All mail follows the choice:
   Collect shown, the other buttons and a click on a mail take what they
   always did.
 - **Mail tab: a progress line while All mail works.** A run of three
@@ -39,10 +40,14 @@
   chat box open it links the item, as ever); right-click shows the mails
   that hold it, and the bag is back when you clear the search; Ctrl-click
   tries it on. A C.O.D. mail has one tile for each item it holds, and a
-  click asks once, with the mail's price, before anything is paid. It
-  follows a search, the sort and the filters, and it works on another
-  character's box and in History, where it shows what is there and takes
-  nothing. Click or right-click the button for the list again. Rather
+  click asks once, with the mail's price, before anything is paid.
+  Unread letters with nothing attached have a line under the tiles ("2
+  letters with nothing attached"); click it for the list. It follows a
+  search, the sort and the filters, and it works on another character's
+  box and in History, where it shows what is there and takes nothing.
+  While you search every character, a click on a tile or on a
+  character's name goes to that character's box. Click or right-click
+  the button for the list again. Rather
   not have it? Options > Mail tab > One-bag button takes the button away
   and gives Search its room back.
 - **Send tab: pin a subject, as you pin a recipient.** The Subject box
@@ -53,7 +58,7 @@
   form clears and each pinned box takes its words back.
 - **Mail tab: the list says how much mail the game has not listed yet.**
   Past the 100 mails the game lists at a time, the list ends with a line
-  such as "45 more mails · not listed by the game yet", under the
+  such as "45 more mails · the game lists 100 at a time", under the
   finished mail, and under it the mail Postbox already knows of, as gray
   rows: auctions noted at the auction house, and mail your last visit
   listed. They are there to read, not to click; they come out as the
@@ -74,6 +79,9 @@
   something shows a faded x: it can only be taken. Double-tap Alt to keep
   the marks on: a small chip in the title bar and a thin line along the
   top of the list say so, and a tap of Alt or a click on the chip ends it.
+  A finished mail's tooltip says "Hold Alt: delete". Rather not have it?
+  Options > Mail tab > Return and Delete with Alt turns it off, and an
+  Alt+click collects as it used to.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
@@ -90,6 +98,23 @@
 
 ### Improved
 
+- **The mailbox window is a little wider:** 520 at its narrowest and by
+  default, where it was 480, so auction labels and sums have room. A
+  window you had narrower opens at 520, growing to the right.
+- **Mail tab: a sender's name that was cut gets room as you drag the
+  window wider.** The Subject still takes most of the added width; rows
+  whose names already fit do not move.
+- **Arrange > Gold column > Down to** (Gold, Silver, Copper): how far
+  down a one-line row writes a sum under a thousand gold, as "8g",
+  "8g 73s" or "8g 73s 12c". Silver by default on WoW Forever, Gold on
+  Retail, as before.
+- **Mail tab: a click where nothing can be taken says so.** In another
+  character's box, in History and while searching every character, the
+  mail or tile you click wears a small lock for a moment and the line at
+  the foot of the list lights, in the list and in the one-bag view.
+- **Mail tab: right-click the History button to leave History**, or
+  right-click Received or Sent. You stay on the character you were
+  looking at.
 - **Mail tab: the All mail button can say how many items it would
   take**, as "94 slots" at its right end, following a search and a
   selection. Off unless you turn it on: Show slot count on All mail
