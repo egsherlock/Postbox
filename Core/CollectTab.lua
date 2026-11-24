@@ -4736,10 +4736,10 @@ end
 local SetViewMode  -- forward declaration; the segments call it
 
 -- Out of History, staying on the character being viewed: that character's
--- Inbox, as the lit History button's click has it. The lit click and a
--- right-click on that button both come here; anywhere but History it does
--- nothing. History opens again on the half that was left (`_hside` is
--- kept).
+-- Inbox, as the lit History button's click has it. The lit click, a
+-- right-click on that button and a right-click on Received or Sent all
+-- come here; anywhere but History it does nothing. History opens again on
+-- the half that was left (`_hside` is kept).
 function RV.LeaveHistory(panel)
   if panel.viewMode ~= VIEW_HISTORY then return false end
   SetViewMode(panel, VIEW_COLLECT)
@@ -11678,7 +11678,16 @@ function RV.BuildSides(panel, container)
     if seg._edge then seg._edge:Hide() end
     seg.sideId = ids[i]
     seg:SetText(L()[keys[i]])
-    seg:SetScript("OnClick", function(self) HV.SetSide(panel, self.sideId) end)
+    -- A right-click on either half leaves History, as the History
+    -- button's does (RV.LeaveHistory); it opens again on this half.
+    seg:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    seg:SetScript("OnClick", function(self, button)
+      if button == "RightButton" then
+        RV.LeaveHistory(panel)
+        return
+      end
+      HV.SetSide(panel, self.sideId)
+    end)
     sides[i] = seg
   end
   container.sides = sides
