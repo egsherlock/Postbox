@@ -8578,7 +8578,8 @@ do
   -- let go when the ink moves; the mark is made once a row. RV.Unquiet puts
   -- a row bound as any other mail after it back as it was.
   RV.quiet, RV.quietN, RV.quietHex = {}, 0, nil
-  RV.QUIET_ICON_A, RV.REM_MARK = 0.55, ROW_INDICATOR + 2
+  -- The mark 12 units, the read dot's 7 (his pick on f62).
+  RV.QUIET_ICON_A, RV.REM_MARK = 0.55, ROW_INDICATOR + 4
   local QUIET = { "Sender", "Subject", "ColTime", "ColMoney", "ColSlots", "Detail" }
 
   local function Gray(text, hex)
