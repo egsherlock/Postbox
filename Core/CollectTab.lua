@@ -8903,9 +8903,11 @@ end
 -- keeps the x it always wears at the right end; a mail that can be neither
 -- returned nor deleted from here -- auction and other system mail still
 -- holding something -- wears a faded x there that never turns red, does
--- nothing when clicked, and says why when pointed at. A double-tap of Alt
--- keeps them on, and a lit Alt key in the title bar (the cog key's Done
--- plate, AR.BuildLitKey) says so: one tap, a click on that key, or the
+-- nothing when clicked, and says why when pointed at. While they show, a
+-- chip in the title bar wears the arrow and the x (f63 A01), grey while
+-- Alt is held. A double-tap of Alt keeps them on: the chip lights in the
+-- accent and a line in it runs along the list's top: one tap, a click on
+-- the chip, or the
 -- list going away ends it (the mailbox closing, Send, History, the Done
 -- tab, another character's box, a mail opened to read, a run, the arrange
 -- mode). A return or delete, scrolling, searching and sorting do not.
@@ -8971,6 +8973,12 @@ do
     -- side starts XGAP short of its button. A lit x on finished mail is
     -- drawn whole, in an ink that reads X_NEED on that row's ground.
     EASE = 0.34 / 0.58, XGAP = 2, X_NEED = 3.0,
+    -- The marks chip (f63 A01 "both"): its width, its glyphs' centres from
+    -- its left and the x's size. The line, kept on: its height, the glow
+    -- under it, the glow's alpha, its level over the list, and where a look
+    -- sinks the list under a rim (the Blizzard style), the rim's depth.
+    CHIP_W = 39, CHIP_ARROW = 12.5, CHIP_X = 27.5, CHIP_XS = 9,
+    LINE_H = 2, GLOW_H = 10, GLOW_A = 0.16, LINE_LEVEL = 9, RIM = 3,
     lit = nil, c1 = nil, c2 = nil,
     held = false, latched = false, goal = 0, p = 0,
     downAt = nil, tapAt = nil, ended = false, used = false,
@@ -9147,7 +9155,7 @@ do
   -- has gone).
   function M.Aim(on, instant)
     local goal = on and 1 or 0
-    M.Key()
+    M.Key(on)
     if instant then
       M.goal = goal
       if M.p ~= goal or M.moving then
@@ -9207,6 +9215,10 @@ do
       lit._mkLitC:SetAlpha(p)
       lit._mkLitD:SetAlpha(p)
     end
+    -- The chip and the line come in with the marks.
+    local key, line = M.key, panel._mkLine
+    if key and key:IsShown() then key:SetAlpha(p) end
+    if line and line:IsShown() then line:SetAlpha(p) end
   end
 
   -- What each row bound now wears, from its mail as the inbox now has it,
@@ -9756,52 +9768,181 @@ do
     GameTooltip:Show()
   end
 
-  -- The lit Alt key in the title bar, a unit after the cog key, while the
-  -- marks are kept on; made the first time they are.
-  function M.Key()
+  -- The marks chip in the title bar, a unit after the cog key, while the
+  -- marks show (f63 A01 "both"): the Return arrow and the x, no word, so it
+  -- is one width in every language. Held, in the title bar's rest grey
+  -- (the cog key's); kept on by a double-tap, lit in the accent, and a line
+  -- in the accent runs along the list's top (M.Line). Both go the moment
+  -- the marks do, and come in with them (M.PaintAll). Made the first time
+  -- the marks show; painted only when its state moves.
+  function M.Key(on)
     local key = M.key
-    if not (M.latched and M.watching) then
-      if key and key:IsShown() then key:Hide() end
+    local state = (on and M.watching) and (M.latched and "lit" or "held") or nil
+    M.Line(state == "lit")
+    if not state then
+      if key and key:IsShown() then
+        key:Hide()
+        key.state = nil
+      end
       return
     end
     if not key then
-      local UI, AR = ns.MailboxUI, ns.Arrange
-      local frame = UI and UI._frame
-      if not (frame and AR and AR.BuildLitKey and AR.PaintLit) then return end
-      local after = frame.ArrangeButton or frame.OptionsButton
-      if not after then return end
-      key = AR.BuildLitKey(frame, L()["MARKS_KEY"])
-      key:SetPoint("LEFT", after, "RIGHT", 1, 0)
-      key:RegisterForClicks("LeftButtonUp")
-      key:SetScript("OnEnter", M.KeyEnter)
-      key:SetScript("OnLeave", M.KeyLeave)
-      key:SetScript("OnClick", M.KeyClick)
-      M.key = key
+      key = M.MakeKey()
+      if not key then return end
     end
+    if key.state == state and key:IsShown() then return end
     if not key:IsShown() then
+      key:SetAlpha(M.p)
       key:Show()
-      ns.Arrange.PaintLit(key, key.hover)
     end
+    key.state = state
+    M.PaintKey(key)
+    -- A tooltip up on it says the click as it now is.
+    if GameTooltip:IsOwned(key) then M.KeyEnter(key) end
   end
 
+  function M.MakeKey()
+    local UI, AR = ns.MailboxUI, ns.Arrange
+    local frame = UI and UI._frame
+    if not (frame and AR and AR.BuildLitKey and AR.PaintChip) then return nil end
+    local after = frame.ArrangeButton or frame.OptionsButton
+    if not after then return nil end
+    local T = Th()
+    local key = AR.BuildLitKey(frame, "")
+    key:SetPoint("LEFT", after, "RIGHT", 1, 0)
+    key:SetWidth(M.CHIP_W)
+    key:RegisterForClicks("LeftButtonUp")
+    key:SetScript("OnEnter", M.KeyEnter)
+    key:SetScript("OnLeave", M.KeyLeave)
+    key:SetScript("OnClick", M.KeyClick)
+    -- The row's two marks: the arrow (its art for the ground, M.PaintKey)
+    -- and the x's own art.
+    local arrow = T.Glyph and T.Glyph(key, "expiry-back", M.SIZE, "ARTWORK")
+    local atlas = ProbeAtlas(DELETE_ATLASES)
+    local x
+    if atlas then
+      x = key:CreateTexture(nil, "ARTWORK")
+      x:SetAtlas(atlas, false)
+      x:SetSize(M.CHIP_XS, M.CHIP_XS)
+    else
+      x = T.CreateText(key, "value", "ARTWORK")
+      x:SetText(DELETE_GLYPH)
+    end
+    x:SetPoint("CENTER", key, "LEFT", M.CHIP_X, 0)
+    key.Glyphs = { x }
+    if arrow then
+      arrow:SetPoint("CENTER", key, "LEFT", M.CHIP_ARROW, 0)
+      key.Glyphs[2] = arrow
+      key.Arrow = arrow
+    end
+    key:Hide()
+    M.key = key
+    return key
+  end
+
+  -- The chip as its state and the pointer stand; the arrow keylined on a
+  -- dark palette, its clean twin on a light one (as M.Art chooses on rows).
+  function M.PaintKey(key)
+    local T = Th()
+    local AR = ns.Arrange
+    local arrow = key.Arrow
+    if arrow then
+      local light = AR.Light()
+      if arrow.__pbMk ~= light then
+        local name = light and "expiry-back-clean" or "expiry-back"
+        local G = T.GLYPHS and T.GLYPHS[name]
+        if G and T.SetGlyphArt then
+          arrow.__pbMk = light
+          T.SetGlyphArt(arrow, name)
+          local k = M.SIZE / (G.h - 2 * (G.pad or 0))
+          arrow:SetSize(G.w * k, G.h * k)
+        end
+      end
+    end
+    AR.PaintChip(key, key.state == "lit", key.hover)
+  end
+
+  -- The list's line, kept on: the accent's mark tone along the list's top
+  -- inside its edge (inside the rim, where a look sinks the list under
+  -- one), over the rows, a glow under it fading to nothing; on a frame of
+  -- its own that takes no pointer, so the list, its rows and every click
+  -- stay as they were. Made the first time it shows; painted each time.
+  function M.Line(on)
+    local panel = M.panel
+    local line = panel and panel._mkLine
+    if not on then
+      if line and line:IsShown() then line:Hide() end
+      return
+    end
+    local area = panel and panel.MailListArea
+    if not area then return end
+    local T = Th()
+    if not line then
+      line = CreateFrame("Frame", nil, area)
+      line:SetFrameLevel(area:GetFrameLevel() + M.LINE_LEVEL)
+      local inset = area.__pbBlizzBevel and M.RIM or 1
+      line:SetPoint("TOPLEFT", area, "TOPLEFT", inset, -inset)
+      line:SetPoint("TOPRIGHT", area, "TOPRIGHT", -inset, -inset)
+      line:SetHeight(M.LINE_H + M.GLOW_H)
+      local rule = line:CreateTexture(nil, "ARTWORK")
+      rule:SetColorTexture(1, 1, 1, 1)
+      rule:SetPoint("TOPLEFT", line, "TOPLEFT", 0, 0)
+      rule:SetPoint("TOPRIGHT", line, "TOPRIGHT", 0, 0)
+      rule:SetHeight(M.LINE_H)
+      local glow = line:CreateTexture(nil, "ARTWORK")
+      glow:SetColorTexture(1, 1, 1, 1)
+      glow:SetPoint("TOPLEFT", rule, "BOTTOMLEFT", 0, 0)
+      glow:SetPoint("TOPRIGHT", rule, "BOTTOMRIGHT", 0, 0)
+      glow:SetHeight(M.GLOW_H)
+      line.Rule, line.Glow = rule, glow
+      line:Hide()
+      panel._mkLine = line
+      M.Grads(glow)
+    end
+    if line:IsShown() then return end
+    local r, g, b = T.GetAccentTone("mark")
+    line.Rule:SetColorTexture(r, g, b, 1)
+    local glow = line.Glow
+    local c1, c2 = M.c1, M.c2
+    if c1 then
+      -- VERTICAL: the first colour is the foot's.
+      glow:SetColorTexture(1, 1, 1, 1)
+      c1:SetRGBA(r, g, b, 0)
+      c2:SetRGBA(r, g, b, M.GLOW_A)
+      glow:SetGradient("VERTICAL", c1, c2)
+    else
+      glow:SetColorTexture(r, g, b, M.GLOW_A / 2)
+    end
+    line:SetAlpha(M.p)
+    line:Show()
+  end
+
+  -- Its tooltip, the lit Alt key's: kept on, what it is and that a click or
+  -- Alt ends it; held, what it is and how to keep it on.
   function M.KeyEnter(self)
     local T = Th()
     self.hover = true
-    ns.Arrange.PaintLit(self, true)
+    M.PaintKey(self)
     T.TipBegin(self, "ANCHOR_RIGHT")
     T.TipTitle(L()["MARKS_KEY_TITLE"])
-    T.TipLine(L()["MARKS_KEY_TIP"])
-    T.TipHint(L()["MARKS_KEY_HINT"])
+    if self.state == "lit" then
+      T.TipLine(L()["MARKS_KEY_TIP"])
+      T.TipHint(L()["MARKS_KEY_HINT"])
+    else
+      T.TipHint(L()["HINT_MARKS_KEEP"])
+    end
     GameTooltip:Show()
   end
 
   function M.KeyLeave(self)
     self.hover = nil
-    ns.Arrange.PaintLit(self, false)
+    M.PaintKey(self)
     GameTooltip:Hide()
   end
 
+  -- Kept on, a click ends it; held, Alt is down and a click does nothing.
   function M.KeyClick(self)
+    if not M.latched then return end
     GameTooltip:Hide()
     self.hover = nil
     M.latched = false

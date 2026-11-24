@@ -931,9 +931,8 @@ end
 -- is laid on the title bar or on any frame a skin repaints.
 -------------------------------------------------------------
 
--- The lit plate alone, for the key lit as Done here and for the Mail tab's
--- Alt key (Core/CollectTab.lua, RV.Marks), which is only ever lit: a key
--- made by AR.BuildLitKey is `bare`, its word KEY_LEAD in with no check
+-- The lit plate alone, for the key lit as Done here and for a key made by
+-- AR.BuildLitKey, which is `bare`: its word KEY_LEAD in with no check
 -- before it, and as wide as its word needs.
 function AR.PaintLit(button, hover)
   local T = Th()
@@ -979,6 +978,65 @@ function AR.PaintLit(button, hover)
   -- A skin that draws the lit key its own way (the Blizzard style) does
   -- it last, lit and unlit; no other look answers.
   if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, true) end
+end
+
+-- The Mail tab's marks chip (Core/CollectTab.lua, RV.Marks; f63 A01): a
+-- bare key as wide as its caller set it, wearing its glyphs
+-- (button.Glyphs, the Return arrow and the x) where the word would be.
+-- Not lit (Alt held), the cog key at rest: the glyphs in its rest grey, and
+-- pointed at, white on its faint plate. Lit (kept on by a double-tap): the
+-- selected plate under the accent's wash at CHIP_WASH, a ring in the
+-- accent's mark (AR.MarkRGB), the black keyline on a dark palette, the
+-- glyphs in the accent's bright tone (its mark tone on a light palette,
+-- where the bright tone is the ink), and the plate's lift under the
+-- pointer. A skin that draws the lit key its own way (the Blizzard style)
+-- draws it, lit and unlit, as it draws that key.
+AR.CHIP_WASH = 0.16
+function AR.PaintChip(button, lit, hover)
+  local T = Th()
+  local light = AR.Light()
+  hover = hover and true or false
+  button.Label:Hide()
+  button.Bevel:Hide()
+  button.Base:Hide()
+  if lit then
+    local fill = T.Colors.plateSelected
+    button.Fill:SetVertexColor(fill[1], fill[2], fill[3], fill[4])
+    button.Fill:Show()
+    local r, g, b = T.GetAccentTone("base")
+    button.Wash:SetVertexColor(r, g, b, AR.CHIP_WASH)
+    button.Wash:Show()
+    r, g, b = AR.MarkRGB()
+    AR.TintEdges(button.Ring, r, g, b, 1)
+    AR.ShowEdges(button.Ring, true)
+    AR.TintEdges(button.Key, 0, 0, 0, 1)
+    AR.ShowEdges(button.Key, not light)
+    local lift = T.Colors.plateHighlight
+    if lift and hover then
+      button.Lift:SetVertexColor(lift[1], lift[2], lift[3], lift[4])
+      button.Lift:Show()
+    else
+      button.Lift:Hide()
+    end
+  else
+    AR.Chrome(button.Fill, 0.07)
+    button.Fill:SetShown(hover)
+    if light then
+      local ring = T.Colors.plateEdgeHover
+      AR.TintEdges(button.Ring, ring[1], ring[2], ring[3], 1)
+    else
+      AR.TintEdges(button.Ring, 0.365, 0.365, 0.365, 1)
+    end
+    AR.ShowEdges(button.Ring, hover)
+    AR.TintEdges(button.Key, 0, 0, 0, 0.8)
+    AR.ShowEdges(button.Key, hover and not light)
+    button.Wash:Hide()
+    button.Lift:Hide()
+  end
+  local token = lit and (light and "accent" or "accentBright") or (hover and "textPrimary" or KEY_REST)
+  local glyphs = button.Glyphs
+  for i = 1, #glyphs do T.SetColor(glyphs[i], token) end
+  if ns.Skin and type(ns.Skin.PaintKey) == "function" then ns.Skin.PaintKey(button, lit) end
 end
 
 -- Every look the key has, from its state: at rest the mark alone; pointed
@@ -1155,10 +1213,10 @@ function AR.BuildToggle(parent, place, getHost)
   return button
 end
 
--- A key that is only ever lit, wearing what the cog key wears as Done:
--- the Mail tab's Alt key, while Return and Delete are kept on the rows
--- (Core/CollectTab.lua, RV.Marks). Its word is `text`; the caller places
--- it, gives it its scripts, and paints it with AR.PaintLit.
+-- A bare key, wearing what the cog key wears as Done: its word is `text`;
+-- the caller places it, gives it its scripts, and paints it with
+-- AR.PaintLit, or with AR.PaintChip when it gives it glyphs instead (the
+-- Mail tab's marks chip, Core/CollectTab.lua, RV.Marks).
 function AR.BuildLitKey(parent, text)
   local button = CreateFrame("Button", nil, parent)
   button:SetSize(AR.KEY_W, KEY_SIZE)

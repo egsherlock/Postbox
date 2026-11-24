@@ -3989,6 +3989,12 @@ do
     if type(button.Key) == "table" then for i = 1, #button.Key do button.Key[i]:Hide() end end
     White(button.Label)
     White(button.Check, true)
+    -- A key that wears glyphs for its word (the Mail tab's marks chip,
+    -- AR.PaintChip): them too.
+    local glyphs = button.Glyphs
+    if glyphs then
+      for i = 1, #glyphs do White(glyphs[i], type(glyphs[i].SetTextColor) ~= "function") end
+    end
   end
 
   -- The arrange mode's column headings over the list, on the Mail tab and
