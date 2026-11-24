@@ -3139,7 +3139,11 @@ end
 --
 -- One auction can be said twice: a purchase by its completed event and by
 -- the auction house's notice, a commodity purchase by two events, an expiry
--- by its event and its notice. Two signals are one auction when they carry
+-- by its event and its notice. AUCTION_CANCELED is no outcome of its own:
+-- the game sends it as any auction leaves the list, beside each sale of this
+-- character's (seen on Forever: every sale, the same id, the same second),
+-- so it says a cancel only where this character's cancel was heard (A.Ended).
+-- Two signals are one auction when they carry
 -- one auction id and are not the same signal again (the same one again
 -- within SAME seconds is an echo; later it is another part of that auction
 -- selling), or when neither denies the other within PAIR seconds: the same
@@ -3611,10 +3615,17 @@ do
   -- or the auction house's notice, which names it) or was canceled
   -- ("canceled": AUCTION_CANCELED): the item comes back by mail. How many
   -- only for an item's auction: a commodity's may have sold in part.
+  -- AUCTION_CANCELED says only that an auction left the list, whoever ended
+  -- it: the game sends it beside each sale of this character's auctions (the
+  -- same id, the same second), and for auctions that are no cancel of this
+  -- character's at all. So it is a cancel only where this character's cancel
+  -- of that auction was heard (CancelPlaced); any other is the auction's
+  -- other signals' to say, or no mail of this character's.
   function A.Ended(kind, src, auctionID, name)
     auctionID, name = Num(auctionID), Text(name)
-    local note, up = UpOf(auctionID)
     local slot = kind == "canceled" and RingFind(cancels, auctionID) or nil
+    if kind == "canceled" and not slot then return nil end
+    local note, up = UpOf(auctionID)
     local itemID = (note and tonumber(note.i)) or (slot and slot.i) or nil
     local link = slot and slot.l or nil
     name = name or (note and Text(note.item)) or (slot and slot.item) or NameOfID(itemID)
@@ -8526,7 +8537,9 @@ if bus then
   -- An auction ran out, or was canceled: its item comes back by mail, one
   -- mail an auction, noted as it happens (2g). The game names the auction
   -- by its id; what it was is known from its posting, from the cancel as it
-  -- was placed, or from the auction house's notice below.
+  -- was placed, or from the auction house's notice below. AUCTION_CANCELED
+  -- comes for auctions that sold or were never this character's too: only
+  -- a cancel this character placed is noted (A.Ended).
   registered.auctionExpired = bus.Register("AUCTION_HOUSE_AUCTIONS_EXPIRED", function(_, auctionID)
     MM.Auctions.Ended("expired", MM.Auctions.SRC.event, auctionID)
   end)
