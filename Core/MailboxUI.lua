@@ -2710,7 +2710,7 @@ end
 -- 3a. The line at the width it has
 --
 -- The line has what the title bar leaves between the title and the close
--- button: what the window's width (480 to 750), the face and its size, and
+-- button: what the window's width (520 to 750), the face and its size, and
 -- the locale make of it. It shows its whole text whenever that fits -- the
 -- normal case, exactly as before. When it does not, it gives way a whole
 -- piece at a time, each candidate measured on the label itself, in the face
@@ -3885,11 +3885,13 @@ local TITLE_BAR_HEIGHT = 24
 -- everything on both tabs fits it and measures itself to it. The one exception
 -- is an edge case of the Mail tab's top row -- counts in the thousands beside a
 -- long translation, a wide host font, another character's box with a long name
--- -- which can need more than 480 however its parts give way; for exactly as
+-- -- which can need more than 520 however its parts give way; for exactly as
 -- long as that lasts the floor is raised to what the row needs (MinWindowWidth,
 -- below). There is deliberately no minimum or default HEIGHT here: both are
--- computed below.
-local MIN_WIDTH, DEFAULT_WIDTH = 480, 480
+-- computed below. One number on both games: 520 gives an item name about six
+-- letters more than 480 did, and a status line or a totals band in the
+-- game's own font its whole words.
+local MIN_WIDTH, DEFAULT_WIDTH = 520, 520
 -- The ceilings are taste, not structure: past this the window is bigger than the
 -- content it holds.
 local MAX_WIDTH, MAX_HEIGHT = 750, 600
@@ -4038,7 +4040,7 @@ local function BaseMinHeight()
   return MinWindowHeight(1)
 end
 
--- THE WIDTH FLOOR: 480, or what the Mail tab's top row needs where that is
+-- THE WIDTH FLOOR: 520, or what the Mail tab's top row needs where that is
 -- more (Core/CollectTab.lua, CT.MinPanelWidth -- the row with every part at
 -- its narrowest), plus the shell's own margin either side of the panel. Never
 -- past the ceiling.
@@ -5749,7 +5751,14 @@ local function BuildFrame()
   -- a size that reaches the frame by any other route.
   local baseMin = BaseMinHeight()
   if type(windowStore.width) == "number" then
-    windowStore.width = max(MIN_WIDTH, min(MAX_WIDTH, windowStore.width))
+    local width = max(MIN_WIDTH, min(MAX_WIDTH, windowStore.width))
+    -- The place is kept by the window's centre: a width raised to the floor
+    -- (480 from before 2.1) moves the centre by half of what it gained, so
+    -- the window keeps its left edge and grows to the right, as a drag does.
+    if width > windowStore.width and type(windowStore.x) == "number" then
+      windowStore.x = floor(windowStore.x + (width - windowStore.width) / 2 + 0.5)
+    end
+    windowStore.width = width
   end
   if type(windowStore.height) == "number" then
     windowStore.height = max(baseMin, min(max(MAX_HEIGHT, baseMin), windowStore.height))

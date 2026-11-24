@@ -1175,12 +1175,12 @@ end
 local CATEGORY_ORDER = { "all", "bought", "sold", "canceled", "expired", "other", "alts" }
 local GRID_COLUMNS = 3
 
--- The window's persisted minimum is 480 wide; the shell's content inset takes
+-- The window's persisted minimum is 520 wide; the shell's content inset takes
 -- ~20 of it. Used only as the fallback when a container's anchored width still
 -- reads zero -- during the very first layout pass, before the window has been
 -- sized. Laying out against this is what stops the grid visibly jumping into
 -- place a frame after the window opens.
-local FALLBACK_PANEL_WIDTH = 460
+local FALLBACK_PANEL_WIDTH = 500
 
 -- Mail row geometry. The stride is what the virtualiser divides by, so it is
 -- the row plus its separating gap and nothing else.
@@ -15808,7 +15808,7 @@ CT.Bag = {
 -------------------------------------------------------------
 -- The detail view
 --
--- An overlay over the collect screen: at the 480px window minimum there is no
+-- An overlay over the collect screen: at the 520px window minimum there is no
 -- room for a two-pane layout.
 --
 -- Three bands, bottom-anchored in this order: the action row, then the

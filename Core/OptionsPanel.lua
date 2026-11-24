@@ -1747,7 +1747,7 @@ do
   -- Postbox's fonts, so the face, the size and the outline show as they
   -- change.
   --
-  -- In proportion to the real window, 480 units wide: its insets, gaps,
+  -- In proportion to the real window, 520 units wide: its insets, gaps,
   -- strip and sheen scaled to the drawing's width. The text is at the size
   -- it is set, so a tab, a row, the band and the button are each as tall as
   -- their line needs and never less than their scaled height: the drawing
@@ -1766,7 +1766,7 @@ do
     -- The real window's width, and the heights of its parts the drawing
     -- scales: the Postbox style's title strip and sheen (Skin_Postbox), a
     -- compact mail row and the All mail button (CollectTab).
-    REAL_W = 480, STRIP = 25, SHEEN = 90, ROW = 26, BUTTON = 28,
+    REAL_W = 520, STRIP = 25, SHEEN = 90, ROW = 26, BUTTON = 28,
     -- What a line of text is given over its font's height: on a tab or a
     -- button, and on a row or the band.
     CONTROL_AIR = 5, LINE_AIR = 4,
