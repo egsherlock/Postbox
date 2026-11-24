@@ -6578,7 +6578,9 @@ function Theme.CreateSearchBox(parent, width, height, placeholderText, opts)
     if not cell then return end
     on = on and true or false
     cell:SetShown(on)
-    search.endW = on and max(0, (cell:GetWidth() or 0) - 1) or 0
+    -- `endExtra`: the room of a cell joined after this one (the Mail tab's
+    -- bag switch after its sort), which the search's own cell ends before too.
+    search.endW = on and (max(0, (cell:GetWidth() or 0) - 1) + (search.endExtra or 0)) or 0
     search.Place(search.toggled)
     if on then search.PaintJoin() end
   end

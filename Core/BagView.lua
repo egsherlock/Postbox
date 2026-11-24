@@ -635,6 +635,7 @@ function BV.Refresh(panel)
     panel.Detail:HookScript("OnShow", BV.DetailChanged)
     panel.Detail:HookScript("OnHide", BV.DetailChanged)
   end
+  BV.PaintSwitch(panel)
   local area = BV.area
   if not BV.Active(panel) then
     if area and area:IsShown() then
@@ -681,4 +682,110 @@ function BV.DetailChanged()
   elseif panel:IsShown() and BV.Active(panel) then
     BV.Refresh(panel)
   end
+end
+
+-------------------------------------------------------------
+-- 4. The switch
+-------------------------------------------------------------
+
+-- The mark's ink: the accent's bright tone while the bag is on, as a
+-- selected segment's caption; otherwise the chrome's gray, unless a look
+-- paints it as its caption (Theme.SetPlateGlyph).
+function BV.PaintGlyph(icon)
+  local cell = icon:GetParent()
+  if cell.isSelected then
+    Th().SetColor(icon, "accentBright")
+  elseif not cell.__pbGlyphLit then
+    Th().SetColor(icon, "textSecondary")
+  end
+  if cell._gray then icon:SetAlpha(0.35) end
+end
+
+-- Lit while the bag is on; gray where the list on screen has none to show.
+function BV.PaintSwitch(panel)
+  local cell = panel.BagSwitch
+  if not cell then return end
+  local gray = BV.Gray(panel)
+  local on = BV.On() and not gray
+  if cell.isSelected ~= on or cell._gray ~= gray then
+    cell._gray = gray
+    if cell.isSelected ~= on then Th().SetPlateSelected(cell, on) end
+    if cell.Icon then
+      cell.Icon:SetAlpha(1)
+      BV.PaintGlyph(cell.Icon)
+    end
+  end
+end
+
+-- panel, on -> the choice saved (profile.bagView) and the list drawn for it.
+function BV.Set(panel, on)
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.SetOption) == "function") then return end
+  UI.SetOption("bagView", on and true or false)
+  ns.CollectTab.RefreshMailList(panel)
+end
+
+function BV.SwitchTip(cell)
+  local T, L0 = Th(), L()
+  T.TipBegin(cell)
+  T.TipTitle(L0["BAG_TIP_TITLE"])
+  T.TipLine(L0["BAG_TIP_LINE"])
+  if cell._gray then
+    local P, panel = Parts(), cell._panel
+    if P and panel and panel.viewMode == P.VIEW_DONE then T.TipLine(T.TipTone("muted", L0["BAG_TIP_DONE"])) end
+  else
+    T.TipHint(L0[cell.isSelected and "BAG_TIP_LIST" or "BAG_TIP_SHOW"])
+  end
+  GameTooltip:Show()
+end
+
+function BV.SwitchEnter(cell)
+  if cell.Icon then BV.PaintGlyph(cell.Icon) end
+  BV.SwitchTip(cell)
+end
+
+function BV.SwitchLeave(cell)
+  if cell.Icon then BV.PaintGlyph(cell.Icon) end
+  GameTooltip:Hide()
+end
+
+function BV.SwitchClick(cell)
+  if cell._gray then return end
+  BV.Set(cell._panel, not BV.On())
+  if GameTooltip:IsOwned(cell) then BV.SwitchTip(cell) end
+end
+
+-- The switch, built with the find plate (CollectTab's BuildSearchBox): a
+-- square plate the segments' height, joined to the search as its last cell
+-- after the sort, which moves one cell in (Theme.JoinCell; the search ends
+-- before both, Theme's search.endExtra, and RV.SortRoom counts both).
+function BV.BuildSwitch(panel)
+  local P, T = Parts(), Th()
+  local wrap, search, sort = panel.SearchWrap, panel.Search, panel.Sort
+  if panel.BagSwitch or not (P and wrap and search and sort) then return end
+  local size = T.Metrics.segmentHeight
+  local cell = T.CreatePlate(panel, "segment")
+  cell:SetSize(size, size)
+  cell:SetText("")
+  cell._panel, cell._gray = panel, false
+  cell.Icon = T.Glyph and T.Glyph(cell, BV.GLYPH, nil, "OVERLAY") or nil
+  if cell.Icon then
+    cell.Icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
+    T.SetPlateGlyph(cell, cell.Icon, BV.PaintGlyph)
+  else
+    cell:SetText("#")
+  end
+  cell:SetScript("OnClick", BV.SwitchClick)
+  cell:HookScript("OnEnter", BV.SwitchEnter)
+  cell:HookScript("OnLeave", BV.SwitchLeave)
+  T.JoinCell(wrap, cell)
+  sort:ClearAllPoints()
+  sort:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", -(size - 1), 0)
+  sort:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -(size - 1), 0)
+  panel.BagSwitch = cell
+  search.endExtra = size - 1
+  search.SetJoined(panel._sortPlaced ~= false)
+  panel._searchW = nil
+  P.RV.SizeSearch(panel, panel._searchGiven or 0)
+  T.SetPlateSelected(cell, false)
 end

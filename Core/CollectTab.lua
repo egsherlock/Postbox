@@ -4940,6 +4940,8 @@ local function BuildSearchBox(panel)
   wrap:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -M.inset, -M.inset)
   search.Join(panel.Sort)
   RV.PlaceSort(panel, true)
+  -- The bag's switch, the plate's last cell, after the sort (Core/BagView.lua).
+  if ns.BagView then ns.BagView.BuildSwitch(panel) end
 
   -- The character picker: the plate that names the box on screen -- Inbox,
   -- or the other box's name -- wears the crest of that box as its portrait
@@ -5175,7 +5177,8 @@ end
 -- the Mail tab's every list.
 function RV.SortRoom(panel)
   if not panel.Sort then return 0 end
-  return Th().Metrics.segmentHeight - 1
+  -- The bag's switch is a cell of the same size after it (Core/BagView.lua).
+  return (Th().Metrics.segmentHeight - 1) * (panel.BagSwitch and 2 or 1)
 end
 
 -- The sort shown or not (AV.PaintSearch: on every list): the plate's last

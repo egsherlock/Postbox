@@ -215,6 +215,9 @@ local OPTION_DEFAULTS = {
   -- mailbox closes, and Mail Memory's when its window does
   -- (UI.LetGoListSort). Filters are let go at close either way.
   rememberSort    = true,
+  -- The Mail tab's list drawn as one bag of items (Core/BagView.lua, the
+  -- switch after Sort). Off: the list, as it has always been.
+  bagView         = false,
   -- Where the names the Send tab offers come from, one switch per source
   -- (the options' Send tab, Recipients): your alts, your guild, your friends,
   -- the people you have mailed, and those you recently grouped with.
