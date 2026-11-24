@@ -6648,7 +6648,10 @@ end
 --   Materials        one line for each subclass of the game's Trade Goods
 --                    class that has something to take
 --   Consumables      one line each for its Potion, Elixir, Flask and Food &
---                    Drink subclasses
+--                    Drink subclasses, and one for item enhancements: the
+--                    Item Enhancement class on retail (enchant scrolls,
+--                    armor kits), the Consumable subclass the classic-rules
+--                    client files the same armor kits under ("Permanent")
 --   Gems and recipes one line for the Gem class, one for the Recipe class
 -- Each line carries the game's icon for its kind (Kind.ICONS), the kind's
 -- name as the client writes it and how many stacks. A pick attaches every
@@ -6720,11 +6723,18 @@ do
   --   class  every subclass of it, a line each (materials)
   --   subs   class `sub` and these subclasses, a line each in this order
   --   whole  these classes, a line each, in this order
-  -- A line's key is its subclass, or its class for a whole class.
+  -- A line's key is its subclass, or its class for a whole class; under
+  -- Consumables the two never meet (the class it takes whole, 8, is not one
+  -- of the subclasses it takes).
+  -- Item enhancements: retail's Item Enhancement class (8); the
+  -- classic-rules client has none (its class 8 is an empty "Generic") and
+  -- files the same armor kits under Consumable subclass 6, "Permanent",
+  -- which retail keeps empty. Each client lists the one it fills.
   Kind.GROUPS = {
     { head = "KIND_HEAD_MATERIALS", class = Kind.CLASS, cap = Kind.ROWS },
     { head = "KIND_HEAD_CONSUMABLES", sub = Class("Consumable", 0),
-      subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4 }, cap = 4 },
+      subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4, [6] = 5 },
+      whole = { [Class("ItemEnhancement", 8)] = 6 }, cap = 5 },
     { head = "KIND_HEAD_GEMS", whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
   }
   -- The icon before each heading (`head`) and each line (by its key), by its
@@ -6751,6 +6761,8 @@ do
       [2] = "INV_Potion_32",               -- Elixirs
       [3] = "INV_Potion_62",               -- Flasks
       [5] = "INV_Misc_Food_15",            -- Food & Drink
+      [6] = "INV_Misc_ArmorKit_17",        -- Permanent (classic-rules)
+      [8] = "INV_Misc_ArmorKit_17",        -- Item Enhancement (retail)
     },
     { head = "INV_Misc_Gem_Variety_01",
       [3] = "INV_Misc_Gem_01",             -- Gem
@@ -6825,6 +6837,7 @@ do
     local G = Kind.GROUPS
     if classID == G[1].class then return 1, subID end
     if classID == G[2].sub and G[2].subs[subID] then return 2, subID end
+    if G[2].whole[classID] then return 2, classID end
     if G[3].whole[classID] then return 3, classID end
     return nil
   end
