@@ -14516,7 +14516,7 @@ local function ResetRun()
   for i in pairs(Run.tallied) do Run.tallied[i] = nil end
   for i in pairs(Run.took) do Run.took[i] = nil end
   for i in pairs(Run.record) do Run.record[i] = nil end
-  Run.opts.history, Run.opts.skipFetch = nil, nil
+  Run.opts.history, Run.opts.skipFetch, Run.opts.only = nil, nil, nil
   Run.collected = 0
   Run.refused = 0
   Run.stuck = 0
@@ -14912,6 +14912,10 @@ local function RunStep()
   local _, _, _, _, money, _, _, _, wasRead = GetInboxHeaderInfo(index)
   if Run.econE[i] == nil then
     Run.econE[i], Run.econS[i] = MailEconomy(index, Mail().ClassifyMail(index), money)
+    -- A run of one thing alone (Run.opts.only): an item's leaves the gold
+    -- where it is, and the gold's brings no purchase out.
+    local only = Run.opts.only
+    if only == "money" then Run.econS[i] = 0 elseif only ~= nil then Run.econE[i] = 0 end
   end
   Run.opts.history = Run.record[i]
   -- Taken from before and read since: its body came with that take's fetch.
@@ -15080,8 +15084,9 @@ end
 
 -- `subset`: the queue is mail the player picked or searched for, not a
 -- whole kind (Run.Find). `others`: how many mails the queue's builder left
--- out for who sent them (All mail's, info.left), for the outcome.
-local function BeginRun(panel, queue, ids, subset, others)
+-- out for who sent them (All mail's, info.left), for the outcome. `only`:
+-- the one thing the run takes from each mail (MailService, opts.only).
+local function BeginRun(panel, queue, ids, subset, others, only)
   ResetRun()
   Run.Load(queue, ids)
   Run.subset = subset and true or false
@@ -15104,6 +15109,7 @@ local function BeginRun(panel, queue, ids, subset, others)
   -- Mail.KeepFreeGoesOn), as its question counted.
   Mail().KeepFreeFloor((Mail().FreeBagSlots()))
   Run.opts.moves = true
+  Run.opts.only = only
   -- Indices shift under a run; an overlay addressed by index cannot survive it.
   if panel.Detail then panel.Detail:Hide() end
   RV.FanClose(true)
@@ -15119,7 +15125,11 @@ end
 -- every queued mail read, which resets its expiry clock and moves it out of the
 -- actionable view, so doing that for mails whose attachments cannot physically
 -- fit is the damaging part.
-local function StartCategoryRun(panel, category)
+-- `only`, `indices`: a run that takes one thing alone -- an item's id, every
+-- stack of it, or "money", the gold -- from the mails at `indices`, in their
+-- order (the bag view's tile, Core/BagView.lua). Every rule below holds for
+-- it as for any run; the bags are asked for those stacks only.
+local function StartCategoryRun(panel, category, only, indices)
   if Run.active or Mail().IsBusy() then return end
   -- While the arrange mode previews sample mail the list holds samples, not
   -- inbox indices: nothing may be queued from it.
@@ -15139,7 +15149,15 @@ local function StartCategoryRun(panel, category)
   -- Picked or searched mail, or the stuck filter's: a subset of the box,
   -- where a twin of a queued mail is not the run's to take (Run.Find).
   local subset = Selecting(panel) or Searching(panel) or StuckOnly(panel) or RV.Filtering(panel)
-  if Selecting(panel) then
+  if only ~= nil then
+    -- The mails that hold it, as the list shows them: a narrowing like a
+    -- search's. An item's stacks in mail held back (stuck, or waiting for
+    -- bag room) stay, as a sweep leaves them; the gold needs no room and is
+    -- taken wherever it is, as a click on each mail would take it. Never a
+    -- C.O.D. either way.
+    queue, info = Mail().BuildQueueFor(indices, "all", only == "money")
+    subset = true
+  elseif Selecting(panel) then
     -- The picked rows, and of those only the ones the button names: the
     -- primary takes them all, a category button the picked mail of its
     -- kind, a group's button the picked mail from its characters (never a
@@ -15166,7 +15184,7 @@ local function StartCategoryRun(panel, category)
     -- (RV.AllTakes: nil for every mail). A sweep takes its own kind.
     queue, info = Mail().BuildQueue(category, order, category == "all" and RV.AllTakes() or nil)
   end
-  if not order then RV.SortAsListed(queue) end
+  if not order and only == nil then RV.SortAsListed(queue) end
 
   -- The inbox is still arriving: GetInboxNumItems reports 0 between MAIL_SHOW
   -- and the first MAIL_INBOX_UPDATE, and an index whose header has not landed
@@ -15175,6 +15193,14 @@ local function StartCategoryRun(panel, category)
   if info.unloaded > 0 or (info.numItems == 0 and info.totalItems > 0) then
     StatusOutcome(L()["STATUS_READY"])
     Mail().RequestInboxRefresh()
+    RequestRefresh(panel)
+    return
+  end
+
+  -- One thing alone, and none of it a run may take: held back, or gone
+  -- since its tile was drawn. Nothing is said of the box.
+  if only ~= nil and #queue == 0 then
+    if (info.heldBack or 0) > 0 then RefreshIdleSummary() end
     RequestRefresh(panel)
     return
   end
@@ -15218,7 +15244,7 @@ local function StartCategoryRun(panel, category)
     -- kept free)".
     local keep = RV.KeepFreeSlots()
     local usable = math.max(0, free - keep)
-    local fits, needed, general = Mail().QueueRoom(queue, usable)
+    local fits, needed, general = Mail().QueueRoom(queue, usable, only)
     if general > usable then
       local need, have = ns.Plural("COUNT_SLOTS", needed), ns.Plural("COUNT_SLOTS", usable)
       local extra = RV.KeptExtra(free, keep) .. RV.ReagentExtra(reagent) .. RV.SpecialExtra()
@@ -15268,13 +15294,13 @@ local function StartCategoryRun(panel, category)
           -- that has gone is passed over. Another run or take started in the
           -- meantime keeps the channel; the answer then starts nothing.
           if Run.active or Mail().IsBusy() then return end
-          BeginRun(panel, planned, ids, subset, info.left)
+          BeginRun(panel, planned, ids, subset, info.left, only)
         end)
       return
     end
   end
 
-  BeginRun(panel, queue, nil, subset, info.left)
+  BeginRun(panel, queue, nil, subset, info.left, only)
 end
 -- For a sweep drawn outside this file: a character group's button starts its
 -- run here with the token "group:<id>" (Core/CharacterGroups.lua).

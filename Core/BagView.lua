@@ -74,6 +74,9 @@ BV.UNKNOWN = "Interface\\Icons\\INV_Misc_QuestionMark"
 BV.GLYPH = "slot"
 
 BV.tiles, BV.heads = {}, {}
+-- The mails a tile's run is started with, copied from its kind: the list
+-- may be built again before the run reads them.
+BV.queue = {}
 
 -- The bag as last built. `kinds` and `sects` are pools, `n` and `sn` how
 -- many of each are in use; a section's `list` is its kinds in the order
@@ -481,6 +484,7 @@ function BV.Tile(i)
   tile.__pbTipRow = tile
   tile:SetScript("OnEnter", BV.TileEnter)
   tile:SetScript("OnLeave", BV.TileLeave)
+  tile:SetScript("OnClick", BV.TileClick)
   BV.tiles[i] = tile
   return tile
 end
@@ -961,6 +965,44 @@ function BV.TipWhy(kind)
   end
 end
 
+-- What the gestures do, last: the take where a click takes (with what it
+-- takes: every stack a run may), its mails, the link and the try-on; where
+-- nothing can be taken from here, where it can be.
+function BV.TipHints(kind)
+  local P, T, L0 = Parts(), Th(), L()
+  local RV = P.RV
+  local src, s = model.src, kind.sect
+  local dress = (not kind.gold) and RV.Dressable(kind.id) or false
+  local linkHint = (not kind.gold) and L0[dress and "TILE_HINT_LINK_DRESS" or "TILE_HINT_LINK"] or nil
+  local mailsHint = (not kind.gold) and L0["BAG_HINT_MAILS"] or nil
+  if s.look == 2 then
+    T.TipHint(L0["ROWS_REM_HINT_WAIT"])
+    T.TipHint(linkHint)
+  elseif src == "inbox" then
+    if kind.cod then
+      local index, slot = BV.LiveSlot(kind)
+      if index then T.TipHint(RV.TileHint(index, slot, kind.look == 1)) end
+    elseif kind.gold then
+      T.TipHint(L0["FAN_GOLD_HINT"])
+    else
+      if kind.free > 0 then T.TipHint(L0("BAG_HINT_TAKE", kind.freeN)) end
+      T.TipHint(mailsHint)
+      T.TipHint(linkHint)
+    end
+  elseif src == "away" then
+    local Memory = ns.MailMemory
+    local who = BV.who
+    local info = BV.panel and BV.panel._avInfo
+    who.boxRealm, who.boxName = s.realm or (info and info.realm), s.name or (info and info.name)
+    if Memory and type(Memory.TakeHint) == "function" then T.TipHint(Memory.TakeHint(who)) end
+    T.TipHint(mailsHint)
+    T.TipHint(linkHint)
+  else
+    T.TipHint(mailsHint)
+    T.TipHint(linkHint)
+  end
+end
+
 -- Pointing at a tile: the item (or the gold's sum), how many in how many
 -- mails and which, why it cannot be taken where it cannot, then what the
 -- gestures do. Built on hover, from the bag as it stands.
@@ -992,6 +1034,7 @@ function BV.TileEnter(tile)
   end
 
   BV.TipWhy(kind)
+  BV.TipHints(kind)
   GameTooltip:Show()
 end
 
@@ -1012,4 +1055,115 @@ function BV.Why(kind)
     end
   end
   return P.StuckLine(true)
+end
+
+-------------------------------------------------------------
+-- 6. Clicks
+-------------------------------------------------------------
+
+-- Right-click: the list, narrowed to the mails that hold the item -- the
+-- list's own search for its name, which the player sees in the box and can
+-- clear; the bag is switched off for it.
+function BV.ShowMails(panel, kind)
+  if kind.gold then return end
+  local name = BV.NameOf(kind)
+  local box = panel.SearchBox
+  if not (box and name and name ~= "") then return end
+  local UI = ns.MailboxUI
+  if not (UI and type(UI.SetOption) == "function") then return end
+  UI.SetOption("bagView", false)
+  GameTooltip:Hide()
+  if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+  if (box:GetText() or "") == name then
+    ns.CollectTab.RefreshMailList(panel)
+  else
+    -- The box's own change lists the mail again; where a text set from code
+    -- told nobody, the bag is still up, and the list is drawn here.
+    box:SetText(name)
+    if BV.area and BV.area:IsShown() then ns.CollectTab.RefreshMailList(panel) end
+  end
+end
+
+-- A C.O.D. mail's tile: the fan's tile take (CollectTab, Fan.TakeItem),
+-- from here. The question first (ConfirmCOD), the mail found again after
+-- the wait by what was clicked, the slot still holding the item clicked,
+-- and then MailService's TakeAttachment, the one place a take that pays is
+-- sent, which checks all of it once more.
+function BV.TakeCOD(panel, kind)
+  local P, M = Parts(), Mail()
+  local RV, CT = P.RV, ns.CollectTab
+  local index, slot, id = kind.index, kind.slot, kind.id
+  -- The mail at its index is the one its line names, owing what it says:
+  -- anything else (paid since, or another mail there) and nothing is asked
+  -- or sent; the bag is drawn again.
+  local s = kind.sect
+  local _, _, sender, _, _, cod = GetInboxHeaderInfo(index)
+  cod = tonumber(cod) or 0
+  if cod <= 0 or cod ~= s.codAmount or sender ~= s.codFrom then return CT.RequestRefresh(panel) end
+  P.ConfirmCOD(index, function(what, at)
+    -- The question was asked (the mail owes) and answered: `what` is what
+    -- was clicked, and `at` where that mail is now.
+    if not (what and at) then return end
+    index = at
+    local _, now = GetInboxItem(index, slot)
+    if now == nil or now ~= id then return CT.RequestRefresh(panel) end
+    local record = RV.RecordFor(index)
+    local before = RV.Before(index)
+    M.TakeAttachment(index, slot, function(status, refused, reason, _, paid)
+      RV.SayCODPaid(paid)
+      if status == "busy" then return end
+      if status == "closed" then
+        P.StatusMailboxClosed()
+        return
+      end
+      CT.RequestRefresh(panel)
+      if status == "moved" then return end
+      if status == "timeout" then
+        ns.Print(L()["MSG_MAIL_TIMEOUT"])
+        return
+      end
+      if status == "refused" or (tonumber(refused) or 0) > 0 then
+        ns.Print(P.ItemRefusedMessage(reason))
+        P.RefreshIdleSummary()
+        return
+      end
+      RV.AutoDelete(panel, index, before, record)
+    end, { allowCOD = true, history = record, fetch = true, clicked = what })
+  end)
+end
+
+-- A click on a tile. Right: its mails. Modified left: the game's item
+-- rules (Shift links, Ctrl tries on), never the plain click's take. Plain
+-- left: every stack of the item as one run, at a mailbox, on a tile that
+-- can be taken, while the bag is drawn from the inbox as it stands; a
+-- C.O.D. tile asks first. Anywhere else a click does nothing.
+function BV.TileClick(tile, button)
+  local kind = tile.kind
+  local panel = BV.panel
+  if not (kind and panel) or kind.n <= 0 then return end
+  local P = Parts()
+  local RV, CT, M = P.RV, ns.CollectTab, Mail()
+  if button == "RightButton" then
+    if not RV.Modified() then BV.ShowMails(panel, kind) end
+    return
+  end
+  if button ~= "LeftButton" then return end
+  if RV.Modified() then
+    if not kind.gold and type(HandleModifiedItemClick) == "function" then
+      local link = BV.LinkOf(kind)
+      if link then HandleModifiedItemClick(link) end
+    end
+    return
+  end
+  -- Nothing can be taken from another character's box or from History;
+  -- the line under the list says where. (A reminder here is not built.)
+  if model.src ~= "inbox" or kind.look ~= 0 or not P.MailboxOpen() then return end
+  if CT.IsRunning() or M.IsBusy() then return end
+  if not BV.Current(kind) then return CT.RequestRefresh(panel) end
+  if kind.cod then return BV.TakeCOD(panel, kind) end
+  if not (kind.gold or kind.id) then return end
+  local queue = BV.queue
+  for i = #queue, 1, -1 do queue[i] = nil end
+  for i = 1, kind.mails do queue[i] = kind.ref[i] end
+  CT.StartCategoryRun(panel, "all", kind.gold and "money" or kind.id, queue)
 end

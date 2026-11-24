@@ -311,6 +311,28 @@ function Mail.HasContent(index)
   return Mail.AttachmentsLeft(index) > 0
 end
 
+-- A take of one thing alone (Mail.CollectMail's opts.only): an item's id,
+-- which is every stack of that item and nothing else, or "money", the gold
+-- alone.
+--
+-- index, only -> how many of the mail's stacks such a take takes: read from
+-- the inbox's own item ids, which are there before the mail is opened.
+function Mail.OnlyCount(index, only)
+  if type(only) ~= "number" then return 0 end
+  local n = 0
+  for slot = 1, MAX_ATTACHMENTS do
+    local _, id = GetInboxItem(index, slot)
+    if id == only then n = n + 1 end
+  end
+  return n
+end
+
+-- index, only -> whether the mail still holds what such a take takes.
+function Mail.OnlyLeft(index, only)
+  if only == "money" then return Mail.MoneyLeft(index) > 0 end
+  return Mail.OnlyCount(index, only) > 0
+end
+
 -- index -> boolean. True iff the mail has been read AND has no money left AND
 -- has no attachments left.
 --
@@ -1006,6 +1028,26 @@ function Mail.SpecialRoomBag(i)
   return special.counts[i], special.names[i]
 end
 
+-- index, only -> the attachments of the mail a run takes: every one, or,
+-- where the run takes one thing alone (opts.only), that item's stacks (the
+-- gold alone: none).
+function special.Count(index, only)
+  if only ~= nil then return Mail.OnlyCount(index, only) end
+  return Mail.AttachmentCount(index)
+end
+
+-- index, count, only -> how many of those the special bags and the reagent
+-- bag of the count under way take, their room spent: the mail's own items
+-- in turn, or, for one thing alone, each of that item's stacks.
+function special.Own(index, count, only)
+  if only == nil then return math.min(count, Mail.SpecialRoomMail(index)) end
+  local own = 0
+  for _ = 1, count do
+    if Mail.SpecialRoomFits(only, true) then own = own + 1 end
+  end
+  return own
+end
+
 -- queue, usable -> the mails of the queue that fit, in its order, and that
 -- many; a mail fits when all its attachments do, in the special bags and the
 -- reagent bag where they fit and in the general slots left of `usable` for
@@ -1013,19 +1055,20 @@ end
 -- room: a later one may fit what is left. Each attachment counts as a slot of
 -- its own, as the count always has (one that joins a stack in the bags uses
 -- none, so the bags only ever hold more than counted). Gold and a mail with
--- nothing attached need no room.
-function special.Fit(queue, usable)
+-- nothing attached need no room. `only`, as Mail.QueueRoom's: what is asked
+-- room for is that one thing's stacks.
+function special.Fit(queue, usable, only)
   local s = special
   local specials, reagent = Mail.SpecialRoom()
   local scan = specials > 0 or reagent
   local fits, general = 0, 0
   for i = 1, #queue do
-    local count = Mail.AttachmentCount(queue[i])
+    local count = special.Count(queue[i], only)
     local own = 0
     if scan and count > 0 then
       for k = 1, s.n do s.save[k], s.saveUsed[k] = s.left[k], s.used[k] end
       local usedS, usedR = s.usedSpecial, s.usedReagent
-      own = math.min(count, Mail.SpecialRoomMail(queue[i]))
+      own = special.Own(queue[i], count, only)
       if general + count - own > usable then
         for k = 1, s.n do s.left[k], s.used[k] = s.save[k], s.saveUsed[k] end
         s.usedSpecial, s.usedReagent = usedS, usedR
@@ -1053,14 +1096,20 @@ end
 -- that does not (special.Fit): a mail of gear that needs a general slot no
 -- longer keeps the cloth behind it from the reagent bag. Worked out once
 -- before a run, never per take.
-function Mail.QueueRoom(queue, usable)
+--
+-- `only`, where the run takes one thing alone (opts.only): that item's
+-- stacks are all that is counted and all that is asked room for, each asked
+-- of the special bags and the reagent bag by itself, under the same rule (a
+-- mail whose stacks of it do not fit is passed over); the gold alone needs
+-- no slot.
+function Mail.QueueRoom(queue, usable, only)
   local specials, reagent = Mail.SpecialRoom()
   local scan = specials > 0 or reagent
   local needed, general = 0, 0
   for i = 1, #queue do
-    local count = Mail.AttachmentCount(queue[i])
+    local count = special.Count(queue[i], only)
     local own = 0
-    if scan and count > 0 then own = math.min(count, Mail.SpecialRoomMail(queue[i])) end
+    if scan and count > 0 then own = special.Own(queue[i], count, only) end
     needed = needed + count
     general = general + count - own
   end
@@ -1068,13 +1117,14 @@ function Mail.QueueRoom(queue, usable)
     for i = 1, #queue do special.fit[i] = true end
     return #queue, needed, general
   end
-  local fits = special.Fit(queue, usable)
+  local fits = special.Fit(queue, usable, only)
   -- The count of the whole queue again, for what the messages say beside the
   -- slots it needs (Mail.SpecialRoomUsed, Mail.SpecialRoomBags).
   Mail.SpecialRoom()
   if scan then
     for i = 1, #queue do
-      if Mail.AttachmentCount(queue[i]) > 0 then Mail.SpecialRoomMail(queue[i]) end
+      local count = special.Count(queue[i], only)
+      if count > 0 then special.Own(queue[i], count, only) end
     end
   end
   return fits, needed, general
@@ -4615,6 +4665,13 @@ local function JobSettled()
   if type(now) == "number" then j.index = now end
   local index = j.index
   if type(now) == "number" and Fingerprint(index) == current and Mail.HasContent(index) then
+    -- A take of one thing alone (opts.only) with all of it out: what else
+    -- the mail holds was never this take's, so it is done, and nothing the
+    -- registry holds about the mail is forgotten.
+    local only = j.opts ~= nil and j.opts.only or nil
+    if only ~= nil and not Mail.OnlyLeft(index, only) then
+      return JobFinish("collected", 0, reason)
+    end
     -- Every handshake completed and the mail is still not empty. Nothing
     -- attributable to one take -- so where items stayed while no general
     -- slot was free, that is the bags (see "Bags full"). Otherwise nothing
@@ -4706,28 +4763,43 @@ function JobExecute()
   -- Enumerate only now: before the fetch landed, every link is nil. The
   -- entries come from the plan's pool.
   local n = 0
+  -- A take of one thing alone (opts.only): the plan is that item's stacks,
+  -- or the gold, and nothing else of the mail.
+  local only = j.opts ~= nil and j.opts.only or nil
   -- Gold the player left in this mail at Blizzard's question, earlier in
   -- this run, is not asked about again ("Gold from a stranger").
   local leftGold = j.opts ~= nil and j.opts.moves and stranger.declined[j.fingerprint]
-  if Mail.MoneyLeft(index) > 0 and type(TakeInboxMoney) == "function" and not leftGold then
+  if Mail.MoneyLeft(index) > 0 and type(TakeInboxMoney) == "function" and not leftGold
+    and (only == nil or only == "money") then
     n = n + 1
     PlanEntry(n, "money", nil, nil, nil)
   end
   local list = nil
-  if type(TakeInboxItem) == "function" then
+  if type(TakeInboxItem) == "function" and only ~= "money" then
     -- Each stack by its item and size, found again as it is taken
     -- (PlanSlot), and the largest first (PlanOrder).
     for slot = MAX_ATTACHMENTS, 1, -1 do
       if GetInboxItemLink(index, slot) then
         local _, id, _, count = GetInboxItem(index, slot)
-        n = n + 1
-        PlanEntry(n, "item", slot, id, tonumber(count) or 1)
+        if only == nil or id == only then
+          n = n + 1
+          PlanEntry(n, "item", slot, id, tonumber(count) or 1)
+        end
       end
     end
     list = PlanEntries(n)
     if n > 1 then table.sort(list, PlanOrder) end
   else
     list = PlanEntries(n)
+  end
+
+  if n == 0 and only ~= nil and (only == "money" or not Mail.OnlyLeft(index, only)) then
+    -- A take of one thing alone and none of it here: taken since it was
+    -- queued, or the gold left at Blizzard's question, which stays as the
+    -- player said. What else the mail holds is not this take's to judge:
+    -- nothing is forgotten, and nothing is noted of a letter.
+    if leftGold and Mail.MoneyLeft(index) > 0 then return JobFinish("refused", 0, nil) end
+    return JobFinish("collected")
   end
 
   if n == 0 then
@@ -4766,7 +4838,10 @@ function JobExecute()
   end
 
   j.pending = "plan"
-  RunPlan(index, j.fingerprint, list, JobPlanDone, j.record, j.opts and j.opts.keepFree, true, j.clicked)
+  -- An attempt on everything in the mail (RunPlan's `whole`) unless it takes
+  -- one thing alone, whose refusals join what the registry has, as a tile's
+  -- take's do.
+  RunPlan(index, j.fingerprint, list, JobPlanDone, j.record, j.opts and j.opts.keepFree, only == nil, j.clicked)
 end
 
 -- The channel is idle: the fetch, or the plan where none is needed.
@@ -4818,6 +4893,17 @@ end
 -- opts.allowCOD   the caller has just had the player confirm this mail's
 --                 C.O.D., and opts.clicked is what was clicked (Mail.Clicked):
 --                 the only way a take that pays is ever sent.
+-- opts.only       one thing alone is taken from the mail: an item's id, which
+--                 is every stack of that item and never the gold, or "money",
+--                 the gold and never an item. Everything above holds as it
+--                 does for the whole mail: a C.O.D. mail is refused, the
+--                 slots kept free are kept, the mail is followed. What it
+--                 leaves in the mail is as a tile's take leaves it
+--                 (Mail.TakeAttachment, Mail.TakeMoney): a mail it took an
+--                 item from was fetched first, so it reads read; it is
+--                 "collected" once none of that one thing is left, whatever
+--                 else the mail still holds; and its takes are one History
+--                 record.
 function Mail.CollectMail(index, onDone, opts)
   if testHold then
     if onDone then onDone("closed", 0, nil) end
@@ -4870,15 +4956,29 @@ function Mail.CollectMail(index, onDone, opts)
     if not Mail.StillClicked(index, j.clicked) then return JobFinish("moved") end
   end
 
+  -- A take of one thing alone (opts.only) from a mail that holds none of
+  -- it: nothing to take, and the mail is left as it is, not even fetched.
+  local only = opts and opts.only or nil
+  if only ~= nil and not Mail.OnlyLeft(index, only) then return JobFinish("collected") end
+
   -- The run keeps bag slots free and has reached them: a mail that holds
   -- only items has nothing this run may take, and fetching it would only
   -- mark it read. (One with gold goes on: the gold needs no room, and the
   -- plan stops at its first item.)
   -- Unless an item of it fits a special bag or the reagent bag that still
   -- has room (Mail.KeepFreeFitsMail).
-  if itemCount > 0 and money <= 0 and Mail.KeepFreeReached(opts and opts.keepFree)
-    and not Mail.KeepFreeFitsMail(opts.keepFree, index) then
-    return JobFinish("refused", 0, nil, "keep")
+  -- A take of one item alone leaves the gold, so the gold does not carry it
+  -- on, and only that item is asked of those bags; the gold alone needs no
+  -- room.
+  if itemCount > 0 and (money <= 0 or type(only) == "number") and only ~= "money"
+    and Mail.KeepFreeReached(opts and opts.keepFree) then
+    local fits
+    if type(only) == "number" then
+      fits = select(2, Mail.KeepFreeGoesOn(opts.keepFree, only))
+    else
+      fits = Mail.KeepFreeFitsMail(opts.keepFree, index)
+    end
+    if not fits then return JobFinish("refused", 0, nil, "keep") end
   end
 
   -- The body fetch does two jobs: it loads the attachment links (which are nil
@@ -4896,7 +4996,10 @@ function Mail.CollectMail(index, onDone, opts)
   -- hands its words to History -- the only copy once the "delete" read-mail
   -- mode has removed the letter -- and it marks the letter read, as taking
   -- an item from one does, so an emptied letter reads finished.
-  if itemCount == 0 and money > 0 and not Mail.HasOwnText(index) then
+  -- The gold alone (opts.only) needs no link either, whatever else the mail
+  -- holds: taken as the coin tile takes it (Mail.TakeMoney), which reads
+  -- only a letter with words of its own.
+  if (itemCount == 0 or only == "money") and money > 0 and not Mail.HasOwnText(index) then
     needFetch = false
   end
 
@@ -4904,7 +5007,7 @@ function Mail.CollectMail(index, onDone, opts)
   -- attachments and not one link has loaded, the body was never fetched -- so
   -- enumerating now would build an empty plan and report the mail collected
   -- while every attachment was still in it. Fetch regardless.
-  if not needFetch and itemCount > 0 and Mail.AttachmentsLeft(index) == 0 then
+  if not needFetch and itemCount > 0 and only ~= "money" and Mail.AttachmentsLeft(index) == 0 then
     needFetch = true
   end
 
