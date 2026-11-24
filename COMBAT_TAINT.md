@@ -580,3 +580,73 @@ doing either way — it is a prerequisite for both routes.
 > replacing the globals `MailFrame_Show`/`MailFrame_Hide` before the first mailbox so
 > `MailFrame` is never shown at all (§7 #6), which loses the slot docking anchors to.
 > Everything works; the errors are combat-edge log noise.
+
+---
+
+## 10. The game's own bags: Postbox stopped running their repaint (2026-11-24)
+
+**Source.** A report from WoW Forever, on the game's own bag windows: the
+`ADDON_ACTION_FORBIDDEN` popup naming Postbox on a bag right-click of a potion, out of
+combat. The research behind this section read `ContainerFrame.lua` on wow-ui-source
+`forever` (1.60.1) and `live` (12.1.5) and every path from Postbox to an item use.
+
+**What was there.** While the Send tab was up, and on leaving it, Postbox called
+`ContainerFrame_UpdateAll()` whenever one of the game's own bag frames was on screen,
+and walked those frames with `ContainerFrameUtil_EnumerateContainerFrames()` (to find
+their buttons and to ask whether any was visible). The repaint only existed to run
+Postbox's own hook on each slot (`UpdateItemContextMatching`), which draws the gray and
+the padlock, and, on leaving the tab, to let the game set each slot's desaturation back
+to "locked or not", which undid the gray Postbox puts on a queued item. Neither client
+has a mail item context (`ItemButtonUtil.GetItemContext` has no mail case on either
+branch), so nothing the game itself draws on its bags depends on that call.
+
+**Why it had to go.** By the documented taint rules, running Blizzard's bag code from
+an addon leaves that addon's name on what the code writes: `ContainerFrameMixin:Update`
+writes the frame's `refresh` and `BagItemSearchBox.anchorBag`, `UpdateItems` writes on
+every button, the enumerator builds its two frame lists on the first call after they
+were cleared, and `EnumerateValidItems` calls `GetBagSize`, which writes `size` when it
+is unset. A later bag open by the game reads `self.refresh` first thing
+(`if self.refresh then`) and would run as Postbox from there on. Blizzard's own comment
+on `SetBagID` ("Prevent bagID from tainting all interaction with items") shows the class
+of failure this belongs to.
+
+**What Postbox does now** (`Core/SendTab.lua`, section 17). It finds the game's frames
+by name only (`ContainerFrameCombinedBags`, then `ContainerFrame1..N` until the names
+run out; `ST.ClientBag`), reads their `Items` list, `size` field and visibility, and
+judges the slots itself (`ST.JudgeClientBags`): the Send tab's verdict on each slot in
+range, or, off the tab, Postbox's marks cleared and a queued item's gray taken back
+(`InventoryLock.UnmarkQueued`, which leaves it gray where the game reports the item
+locked, as the game's redraw did). No call into the game's bag code, no enumerator, no
+write to a field of the game's other than Postbox's own (`pbLockShade`,
+`pbLockOverlay`, `pbQueuedGrey`) and the `hooksecurefunc` on each button's
+`UpdateItemContextMatching`, both as before. Right-click-to-attach is untouched (it is
+the game's answer to `SetSendMailShowing`).
+
+**Proved headless** (a model of both clients' container code, retail and Forever,
+individual and combined bags, a 27/28-step visit): every slot's padlock, gray and
+desaturation identical to 1eb28cd at every step; the only difference is Postbox's own
+`pbQueuedGrey` flag, now cleared where it used to be left set. EllesmereUI bags,
+Baganator and both together (also with EllesmereUI's compat backend): slot dumps
+byte-identical. Calls Postbox makes into the game's bag code over the visit: from
+hundreds (18 `ContainerFrame_UpdateAll`, 56 enumerator calls, 90 frame `Update`s on
+retail's separate bags) to none.
+
+**Not proven.** That this was the popup's cause. The plain right-click path reads only
+`bagID` off the button, which Blizzard routes through an attribute, so the last step
+from "the bags open under Postbox's name" to "the use is refused" is not in the source.
+Only the game's taint log (`/console taintLog 2`) or `issecurevariable(ContainerFrame1,
+"refresh")` after a Send-tab visit can say whether the repaint was it. If the log names
+Postbox at `ContainerFrameItemButton_OnClick` or `UseContainerItem` instead, the two
+post-hooks for the attach queue (section 17's `hooksecurefunc` on both) are next.
+
+**Still standing, for the record.** The post-hooks `hooksecurefunc(button,
+"UpdateItemContextMatching", ...)` on every game bag button,
+`hooksecurefunc("ContainerFrameItemButton_OnClick", ...)` and
+`hooksecurefunc(C_Container, "UseContainerItem", ...)`; Postbox's two textures created
+on each game bag button and `icon:SetDesaturated` on its icon (widget calls); and the
+error trap in `Postbox.lua`. On that last one, §4 above calls it "not a taint source";
+the game calls the installed handler bare from secure code (`CallErrorHandler`,
+`assertsafe`, and `xpcall(callback, CallErrorHandler)` in `ContinuableContainer`, which
+the bag refresh uses), so after an error caught that way the rest of that run can be
+blamed on whichever addon installed its handler last. It is not changed here: removing
+it costs the bug report its record of errors raised outside Postbox's event bus.
