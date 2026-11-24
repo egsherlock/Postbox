@@ -5641,7 +5641,9 @@ do
     local sum = tonumber(e.m)
     if sum and sum <= 0 then sum = nil end
     local slots = (kind ~= "sold") and (A.Slots(e) or 1) or 0
-    return { src = kind, kind = kind, ah = true, a = kind, b = item,
+    -- `note`: the entry itself, read (never written) by the bag view for the
+    -- item's id and link (Core/BagView.lua).
+    return { src = kind, kind = kind, ah = true, a = kind, b = item, note = e,
       sender = L["MEMORY_FROM_AH"], subject = subject,
       money = (kind == "sold") and sum or 0, cod = 0, price = (kind == "bought") and sum or nil,
       items = slots, quantity = (slots > 0) and n or 0, stacks = (slots > 0) and 1 or 0,
@@ -5670,7 +5672,9 @@ do
     local first = tonumber(mail.count) or 1
     local fate = nil
     if mail.back == true then fate = "back" elseif mail.back == false then fate = "gone" end
-    return { src = "visit", kind = kind, ah = ah, a = a, b = b,
+    -- `seen`: the visit's record of the mail, read (never written) by the
+    -- bag view for every item it held (Core/BagView.lua).
+    return { src = "visit", kind = kind, ah = ah, a = a, b = b, seen = mail,
       sender = tostring(mail.sender or ""), subject = tostring(mail.subject or ""),
       money = tonumber(mail.money) or 0, cod = tonumber(mail.cod) or 0, price = tonumber(mail.paid) or nil,
       items = slots, quantity = (slots == 1) and first or 0, stacks = slots,

@@ -210,6 +210,33 @@ local function Gold(s, amount, where, free)
   Put(kind, amount, where, free, nil)
 end
 
+-- A C.O.D. mail: its own section under its price and who sent it, one tile
+-- a stack (the key is the slot), so a click names one take, as the fan's
+-- does. The line's words are made again only when the price or the sender
+-- of that place changed.
+local function TallyCOD(P, index, sender, cod, itemCount, slots, held)
+  local s = Sect(nil, 0)
+  if s.codAmount ~= cod or s.codFrom ~= sender then
+    s.codAmount, s.codFrom = cod, sender
+    s.codText = P.RV.Fan.MoneyText(true, cod) .. P.RV.SLOT_DOT .. tostring(sender or L()["SENDER_UNKNOWN"])
+  end
+  s.head = s.codText
+  local found = 0
+  for slot = 1, slots do
+    local name, id, tex, count = GetInboxItem(index, slot)
+    if tex then
+      found = found + 1
+      local kind = Kind(s, slot)
+      if kind then
+        kind.id, kind.name, kind.tex, kind.index, kind.slot = id, name, tex, index, slot
+        kind.cod, kind.live = true, true
+        Put(kind, tonumber(count) or 1, index, held == nil, held)
+      end
+      if found >= itemCount then break end
+    end
+  end
+end
+
 -- The inbox's list as it is drawn (panel._filtered: the search, the sort
 -- and the filters have shaped it): the gold and every stack of the mail
 -- still to collect, a kind an item id. Mail a sweep leaves -- stuck, or
@@ -228,7 +255,7 @@ function BV.TallyInbox(panel, frozen)
       money, cod, itemCount = tonumber(money) or 0, tonumber(cod) or 0, tonumber(itemCount) or 0
       local held = itemCount > 0 and M.HeldBack(index, itemCount) or nil
       if cod > 0 then
-        -- A C.O.D. mail's items are not drawn yet.
+        if not frozen and itemCount > 0 then TallyCOD(P, index, sender, cod, itemCount, slots, held) end
       else
         if money > 0 then Gold(main, money, index, true) end
         if itemCount > 0 then
@@ -249,6 +276,34 @@ function BV.TallyInbox(panel, frozen)
             end
           end
         end
+      end
+    end
+  end
+end
+
+-- Under the list's own line, the mail the game has not listed yet that
+-- Postbox remembers: the list's remembered rows (RV.remShown, Mail Memory's
+-- own set, as the search and the filters left it), each row's source read
+-- for what it held. The line stands with none, as it does in the list.
+function BV.TallyRemembered(panel)
+  if (panel._remExtra or 0) <= 0 then return end
+  local s = Sect(panel._lineText, 2)
+  s.rem = true
+  local shown = Parts().RV.remShown
+  for k = 1, #shown do
+    local m = shown[k]
+    if (m.money or 0) > 0 then Gold(s, m.money, m, false) end
+    if (m.items or 0) > 0 then
+      local note, seen = m.note, m.seen
+      local list = seen and seen.it
+      if type(list) == "table" and #list >= 2 then
+        for j = 1, #list - 1, 2 do
+          Item(s, tonumber(list[j]), nil, nil, list[j + 1], m, j == 1 and seen.link or nil)
+        end
+      elseif note then
+        Item(s, tonumber(note.i), m.b, m.icon, max(1, m.quantity or 1), m, note.l or nil)
+      else
+        Item(s, seen and tonumber(seen.id) or nil, nil, m.icon, max(1, m.iconCount or 1), m, seen and seen.link or nil)
       end
     end
   end
@@ -292,6 +347,7 @@ function BV.Build(panel)
   if not frozen then m.wholeGen = m.gen end
   if src == "inbox" then
     BV.TallyInbox(panel, frozen)
+    if not frozen then BV.TallyRemembered(panel) end
   end
   m.frozen = false
   return frozen
