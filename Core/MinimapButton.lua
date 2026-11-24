@@ -583,6 +583,10 @@ end
 -- holder, the icon it stands on, the icon's side), set by ApplyLook and
 -- ApplyEuiSkin and dropped as each Refresh begins: a change of the number
 -- alone repaints only the number there (Reevaluate).
+-- s33 mmcount. The unread flag held up through a moment's drop away from a
+-- mailbox (Reevaluate): `on` while held, `armed` while its one check waits.
+MB._hold = { on = false, armed = false, checked = false }
+
 local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false,
   holder = nil, anchor = nil, side = nil }
 
@@ -630,6 +634,8 @@ local function Evaluate()
     end
   end
   local lit = MailWaiting()
+  -- Held up through a moment's drop (MB._hold, Reevaluate).
+  if not lit and MB._hold.on then lit = true end
   view.lit, view.mine, view.all = lit, mine, all
   -- When to show, and nothing else, puts the icon on the map.
   local up
@@ -2047,9 +2053,34 @@ do
   end
 end
 
+-- s33 mmcount. The game can report its unread flag down and up again around
+-- an auction house notice; answered at once, the whole icon went and came
+-- back, its pulse starting again. So a drop away from a mailbox, with the
+-- icon painted, is held: the icon is left as it is and ONE one-shot check
+-- runs HOLD seconds later (MB._HoldCheck). Still down then: the icon comes
+-- down as before. Up again: nothing was written. At a mailbox, and for
+-- HOLD_CLOSE seconds after one closed (the client churns its pending state
+-- as a mailbox closes; MailMemory's CLOSE_SETTLE), there is no hold: mail
+-- read or taken there brings the icon down at once.
+MB.HOLD, MB.HOLD_CLOSE = 0.5, 5
+
 local function Reevaluate()
   local lit, shown, alert, count, alone = view.lit, view.shown, view.alert, view.count, view.alone
   Evaluate()
+  local hold = MB._hold
+  if lit and not view.lit and not hold.on and not hold.checked and view.holder and not MB.AtMailbox() then
+    local Memory = ns.MailMemory
+    local closed = Memory and type(Memory.ClosedAt) == "function" and Memory.ClosedAt() or 0
+    if closed <= 0 or time() - closed >= MB.HOLD_CLOSE then
+      hold.on = true
+      Evaluate()
+      MB.PaintLog.Note("held", lit, shown, count, false)
+      if not hold.armed then
+        hold.armed = true
+        C_Timer.After(MB.HOLD, MB._HoldCheck)
+      end
+    end
+  end
   local redressed = false
   if not (view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone) then
     redressed = HostRedressed()
@@ -2065,6 +2096,24 @@ local function Reevaluate()
       MB.Refresh()
     end
   end
+end
+
+-- The held drop's one check (Reevaluate): the flag read again, and the
+-- icon taken down only where it is still down.
+function MB._HoldCheck()
+  local hold = MB._hold
+  hold.armed = false
+  if not hold.on then return end
+  hold.on = false
+  if MailWaiting() then
+    MB.PaintLog.Note("held, flag back", view.lit, view.shown, view.count, false)
+    return
+  end
+  MB.PaintLog.Note("held, flag down", view.lit, view.shown, view.count, false)
+  -- Checked: this reading takes the icon down, not holds it again.
+  hold.checked = true
+  Reevaluate()
+  hold.checked = false
 end
 
 -- The tooltip's form is the one the addon's hover tooltips share: a title

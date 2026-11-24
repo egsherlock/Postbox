@@ -9338,6 +9338,9 @@ end
 local LOGIN_SETTLE = 10
 local CLOSE_SETTLE = 5
 
+-- s33 mmcount: when a mailbox last closed this session (0: none), for the
+-- minimap icon's held drop (MinimapButton, Reevaluate).
+function MM.ClosedAt() return closedAt end
 
 -- The last pending-mail events of this session, for /postbox debug: each
 -- one's verdict, whether the sound played, how long since the mailbox
