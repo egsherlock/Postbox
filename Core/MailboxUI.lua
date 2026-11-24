@@ -3319,7 +3319,8 @@ end
 -- pace it trails the truth by about half a mail.
 --
 -- How it ends. A run that took all it queued: the line reaches the end,
--- glows along its length for a moment and fades (0.9 s). A run stopped
+-- glows along its length for a moment, softly, and fades out, slowing as it
+-- goes (1.35 s; f64 E01). A run stopped
 -- short with nothing to say: it fades where it stands (0.1 s, then half a
 -- second). A run whose words name something (bags full, slots kept free,
 -- stuck mail, incomplete, the mailbox closed): it takes the colour those
@@ -3586,11 +3587,26 @@ do
     if ph == "whole" then
       -- On its way to the end, lit as it ran.
       if gliding then return RL.Draw(alpha) end
-      if e >= 0.9 then return RL.Hide() end
-      -- There: the glow along the whole line, then a soft fade.
-      flash = (e < 0.12 and e / 0.12) or (e < 0.3 and 1) or max(0, 1 - (e - 0.3) / 0.35)
+      if e >= 1.35 then return RL.Hide() end
+      -- There: the glow along the whole line, at 0.6 of full strength, then
+      -- a soft fade. Each fall is eased, (1 - u)^2: it leaves at the speed
+      -- a straight fall over half the time would, and slows to nothing
+      -- (his pick on f64): the glow from 0.3 s over 0.7, the line from
+      -- 0.45 s over 0.9, gone at 1.35 s.
+      if e < 0.12 then
+        flash = e / 0.12
+      elseif e < 0.3 then
+        flash = 1
+      else
+        local u = min(1, (e - 0.3) / 0.7)
+        flash = (1 - u) * (1 - u)
+      end
+      flash = 0.6 * flash
       head = max(0, 1 - e / 0.12)
-      if e > 0.45 then alpha = min(alpha, 1 - (e - 0.45) / 0.45) end
+      if e > 0.45 then
+        local u = min(1, (e - 0.45) / 0.9)
+        alpha = min(alpha, (1 - u) * (1 - u))
+      end
     elseif ph == "fade" then
       head = max(0, 1 - RL.t / 0.25)
       if not gliding then
