@@ -9024,6 +9024,24 @@ do
       (wasRead and not isCOD and canDelete) and true or false
   end
 
+  -- index, isCOD, hasContent -> whether this mail is one the game will not
+  -- delete for what it still holds: gold or items, not C.O.D., and one the
+  -- client does not send back. The game's own window offers Delete there
+  -- and the server answers "You can't delete that." The row's faded x and
+  -- the reading view's grayed Delete both ask this, with one reason
+  -- (RV.FadedReason).
+  function RV.DeleteBlocked(index, isCOD, hasContent)
+    if not hasContent or isCOD then return false end
+    local fate, answered = Mail().ExpiryFate(index)
+    return fate == "gone" or not answered
+  end
+
+  -- The mail's kind -> the key of the one line that says why it cannot be
+  -- deleted or returned.
+  function RV.FadedReason(kind)
+    return (kind == "auction" or AUCTION_OUTCOME[kind]) and "MARKS_FADED_AUCTION" or "MARKS_FADED_OTHER"
+  end
+
   -- A return's answer: said where it went wrong, and the list as the inbox
   -- now is. The reading view's Return and a row's arrow both end here.
   function RV.Returned(panel, status)
@@ -9253,9 +9271,10 @@ do
     if index and row.fingerprint and not row.mailDone then
       local _, _, _, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
       local holds = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
-      if row.Return and RV.Offers(index, (tonumber(cod) or 0) > 0, holds, wasRead) then
+      local isCOD = (tonumber(cod) or 0) > 0
+      if row.Return and RV.Offers(index, isCOD, holds, wasRead) then
         kind = "back"
-      elseif holds then
+      elseif RV.DeleteBlocked(index, isCOD, holds) then
         kind = "faded"
       end
     end
@@ -9506,8 +9525,7 @@ do
     T.TipBegin(self)
     local r, g, b = T.Ink("textDisabled")
     T.TipTitle(DeleteLabel(), r, g, b)
-    local kind = row.tipKind
-    T.TipLine(L()[(kind == "auction" or AUCTION_OUTCOME[kind]) and "MARKS_FADED_AUCTION" or "MARKS_FADED_OTHER"])
+    T.TipLine(L()[RV.FadedReason(row.tipKind)])
     GameTooltip:Show()
   end
 
@@ -13951,7 +13969,9 @@ function RV.Deleted(panel, status)
     ns.Print(L()["MSG_MAIL_TIMEOUT"])
   end
   RequestRefresh(panel)
+  RV.DeleteWatch.Answer(panel, status)
 end
+
 
 -- index -> the reading view's question before a mail that still holds
 -- something is deleted, naming what the mail holds as the game's own
@@ -15841,8 +15861,13 @@ local function BuildDetail(panel)
   detail.Delete:SetScript("OnClick", function()
     local index = RV.Acting(detail)
     if not index then return end
+    -- Grayed where the game will not delete it, and asked again here.
+    if detail.Delete.__pbWhy then return end
     -- The mail as the view is bound to it: its index, fingerprint and the
     -- stamp of the inbox they were read at, carried through the question.
+    -- The view stays on it while the delete is out: a delete that went
+    -- closes it with the next refresh, one the game refused is said on it
+    -- (RV.DeleteWatch).
     local fingerprint, stamp = detail.fingerprint, detail._stamp
     -- Delete is offered on read mail, and a read mail can still hold items when
     -- the bags filled mid-run. Deleting that loses them, so it confirms -- in
@@ -15868,14 +15893,34 @@ local function BuildDetail(panel)
           -- from the click and checks it once more right before the command
           -- (DeleteOneMail).
           if detail.fingerprint == fingerprint and Mail().Rebase(index, stamp) == detail.mailIndex then
-            detail:Hide()
+            RV.DeleteWatch.Open(fingerprint)
           end
           DeleteOneMail(panel, index, fingerprint, stamp, true, item)
         end)
       return
     end
-    detail:Hide()
+    RV.DeleteWatch.Open(fingerprint)
     DeleteOneMail(panel, index, fingerprint, stamp)
+  end)
+  -- Grayed, its pointer says why (the row's faded x's words): the title in
+  -- the third gray, then the reason. Hooked, so a skin's own scripts on
+  -- the button stay.
+  detail.Delete:HookScript("OnEnter", function(self)
+    local why = self.__pbWhy
+    if not why or self:IsEnabled() then return end
+    local T = Th()
+    T.TipBegin(self)
+    local r, g, b = T.Ink("textDisabled")
+    T.TipTitle(DeleteLabel(), r, g, b)
+    T.TipLine(L()[why])
+    GameTooltip:Show()
+    self.__pbTip = true
+  end)
+  detail.Delete:HookScript("OnLeave", function(self)
+    if self.__pbTip then
+      self.__pbTip = nil
+      GameTooltip:Hide()
+    end
   end)
 
   -- Header: sender, subject, then the metadata line, flush with the panel's
@@ -15999,6 +16044,10 @@ local function DetailInfoText(detail, index, kind, hasCOD)
   -- What the line says of it, for the refresh that keeps it so
   -- (CloseDetailIfStale).
   detail._stuck = stuckReason
+  -- A delete of this mail the game refused, pressed here (RV.DeleteWatch).
+  if detail._refused and detail._refused == detail.fingerprint then
+    parts[#parts + 1] = T.Colorize("warning", L()["DETAIL_DELETE_REFUSED"])
+  end
 
   return concat(parts, "  |  ")
 end
@@ -16056,6 +16105,12 @@ function PaintDetailContent(detail, index)
   detail.Reply:SetShown(isCOD and hasContent)
   detail.Return:SetShown(canReturn)
   detail.Delete:SetShown(canDelete)
+  -- Grayed, with its reason on the pointer, where the game will not delete
+  -- the mail for what it still holds: the rule and the words the row's
+  -- faded x has (RV.DeleteBlocked, RV.FadedReason).
+  local blocked = canDelete and RV.DeleteBlocked(index, isCOD, hasContent)
+  detail.Delete.__pbWhy = blocked and RV.FadedReason(kind) or nil
+  detail.Delete:SetEnabled(not blocked)
 
   local shownSlots = 0
   local marks = RV.MarkOnIcon()
@@ -16100,6 +16155,93 @@ function PaintDetailContent(detail, index)
   end
 end
 
+-------------------------------------------------------------
+-- A delete the game refuses, pressed in the reading view
+--
+-- The server can refuse a delete the client offered: the game's own window
+-- makes one test before its Delete (InboxItemCanDelete) and the server
+-- answers some mails with the red "You can't delete that."
+-- (ERR_MAIL_DELETE_ITEM_ERROR, the same words on retail and WoW Forever).
+-- The reading view stays open on its mail while the delete is out -- a
+-- delete that went closes it with the next refresh, as any mail leaving
+-- does (CloseDetailIfStale) -- and where the game's refusal came, its line
+-- of facts says so (DETAIL_DELETE_REFUSED), in the warning tone a stuck
+-- mail's reason wears there.
+--
+-- The game's words are heard on UI_ERROR_MESSAGE, which is registered only
+-- from the moment the view's delete is sent until its answer, and a grace
+-- after it (the error and the answer race, as a take's do: MailService's
+-- ErrorWatch); only those exact words count, and only while the view is
+-- still on the mail the delete was for. Nothing else listens, and nothing
+-- runs at a mailbox where no delete is out.
+-------------------------------------------------------------
+do
+  local W = { frame = nil, fingerprint = nil, heard = false, GRACE = 0.25 }
+  RV.DeleteWatch = W
+
+  function W.OnEvent(_, _, a1, a2)
+    -- Retail passes (errorType, message); older clients the message alone.
+    local said = (type(a2) == "string" and a2) or (type(a1) == "string" and a1) or nil
+    if not said then return end
+    if issecretvalue and issecretvalue(said) then return end
+    if said == _G["ERR_MAIL_DELETE_ITEM_ERROR"] then W.heard = true end
+  end
+
+  -- The view's delete for the mail `fingerprint` is about to go.
+  function W.Open(fingerprint)
+    local words = _G["ERR_MAIL_DELETE_ITEM_ERROR"]
+    if type(words) ~= "string" or words == "" or type(CreateFrame) ~= "function" then return end
+    if not W.frame then
+      W.frame = CreateFrame("Frame")
+      W.frame:SetScript("OnEvent", W.OnEvent)
+    end
+    W.fingerprint, W.heard = fingerprint, false
+    W.frame:RegisterEvent("UI_ERROR_MESSAGE")
+  end
+
+  -- -> whether the game refused it; the listener goes.
+  function W.Close()
+    if W.frame then W.frame:UnregisterEvent("UI_ERROR_MESSAGE") end
+    local heard = W.heard
+    W.heard = false
+    return heard
+  end
+
+  -- The delete's answer (RV.Deleted): its refusal heard now, or within the
+  -- grace, is said on the view.
+  function W.Answer(panel, status)
+    local fingerprint = W.fingerprint
+    if not fingerprint then return end
+    if status ~= "done" or W.heard or not (C_Timer and C_Timer.After) then
+      W.Settle(panel)
+      return
+    end
+    W.panel = panel
+    C_Timer.After(W.GRACE, W.Late)
+  end
+
+  function W.Late()
+    local panel = W.panel
+    W.panel = nil
+    if panel then W.Settle(panel) end
+  end
+
+  function W.Settle(panel)
+    local fingerprint = W.fingerprint
+    W.fingerprint = nil
+    if not W.Close() or not panel then return end
+    local detail = panel.Detail
+    if not (detail and detail:IsShown() and detail.fingerprint == fingerprint) then return end
+    -- Bound again where the mail is now, and said only of that mail.
+    CloseDetailIfStale(panel)
+    local index = detail:IsShown() and LiveIndex(detail)
+    if not index then return end
+    detail._refused = fingerprint
+    PaintDetailContent(detail, index)
+    LayoutDetail(detail)
+  end
+end
+
 function ShowDetail(panel, index)
   local detail = panel.Detail
   if not detail then return end
@@ -16111,6 +16253,7 @@ function ShowDetail(panel, index)
 
   detail.mailIndex = index
   detail.fingerprint = fingerprint
+  detail._refused = nil
   -- A stamp of the inbox as the view was bound to the index, and its mark:
   -- the view follows its mail from here (CloseDetailIfStale), and acts only
   -- while nothing has moved since it was last bound (RV.Acting). `index` is
