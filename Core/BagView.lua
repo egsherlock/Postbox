@@ -1107,10 +1107,16 @@ end
 -- nothing for it.
 function BV.TipItem(kind)
   local index, slot = BV.LiveSlot(kind)
+  local link = kind.link
   if index and type(GameTooltip.SetInboxItem) == "function" then
     GameTooltip:SetInboxItem(index, slot)
-  elseif type(kind.link) == "string" then
-    GameTooltip:SetHyperlink(kind.link)
+  elseif type(link) == "string" and link:find("battlepet:", 1, true) then
+    -- A caged pet's link is not an item's, and the game's tooltip is not
+    -- handed it: the pet's name stands as the title (BV.NameOf reads it
+    -- from the link).
+    Th().TipTitle(BV.NameOf(kind) or RETRIEVING_ITEM_INFO or "?")
+  elseif type(link) == "string" then
+    GameTooltip:SetHyperlink(link)
   elseif kind.id and type(GameTooltip.SetItemByID) == "function" then
     GameTooltip:SetItemByID(kind.id)
   else

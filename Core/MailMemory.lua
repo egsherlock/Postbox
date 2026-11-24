@@ -4564,6 +4564,17 @@ end
 -- carries this table as its `fanSource`: the fan asks it, never the inbox.
 MM.FanSource = {}
 
+-- link -> whether it is a caged pet's: not an item's link, so it is never
+-- handed to the game's tooltip; the pet's name (MM.PetName) stands as the
+-- title instead.
+function MM.PetLink(link)
+  return type(link) == "string" and link:find("battlepet:", 1, true) ~= nil
+end
+
+function MM.PetName(link)
+  return link:match("|h%[(.-)%]|h") or RETRIEVING_ITEM_INFO or "?"
+end
+
 -- row -> whether a fan may stand over it: not while the arrange mode is
 -- open, whose Preview mail these rows may be showing.
 function MM.FanSource.Allowed(row)
@@ -4610,7 +4621,9 @@ function MM.FanSource.TileTip(row, k)
   end
   local own = (k == 1) and row.itemLink or nil
   local id = row.itemList and row.itemList[2 * k - 1]
-  if own then
+  if MM.PetLink(own) then
+    T.TipTitle(MM.PetName(own))
+  elseif own then
     GameTooltip:SetHyperlink(own)
   elseif id and type(GameTooltip.SetItemByID) == "function" then
     GameTooltip:SetItemByID(id)
@@ -4735,7 +4748,13 @@ function MM.NewRow(parent)
       return
     end
     T.TipBegin(self)
-    if row.itemLink then GameTooltip:SetHyperlink(row.itemLink) else GameTooltip:SetItemByID(row.itemID) end
+    if MM.PetLink(row.itemLink) then
+      T.TipTitle(MM.PetName(row.itemLink))
+    elseif row.itemLink then
+      GameTooltip:SetHyperlink(row.itemLink)
+    else
+      GameTooltip:SetItemByID(row.itemID)
+    end
     -- A mail the server refused, as it was remembered: its mark in the row
     -- is the read mark's, and the arrangement may hide that.
     TipState(Rules(), row)
