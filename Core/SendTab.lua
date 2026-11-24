@@ -6675,7 +6675,10 @@ end
 -- "Other", which is listed last among the materials; the rest of the
 -- materials stand A to Z, the consumables and the gems and recipes in the
 -- game's own order, so a line keeps its place as the counts change. A
--- heading with nothing under it is not shown.
+-- heading with nothing under it is not shown, and one that takes a single
+-- kind on this client is drawn once, as the heading with that kind's count
+-- (only "Recipes" on the classic-rules client; never on retail, whose
+-- headings take two kinds or more whatever the bags hold).
 --
 -- A stack counts only where a pick would really take it: not locked (at a
 -- mailbox that is attached), not queued, not bound in any way, not a quest
@@ -6738,9 +6741,11 @@ do
       subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4, [6] = 5 },
       whole = { [Class("ItemEnhancement", 8)] = 6 }, cap = 5 },
     -- The classic-rules client has no gems (its class 3 is an empty
-    -- "Jewelry"; raw gems are materials there): the heading says "Recipes".
+    -- "Jewelry"; raw gems are materials there): the heading says "Recipes"
+    -- and takes the Recipe class alone.
     { head = ns.IsForever and "KIND_HEAD_RECIPES" or "KIND_HEAD_GEMS",
-      whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
+      whole = ns.IsForever and { [Class("Recipe", 9)] = 2 }
+        or { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
   }
   -- Materials' subclasses the classic-rules client still files a few items
   -- under while naming them "Trade Goods (OBSOLETE)" (0) and "Explosives
@@ -6774,7 +6779,9 @@ do
       [6] = "INV_Misc_ArmorKit_17",        -- Permanent (classic-rules)
       [8] = "INV_Misc_ArmorKit_17",        -- Item Enhancement (retail)
     },
-    { head = "INV_Misc_Gem_Variety_01",
+    -- "Recipes" on the classic-rules client wears a scroll of its own,
+    -- apart from its Recipe line's.
+    { head = ns.IsForever and "INV_Scroll_11" or "INV_Misc_Gem_Variety_01",
       [3] = "INV_Misc_Gem_01",             -- Gem
       [9] = "INV_Scroll_03",               -- Recipe
     },
@@ -6790,6 +6797,15 @@ do
     local group = Kind.GROUPS[g]
     group.g, group.lines, group.by, group.items, group.index = g, {}, {}, {}, {}
     group.icon = Kind.ICONS[g] and Kind.ICONS[g].head or nil
+    -- `single`: the heading takes exactly one kind on this client, so it is
+    -- drawn once, standing for its line (Kind.Caption). Set here, from what
+    -- the client can hold, never from what the bags hold today.
+    local kinds = 0
+    if not group.class then
+      for _ in pairs(group.subs or Kind.spare) do kinds = kinds + 1 end
+      for _ in pairs(group.whole or Kind.spare) do kinds = kinds + 1 end
+    end
+    group.single = kinds == 1
   end
 
   -- Whether this client has what a look needs.
@@ -7029,6 +7045,11 @@ do
         end
       end
       group.off = group.stacks == 0
+      -- A heading of one kind stands for its line (Kind.Caption): its words
+      -- carry the count a line's do.
+      if group.single and not group.off then
+        group.text = L[group.head] .. Theme.Colorize("textSecondary", " \194\183 " .. ns.Plural("COUNT_STACKS", group.stacks))
+      end
       if not keep then table.sort(lines, g == 1 and Kind.Before or Kind.InOrder) end
       n = n + #lines
     end
@@ -7047,11 +7068,18 @@ do
   end
 
   -- The menu's hooks (Dropdown.Menu): a row is a place, the line standing
-  -- there now is what it shows; a heading shows while it has lines.
+  -- there now is what it shows; a heading shows while it has lines. A
+  -- heading that takes one kind on this client (`single`) is drawn once:
+  -- the heading alone, with its line's count, and the line put away -- a
+  -- pick of either takes the same stacks, so the menu offers it once.
   function Kind.Caption(item)
     local group, line = Kind.Of(item.id)
     if not group then return nil end
-    if line == nil then return #group.lines > 0 and L[group.head] or nil end
+    if line == nil then
+      if #group.lines == 0 then return nil end
+      return group.single and group.text or L[group.head]
+    end
+    if group.single then return nil end
     return line and line.text or nil
   end
 
