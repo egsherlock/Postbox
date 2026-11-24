@@ -6700,6 +6700,9 @@ local function LayoutViewToggle(panel)
   -- name's, is what the row needed before there was a sort.
   local row = PanelWidth(panel) - 2 * M.inset
   local left = total
+  -- The bag's switch in the plate or out of it, as its option says, before
+  -- the plate is measured (Core/BagView.lua, BV.PlaceSwitch).
+  if ns.BagView and panel.SearchWrap then ns.BagView.PlaceSwitch(panel) end
   -- While History's switch stands in the row, the search may give back more
   -- (RV.SearchYield), down to its floor; its natural width is as before.
   local give = panel.SearchWrap and RV.SortRoom(panel) or 0

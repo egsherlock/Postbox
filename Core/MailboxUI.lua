@@ -218,6 +218,11 @@ local OPTION_DEFAULTS = {
   -- The Mail tab's list drawn as one bag of items (Core/BagView.lua, the
   -- switch after Sort). Off: the list, as it has always been.
   bagView         = false,
+  -- That switch offered at all (Options > Mail tab, One-bag button). On:
+  -- the button after Sort. Off, it is not in the row, Search and Sort stand
+  -- where they stood before it, the bag is never drawn and bagView is kept
+  -- for when it is on again (Core/BagView.lua, BV.Offered).
+  bagButton       = true,
   -- Where the names the Send tab offers come from, one switch per source
   -- (the options' Send tab, Recipients): your alts, your guild, your friends,
   -- the people you have mailed, and those you recently grouped with.

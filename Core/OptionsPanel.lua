@@ -8703,6 +8703,19 @@ function Pages.mail(col)
     Shown(tab.entry, "tab")
   end
 
+  -- The one-bag button after Sort and filter, offered or not. Off, the row
+  -- has no button and the search has its room back; the bag is never drawn,
+  -- and the choice of bag or list is kept for when it is on again
+  -- (Core/BagView.lua, BV.Offered). Last in the group: the rarest change.
+  Rows.Check(col, {
+    title = L["OPT_BAG_BUTTON_TITLE"], text = L["OPT_BAG_BUTTON_DESC"],
+    get = function() return ns.MailboxUI.GetOption("bagButton") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("bagButton", on)
+      if ns.BagView and ns.BagView.OfferChanged then ns.BagView.OfferChanged() end
+    end,
+  })
+
   -- What stands under the list: the category buttons and the totals, the
   -- two blocks the tab's foot holds, side by side as they share the foot;
   -- and the player's own buttons, Character Groups, a click away. (Mail

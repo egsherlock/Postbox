@@ -99,11 +99,19 @@ BV.Many = { open = false, steps = {}, stacks = {}, at = {}, n = 0, pick = 1 }
 -- 1. The switch's state
 -------------------------------------------------------------
 
+-- Whether the button is offered at all (profile.bagButton, Options > Mail
+-- tab; unset is on). Off, nothing of the bag is built or drawn.
+function BV.Offered()
+  local UI = ns.MailboxUI
+  return UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("bagButton") == true
+end
+
 -- Whether the player chose the bag (profile.bagView, MailboxUI's
--- OPTION_DEFAULTS; unset is off).
+-- OPTION_DEFAULTS; unset is off), where the button is offered. The choice
+-- is kept while it is not, for when it is again.
 function BV.On()
   local UI = ns.MailboxUI
-  return UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("bagView") == true
+  return BV.Offered() and UI.GetOption("bagView") == true
 end
 
 -- panel -> whether the list on screen has no bag to show: the Done tab, and
@@ -1060,40 +1068,84 @@ function BV.Back(panel)
   if not (BV.area and BV.area:IsShown()) then ns.CollectTab.RefreshMailList(panel) end
 end
 
--- The switch, built with the find plate (CollectTab's BuildSearchBox): a
--- square plate the segments' height, joined to the search as its last cell
--- after the sort, which moves one cell in (Theme.JoinCell; the search ends
--- before both, Theme's search.endExtra, and RV.SortRoom counts both).
+-- The switch, built with the find plate (CollectTab's BuildSearchBox) where
+-- it is offered (BV.Offered): a square plate the segments' height, joined
+-- to the search as its last cell after the sort, which moves one cell in
+-- (Theme.JoinCell; the search ends before both, Theme's search.endExtra,
+-- and RV.SortRoom counts both).
 function BV.BuildSwitch(panel)
+  BV.PlaceSwitch(panel)
+end
+
+-- The switch in the row or out of it, as the option says; asked by the
+-- row's layout (CollectTab's LayoutViewToggle) before it measures the find
+-- plate, so a change of the option or a reset finds it laid out. Out, the
+-- cell is hidden and kept (panel._bagCell), `panel.BagSwitch` is nil, and
+-- the sort and the search stand exactly as they did before the switch
+-- existed: the sort the wrap's last cell at its right end, the search's
+-- end before the sort alone. Changes only when the option does.
+function BV.PlaceSwitch(panel)
   local P, T = Parts(), Th()
   local wrap, search, sort = panel.SearchWrap, panel.Search, panel.Sort
-  if panel.BagSwitch or not (P and wrap and search and sort) then return end
+  if not (P and wrap and search and sort) then return end
+  local offered = BV.Offered()
+  if offered == (panel.BagSwitch ~= nil) then return end
   local size = T.Metrics.segmentHeight
-  local cell = T.CreatePlate(panel, "segment")
-  cell:SetSize(size, size)
-  cell:SetText("")
-  cell._panel, cell._gray = panel, false
-  cell.Icon = T.Glyph and T.Glyph(cell, BV.GLYPH, nil, "OVERLAY") or nil
-  if cell.Icon then
-    cell.Icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
-    T.SetPlateGlyph(cell, cell.Icon, BV.PaintGlyph)
+  local cell = panel.BagSwitch or panel._bagCell
+  local inset = 0
+  if offered then
+    if cell then
+      cell:Show()
+    else
+      cell = T.CreatePlate(panel, "segment")
+      cell:SetSize(size, size)
+      cell:SetText("")
+      cell._panel, cell._gray = panel, false
+      cell.Icon = T.Glyph and T.Glyph(cell, BV.GLYPH, nil, "OVERLAY") or nil
+      if cell.Icon then
+        cell.Icon:SetPoint("CENTER", cell, "CENTER", 0, 0)
+        T.SetPlateGlyph(cell, cell.Icon, BV.PaintGlyph)
+      else
+        cell:SetText("#")
+      end
+      cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+      cell:SetScript("OnClick", BV.SwitchClick)
+      cell:HookScript("OnEnter", BV.SwitchEnter)
+      cell:HookScript("OnLeave", BV.SwitchLeave)
+      T.JoinCell(wrap, cell)
+      T.SetPlateSelected(cell, false)
+    end
+    panel.BagSwitch, panel._bagCell = cell, nil
+    inset = -(size - 1)
+    search.endExtra = size - 1
   else
-    cell:SetText("#")
+    cell:Hide()
+    if GameTooltip:IsOwned(cell) then GameTooltip:Hide() end
+    panel.BagSwitch, panel._bagCell = nil, cell
+    search.endExtra = nil
+    -- What belonged to the bag ends with it.
+    panel._bagPeek, panel._bagPeekAlt = nil, nil
+    if BV.Many.open then BV.Many.Close() end
   end
-  cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  cell:SetScript("OnClick", BV.SwitchClick)
-  cell:HookScript("OnEnter", BV.SwitchEnter)
-  cell:HookScript("OnLeave", BV.SwitchLeave)
-  T.JoinCell(wrap, cell)
   sort:ClearAllPoints()
-  sort:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", -(size - 1), 0)
-  sort:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -(size - 1), 0)
-  panel.BagSwitch = cell
-  search.endExtra = size - 1
+  sort:SetPoint("TOPRIGHT", wrap, "TOPRIGHT", inset, 0)
+  sort:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", inset, 0)
   search.SetJoined(panel._sortPlaced ~= false)
   panel._searchW = nil
   P.RV.SizeSearch(panel, panel._searchGiven or 0)
-  T.SetPlateSelected(cell, false)
+  if offered then BV.PaintSwitch(panel) end
+end
+
+-- The option changed (Options > Mail tab): the row laid out again, with the
+-- switch in it or not (CT.UpdateTabCounts lays the row out, and the
+-- window's floor follows it), and the list drawn for it: the bag, where it
+-- was chosen and is offered again, or the list.
+function BV.OfferChanged()
+  local UI, CT = ns.MailboxUI, ns.CollectTab
+  local panel = UI and UI._frame and UI._frame.Tabs and UI._frame.Tabs.collect
+  if not (panel and CT) then return end
+  if type(CT.UpdateTabCounts) == "function" then CT.UpdateTabCounts(panel) end
+  if type(CT.RequestRefresh) == "function" then CT.RequestRefresh(panel) end
 end
 
 -------------------------------------------------------------
