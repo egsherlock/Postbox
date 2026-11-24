@@ -77,6 +77,8 @@ BV.tiles, BV.heads = {}, {}
 -- The mails a tile's run is started with, copied from its kind: the list
 -- may be built again before the run reads them.
 BV.queue = {}
+-- A link's item id, kept (History's records hold links): false for none.
+BV.ids, BV.idsN, BV.IDS_MAX = {}, 0, 2048
 
 -- The bag as last built. `kinds` and `sects` are pools, `n` and `sn` how
 -- many of each are in use; a section's `list` is its kinds in the order
@@ -102,11 +104,10 @@ function BV.On()
   return UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("bagView") == true
 end
 
--- panel -> whether the list on screen has no bag to show: the Done tab,
--- and, until they are drawn as one, History and another character's box.
+-- panel -> whether the list on screen has no bag to show: the Done tab.
 function BV.Gray(panel)
   local P = Parts()
-  return P ~= nil and (panel.viewMode ~= P.VIEW_COLLECT or P.AV.Active(panel))
+  return P ~= nil and panel.viewMode == P.VIEW_DONE and not P.AV.Active(panel)
 end
 
 -- panel -> whether the bag is what is drawn: chosen, and the list on screen
@@ -187,6 +188,22 @@ local function Put(kind, count, where, free, why)
     kind.mails = m
     kind.ref[m], kind.cnt[m] = where, count
   end
+end
+
+-- link -> its item id, read once a link.
+function BV.IdOf(link)
+  if type(link) ~= "string" then return nil end
+  local id = BV.ids[link]
+  if id == nil then
+    id = tonumber((link:match("item:(%d+)"))) or false
+    if BV.idsN >= BV.IDS_MAX then
+      for key in pairs(BV.ids) do BV.ids[key] = nil end
+      BV.idsN = 0
+    end
+    BV.ids[link] = id
+    BV.idsN = BV.idsN + 1
+  end
+  return id or nil
 end
 
 -- A stack a record describes (Mail Memory's, History's): by its id where
@@ -312,6 +329,78 @@ function BV.TallyRemembered(panel)
   end
 end
 
+-- A heading of the list (a character's, in a search of every box; the mail
+-- sent a box since its visit) -> its words.
+local function HeadText(row)
+  if type(row.label) == "string" and row.label ~= "" then return row.label end
+  local Memory = ns.MailMemory
+  if Memory and type(Memory.ClassName) == "function" and row.name then
+    return Memory.ClassName(row.realm, row.name, false, "window")
+  end
+  return tostring(row.name or "")
+end
+
+-- Another character's box, or every box's matches (panel._avRows, Mail
+-- Memory's rows as the list shows them): what each remembered mail held. A
+-- heading of the list heads a section here; what was noted as arriving
+-- since the box was seen stands under Mail Memory's own words for it.
+function BV.TallyAway(panel)
+  local rows = panel._avRows or NONE
+  local main = model.sects[1]
+  local s, arrived = main, nil
+  for i = 1, #rows do
+    local mail = rows[i]
+    if mail.header then
+      s = Sect(HeadText(mail), 0)
+      s.realm, s.name = mail.realm, mail.name
+    elseif mail.note then
+      if mail.rule or mail.line then s = main end
+    else
+      local into = s
+      if mail.pending and s == main then
+        if not arrived then arrived = Sect(L()["MEMORY_NEW_SINCE"], 0) end
+        into = arrived
+      end
+      local money = tonumber(mail.money) or 0
+      if money > 0 then Gold(into, money, mail, false) end
+      local list = mail.it
+      if type(list) == "table" and #list >= 2 then
+        for j = 1, #list - 1, 2 do
+          Item(into, tonumber(list[j]), nil, nil, list[j + 1], mail, j == 1 and mail.link or nil)
+        end
+      elseif (tonumber(mail.items) or 0) > 0 then
+        local id = tonumber(mail.id) or nil
+        Item(into, id, (not id) and mail.pending and mail.subject or nil, mail.icon or nil,
+          tonumber(mail.count) or 1, mail, mail.link or nil)
+      end
+    end
+  end
+end
+
+-- History's list (panel._history, Received or Sent): what each entry says
+-- came out or was sent, a kind an item id read from the entry's link.
+function BV.TallyHistory(panel)
+  local out = panel._history or NONE
+  local s = model.sects[1]
+  for i = 1, #out do
+    local e = out[i]
+    if e.header then
+      s = Sect(HeadText(e), 0)
+    else
+      local money = tonumber(e.m) or 0
+      if money > 0 and not e.r then Gold(s, money, e, false) end
+      local items = e.it
+      if type(items) == "table" then
+        for j = 1, #items do
+          local it = items[j]
+          local link = type(it) == "table" and it.l or nil
+          if link then Item(s, BV.IdOf(link), link, nil, it.n, e, link) end
+        end
+      end
+    end
+  end
+end
+
 -- The bag, from the list CT.RefreshMailList has just built. While a run is
 -- going over the inbox's list the kinds are held in place and only counted
 -- again; otherwise everything is made anew, in tables that are kept.
@@ -351,6 +440,10 @@ function BV.Build(panel)
   if src == "inbox" then
     BV.TallyInbox(panel, frozen)
     if not frozen then BV.TallyRemembered(panel) end
+  elseif src == "away" then
+    BV.TallyAway(panel)
+  else
+    BV.TallyHistory(panel)
   end
   m.frozen = false
   return frozen
