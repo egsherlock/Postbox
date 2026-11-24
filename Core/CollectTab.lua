@@ -9233,11 +9233,12 @@ do
   -- Mail.ExpiryFate). Return: a mail that holds something and is C.O.D.,
   -- or that the client says goes back; Delete: read, not C.O.D., and one
   -- the client deletes (any answer but "back", none included). A row's
-  -- Return arrow asks the same.
+  -- Return arrow asks the same. Return is the service's one rule
+  -- (Mail.ReturnRule), which the one bag's return asks too.
   function RV.Offers(index, isCOD, hasContent, wasRead)
     local fate, answered = Mail().ExpiryFate(index)
     local canDelete = fate == "gone" or not answered
-    return (hasContent and (isCOD or not canDelete)) and true or false,
+    return Mail().ReturnRule(isCOD, hasContent, fate, answered),
       (wasRead and not isCOD and canDelete) and true or false
   end
 

@@ -374,6 +374,27 @@ function Mail.ExpiryFate(index)
   return canDelete and "gone" or "back", true
 end
 
+-- isCOD, hasContent, fate, answered -> whether a mail can be sent back: it
+-- holds gold or items, and it is C.O.D. or the client says it goes back
+-- (Mail.ExpiryFate's two answers; no answer reads as deleted). The one rule:
+-- the reading view's Return and a row's arrow (RV.Offers), the one bag's
+-- return (Mail.Returnable) and the return sweep's last look before each
+-- command (Mail.ReturnMails) all ask it here.
+function Mail.ReturnRule(isCOD, hasContent, fate, answered)
+  local canDelete = fate == "gone" or not answered
+  return (hasContent and (isCOD or not canDelete)) and true or false
+end
+
+-- index -> whether the mail there can be sent back, by Mail.ReturnRule, from
+-- its header as it stands. Nothing is allocated.
+function Mail.Returnable(index)
+  local _, _, sender, subject, money, cod, _, itemCount = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return false end
+  local holds = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
+  local fate, answered = Mail.ExpiryFate(index)
+  return Mail.ReturnRule((tonumber(cod) or 0) > 0, holds, fate, answered)
+end
+
 -------------------------------------------------------------
 -- Queue construction -- the order, and the critical identity invariant
 -------------------------------------------------------------
@@ -5344,6 +5365,38 @@ function Mail.TakeMoney(index, onDone, history, expected, stamp)
   end, nil, nil, fetch)
 end
 
+-- at -> what the mail there holds, for Mail Memory once it has gone back
+-- (MailMemory.ReturnRecord, which keeps only those sent back to one of the
+-- player's own characters): read just before the command goes. Its items
+-- as Sent keeps them, one entry per link. nil for a mail with no sender.
+function Mail.ReturnCapture(at)
+  local _, _, sender, subject, money, cod = GetInboxHeaderInfo(at)
+  if type(sender) ~= "string" or sender == "" then return nil end
+  local items
+  if type(GetInboxItemLink) == "function" then
+    for slot = 1, MAX_ATTACHMENTS do
+      local link = GetInboxItemLink(at, slot)
+      if type(link) == "string" and link ~= "" then
+        local _, _, _, count = GetInboxItem(at, slot)
+        count = tonumber(count) or 1
+        items = items or {}
+        local merged = false
+        for j = 1, #items do
+          if items[j].l == link then
+            items[j].n = items[j].n + count
+            merged = true
+            break
+          end
+        end
+        if not merged then items[#items + 1] = { l = link, n = count } end
+      end
+    end
+  end
+  money, cod = tonumber(money) or 0, tonumber(cod) or 0
+  return { s = sender, sub = tostring(subject or ""), it = items, m = (money > 0) and money or nil,
+    c = (cod > 0) and cod or nil }
+end
+
 function Mail.ReturnMail(index, onDone, expected, stamp, item)
   if testHold then
     if onDone then onDone("closed") end
@@ -5355,37 +5408,10 @@ function Mail.ReturnMail(index, onDone, expected, stamp, item)
   end
   -- What the mail held, read just before the command goes, and handed to
   -- Mail Memory only once the mail has left the inbox by it (the judge,
-  -- below): a mail sent back to one of the player's own characters is then
-  -- listed in that character's box (MailMemory.ReturnRecord, which keeps
-  -- only those). Its items as Sent keeps them, one entry per link.
+  -- below; Mail.ReturnCapture).
   local capture
   SingleCommand(function(at)
-    local _, _, sender, subject, money, cod = GetInboxHeaderInfo(at)
-    if type(sender) == "string" and sender ~= "" then
-      local items
-      if type(GetInboxItemLink) == "function" then
-        for slot = 1, MAX_ATTACHMENTS do
-          local link = GetInboxItemLink(at, slot)
-          if type(link) == "string" and link ~= "" then
-            local _, _, _, count = GetInboxItem(at, slot)
-            count = tonumber(count) or 1
-            items = items or {}
-            local merged = false
-            for j = 1, #items do
-              if items[j].l == link then
-                items[j].n = items[j].n + count
-                merged = true
-                break
-              end
-            end
-            if not merged then items[#items + 1] = { l = link, n = count } end
-          end
-        end
-      end
-      money, cod = tonumber(money) or 0, tonumber(cod) or 0
-      capture = { s = sender, sub = tostring(subject or ""), it = items, m = (money > 0) and money or nil,
-        c = (cod > 0) and cod or nil }
-    end
+    capture = Mail.ReturnCapture(at)
     ReturnInboxItem(at)
     return true
   end, onDone, index, expected, function(where)
@@ -5424,21 +5450,32 @@ end
 -- The sweep under way: one at a time (it owns the channel), so its state is
 -- this one table, kept, and its steps the functions below it, not closures
 -- made per sweep or per delete. `pending` names the handshake it waits on.
+--
+-- The same table runs the return sweep (Mail.ReturnMails, below): `kind`
+-- says which ("delete" | "return"), `want` is what the player agreed to
+-- return, and `deleted` counts what went either way.
 local sweep = {
   token = nil, onDone = nil, expected = nil, stamp = 0,
   list = {}, n = 0, cursor = 0, deleted = 0, pending = nil,
+  kind = nil, want = nil, at = nil, capture = nil, waiting = false, waitArmed = 0, waitFired = 0,
+  seen = false, listening = false,
 }
 
 local function SweepOrder(a, b) return a > b end
 
+-- onDone(count, status, n, cursor): how many went, why it ended, how many
+-- it was given and the place in its list it ended at.
 local function SweepFinish(status)
   local s = sweep
   if not s.token then return end
-  local token, onDone, deleted = s.token, s.onDone, s.deleted
+  s.waiting, s.seen = false, false
+  if s.listening then sweep.Unlisten() end
+  local token, onDone, deleted, n, cursor = s.token, s.onDone, s.deleted, s.n, s.cursor
   s.token, s.onDone, s.expected, s.pending = nil, nil, nil, nil
+  s.kind, s.want, s.at, s.capture = nil, nil, nil, nil
   TrackEnd()
   Release(token)
-  if onDone then onDone(deleted, status) end
+  if onDone then onDone(deleted, status, n, cursor) end
 end
 
 local function SweepTimeout()
@@ -5449,9 +5486,11 @@ local SweepStep
 
 local function SweepOnHandshake(timedOut)
   local s = sweep
-  if s.pending ~= "delete" then return end
+  local pending = s.pending
+  if pending ~= "delete" and pending ~= "return" then return end
   s.pending = nil
   if timedOut then return SweepFinish("timeout") end
+  if pending == "return" then return sweep.Returned() end
   TrackSettled(true)
   TrackEnd()
   s.deleted = s.deleted + 1
@@ -5464,6 +5503,7 @@ function SweepStep()
   if s.cursor > s.n then return SweepFinish("done") end
   local index = s.list[s.cursor]
   if not MailboxOpen() then return SweepFinish("closed") end
+  if s.kind == "return" then return sweep.ReturnStep() end
 
   -- The last look before the irreversible command (see the contract above).
   -- A mail that cannot be followed, or reads as another, is skipped, not
@@ -5529,8 +5569,278 @@ function Mail.DeleteMails(indices, onDone, expected, stamp)
   if n > 1 then table.sort(list, SweepOrder) end
   s.token, s.onDone, s.expected, s.stamp = token, onDone, expected, stamp
   s.n, s.cursor, s.deleted, s.pending = n, 0, 0, nil
+  s.kind, s.want = "delete", nil
 
   if not MailboxOpen() then return SweepFinish("closed") end
+
+  WhenIdle(SweepStep, SweepTimeout)
+end
+
+-------------------------------------------------------------
+-- The return sweep (s33 bagalt): mails the player agreed to send back, in
+-- one question (the one bag's tile, with Return and Delete with Alt), sent
+-- back one command at a time on the delete sweep's own machinery.
+--
+-- `want` is what the question named, noted as it went up (Mail.ReturnWant,
+-- then Mail.ReturnNote for each mail, in the order the question reads):
+-- each mail's place in the inbox, its fingerprint, its sender, what it
+-- holds (gold, and each slot's item and count), its time left, and a
+-- stamp of the inbox (Mail.Stamp). Nothing else is ever sent back.
+--
+-- Right before each command the mail is looked at again, all of it: found
+-- for certain where it now is (the log, Mail.Rebase; never by its index
+-- alone, never by its fingerprint), reading as the same mail, from the
+-- same sender, holding exactly what it held, its time left where it was
+-- (a twin that arrived later reads otherwise), still holding something,
+-- and still one the game sends back (Mail.Returnable). The first mail
+-- that fails any of it STOPS the sweep ("changed"): nothing after it is
+-- sent, where the delete sweep skips. After each command the mail must be
+-- seen to leave the inbox; one the game kept ("refused", after waiting up
+-- to SETTLE_DEADLINE for the inbox to say so) stops it too, as do the
+-- mailbox closing ("closed") and no answer ("timeout"). Whatever stops
+-- it, every mail not yet commanded is untouched.
+--
+-- onDone(returned, status, n, cursor), status "done" | "changed" |
+-- "refused" | "closed" | "timeout" | "busy" | "unavailable". want.onStep
+-- (returned, n), where given, hears each mail go. Mail Memory is told of
+-- each one only once it has left (Mail.ReturnCapture, MailMemory's
+-- ReturnRecord), as for a single return.
+-------------------------------------------------------------
+do
+  local MOD = 2147483629
+
+  -- at -> one number for what the mail holds: its gold, the header's item
+  -- count, and each slot's item and count. Nothing is allocated.
+  function sweep.Held(at)
+    local _, _, _, _, money, _, _, itemCount = GetInboxHeaderInfo(at)
+    local h = ((tonumber(money) or 0) % MOD + (tonumber(itemCount) or 0)) % MOD
+    for slot = 1, MAX_ATTACHMENTS do
+      local name, id, tex, count = GetInboxItem(at, slot)
+      if name or id or tex then
+        h = (h * 31 + slot * 7 + ((tonumber(id) or 0) % 1000003) * 13 + (tonumber(count) or 0)) % MOD
+      end
+    end
+    return h
+  end
+
+  -- at, was, t0 -> whether the mail's time left is where it was at the
+  -- question (`was`, read at `t0`), or where it has run down to since
+  -- (Mail.StillClicked's rule).
+  function sweep.DaysHold(at, was, t0)
+    if was == nil then return true end
+    local _, _, _, _, _, _, days = GetInboxHeaderInfo(at)
+    days = tonumber(days)
+    if days == nil then return false end
+    local drift = days - was
+    if drift < 0 then drift = -drift end
+    if drift <= CLICK_DAYS_SLACK then return true end
+    local down = days - was + (((type(GetTime) == "function" and GetTime() or 0) - (t0 or 0)) / 86400)
+    if down < 0 then down = -down end
+    return down <= CLICK_DAYS_SLACK
+  end
+
+  function sweep.ReturnStep()
+    local s = sweep
+    -- Every mail still to go, followed from the last stamp to where it is
+    -- now, and the log begun again from here, so a long sweep never runs
+    -- past the log's length. One that cannot be followed is lost (-1).
+    for j = s.cursor, s.n do
+      local was = s.list[j]
+      if was > 0 then
+        local at = Mail.Rebase(was, s.stamp)
+        s.list[j] = (type(at) == "number") and at or -1
+      end
+    end
+    s.stamp = Mail.Stamp()
+    local k, w = s.cursor, s.want
+    local at = s.list[k]
+    if at < 1 or Fingerprint(at) ~= w.expected[k] then return SweepFinish("changed") end
+    local _, _, sender, _, money, _, _, itemCount = GetInboxHeaderInfo(at)
+    if sender ~= w.senders[k] then return SweepFinish("changed") end
+    if not ((tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0) then return SweepFinish("changed") end
+    if sweep.Held(at) ~= w.held[k] or not sweep.DaysHold(at, w.days[k], w.t0) then return SweepFinish("changed") end
+    if not Mail.Returnable(at) then return SweepFinish("changed") end
+    s.capture = Mail.ReturnCapture(at)
+    s.at, s.seen = at, false
+    TrackBegin(at)
+    TrackMayEmpty(true)
+    ReturnInboxItem(at)
+    s.pending = "return"
+    WaitForCommand(SweepOnHandshake)
+  end
+
+  -- The inbox heard for the length of a return sweep (Listen at its start,
+  -- Unlisten at its end; Postbox's event bus, whose first handler follows
+  -- the inbox): an update that no longer lists the mail just commanded is
+  -- noted as it comes (`seen`), so a mailbox that closes before the answer
+  -- is read still counts what went; after the answer, the wait for it.
+  function sweep.Listen()
+    local s = sweep
+    local bus = ns.Events
+    if s.listening or not (bus and type(bus.Register) == "function") then return end
+    s.listening = true
+    bus.Register("MAIL_INBOX_UPDATE", sweep.OnEvent)
+    bus.Register("MAIL_CLOSED", sweep.OnEvent)
+  end
+
+  function sweep.Unlisten()
+    local s = sweep
+    if not s.listening then return end
+    s.listening = false
+    local bus = ns.Events
+    if bus and type(bus.Unregister) == "function" then
+      bus.Unregister("MAIL_INBOX_UPDATE", sweep.OnEvent)
+      bus.Unregister("MAIL_CLOSED", sweep.OnEvent)
+    end
+  end
+
+  function sweep.OnEvent(event)
+    local s = sweep
+    if not s.listening or s.at == nil then return end
+    if event == "MAIL_CLOSED" then
+      if s.waiting then
+        s.waiting = false
+        SweepFinish("closed")
+      end
+      return
+    end
+    if s.pending == "return" then
+      -- The answer not in yet: only noted.
+      if TrackWhere(s.at) == nil then s.seen = true end
+      return
+    end
+    if not s.waiting then return end
+    local where = TrackWhere(s.at)
+    if where == nil then
+      s.waiting = false
+      return sweep.Went()
+    end
+    if where == false then
+      s.waiting = false
+      return sweep.Unsure()
+    end
+  end
+
+  -- The command's answer: the mail gone (seen go, or gone now), it counts
+  -- and the next goes; still listed, the inbox's word on it is waited for,
+  -- up to SETTLE_DEADLINE, after which it was kept ("refused"). One wait at
+  -- a time, ended by one one-shot timer told from an older one by two
+  -- counts; nothing made per wait.
+  function sweep.Returned()
+    local s = sweep
+    if s.seen then return sweep.Went() end
+    if not MailboxOpen() then return SweepFinish("closed") end
+    local where = TrackWhere(s.at)
+    if where == nil then return sweep.Went() end
+    if where == false then return sweep.Unsure() end
+    if not s.listening or type(C_Timer) ~= "table" then return SweepFinish("refused") end
+    s.waiting = true
+    s.waitArmed = s.waitArmed + 1
+    C_Timer.After(SETTLE_DEADLINE, sweep.WaitDue)
+  end
+
+  function sweep.WaitDue()
+    local s = sweep
+    s.waitFired = s.waitFired + 1
+    if s.waiting and s.waitFired == s.waitArmed then
+      s.waiting = false
+      SweepFinish("refused")
+    end
+  end
+
+  -- The reading cannot say whether the mail went or a twin of it beside it
+  -- did (TrackStayed): one of the two went as the return was answered, so
+  -- on the command's own evidence it is this one (TrackWent), as a run
+  -- settles it. Any other mail the reading cannot follow: stop. The next
+  -- mail is followed again before its command either way.
+  function sweep.Unsure()
+    if TrackMaybeWent() then
+      TrackWent()
+      return sweep.Went()
+    end
+    return SweepFinish("changed")
+  end
+
+  function sweep.Went()
+    local s = sweep
+    s.seen, s.at = false, nil
+    TrackSettled(true)
+    TrackEnd()
+    local capture = s.capture
+    s.capture = nil
+    if capture then
+      local MM = ns.MailMemory
+      if MM and type(MM.ReturnRecord) == "function" then MM.ReturnRecord(capture) end
+    end
+    s.deleted = s.deleted + 1
+    local w = s.want
+    if w and w.onStep then w.onStep(s.deleted, s.n) end
+    return SweepStep()
+  end
+end
+
+-- want -> emptied, for the mails a question names, with the inbox's stamp
+-- and the time taken now. Returns want.
+function Mail.ReturnWant(want)
+  want.list, want.expected = want.list or {}, want.expected or {}
+  want.senders, want.held, want.days = want.senders or {}, want.held or {}, want.days or {}
+  local n = want.n or 0
+  for k = 1, n do
+    want.list[k], want.expected[k], want.senders[k], want.held[k], want.days[k] = nil, nil, nil, nil, nil
+  end
+  want.n = 0
+  want.stamp = Mail.Stamp()
+  want.t0 = type(GetTime) == "function" and GetTime() or 0
+  return want
+end
+
+-- index, want -> the mail at `index` noted as the question shows it (see
+-- the return sweep above), the next in the order it will go.
+function Mail.ReturnNote(index, want)
+  local _, _, sender, _, _, _, days = GetInboxHeaderInfo(index)
+  local k = (want.n or 0) + 1
+  want.n = k
+  want.list[k] = index
+  want.expected[k] = Fingerprint(index)
+  want.senders[k] = sender
+  want.held[k] = sweep.Held(index)
+  want.days[k] = tonumber(days)
+end
+
+-- want, onDone -> the mails `want` names sent back, one at a time, each
+-- checked again right before it goes (the return sweep, above).
+function Mail.ReturnMails(want, onDone)
+  if testHold then
+    if onDone then onDone(0, "closed", 0, 0) end
+    return
+  end
+  if type(ReturnInboxItem) ~= "function" then
+    if onDone then onDone(0, "unavailable", 0, 0) end
+    return
+  end
+  local n = type(want) == "table" and tonumber(want.n) or 0
+  if n < 1 then
+    if onDone then onDone(0, "done", 0, 0) end
+    return
+  end
+  -- Followed from here, if it was not already: a stamp from a reading that
+  -- ended with a closed mailbox follows nothing, and the first look stops.
+  TrackArm()
+  local token = Claim()
+  if not token then
+    if onDone then onDone(0, "busy", n, 0) end
+    return
+  end
+  local s = sweep
+  local list = s.list
+  for k = 1, n do list[k] = tonumber(want.list[k]) or -1 end
+  for k = #list, n + 1, -1 do list[k] = nil end
+  s.token, s.onDone, s.expected, s.stamp = token, onDone, nil, want.stamp
+  s.n, s.cursor, s.deleted, s.pending = n, 0, 0, nil
+  s.kind, s.want, s.at, s.capture = "return", want, nil, nil
+
+  if not MailboxOpen() then return SweepFinish("closed") end
+  sweep.Listen()
 
   WhenIdle(SweepStep, SweepTimeout)
 end
