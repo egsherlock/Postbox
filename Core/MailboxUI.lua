@@ -139,6 +139,11 @@ local OPTION_DEFAULTS = {
   -- screen -- the common action is the one-click one -- and because a player who
   -- has used it for a while has the other mapping in their hands.
   previewOnClick  = false,
+  -- Return and Delete with Alt on the Mail tab's list (CollectTab,
+  -- RV.Marks). On: a feature nobody can find switched off does not exist.
+  -- Off for a player whose Alt is busy (push-to-talk): Alt then does
+  -- nothing on the list, and an Alt+click is the plain click.
+  rowMarks        = true,
   -- Mail Memory (Core/MailMemory.lua): every character's last-seen mailbox,
   -- in its own window and in this one. On: the feature is capture-light and
   -- idle when unused, and a feature nobody can find switched off does not

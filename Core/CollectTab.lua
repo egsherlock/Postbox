@@ -4599,14 +4599,18 @@ do
     -- a finished mail has none (every button opens it). While the marks
     -- show, held or kept on, the one click the row has then, or why it has
     -- none (RV.Marks.Hint); with no marks up, on a mail that can go back,
-    -- holding Alt shows its Return (RV.Marks).
+    -- holding Alt shows its Return, and on finished mail its delete
+    -- (f71 W07), wherever Alt would bring the marks (RV.Marks.Eligible:
+    -- the switch on, the Inbox's own list at a mailbox).
     if RV.Marks.goal == 1 then
       RV.Marks.Hint(row, index)
     elseif not row.mailDone and not RV.Marks.Holding() then
       T.TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
-      if RV.Marks.goal ~= 1 and RV.Offers(index, cod > 0, money > 0 or (tonumber(itemCount) or 0) > 0, wasRead) then
+      if RV.Marks.goal ~= 1 and RV.Marks.Eligible(row.panel) and RV.Offers(index, cod > 0, money > 0 or (tonumber(itemCount) or 0) > 0, wasRead) then
         T.TipNote(RawKey("HINT_ROW_HOLD_ALT"))
       end
+    elseif row.mailDone and RV.Marks.Eligible(row.panel) then
+      T.TipHint(RawKey("HINT_ROW_HOLD_ALT_DELETE"))
     end
     GameTooltip:Show()
     return true
@@ -8962,7 +8966,11 @@ end
 -- list going away ends it (the mailbox closing, Send, History, the Done
 -- tab, another character's box, a mail opened to read, a run, the arrange
 -- mode). A return or delete, scrolling, searching and sorting do not.
--- Always on: there is no switch for it.
+-- Options, Mail tab: "Return and Delete with Alt" (rowMarks, on by
+-- default). Off, none of this is: no marks, no chip, no line, no tap
+-- counted, no event watched, the rows' tooltips say nothing of Alt, and
+-- an Alt+click is the plain click (M.Wanted, read in M.Eligible);
+-- switched off while kept on, the mode ends at once (CT.MarksChanged).
 --
 -- Which mail gets which: the reading view's own rule (RV.Offers), so a row
 -- offers Return exactly where the reading view does. Return goes as the
@@ -9105,10 +9113,20 @@ do
     return fallback and true or false
   end
 
+  -- Whether the player wants the marks at all (Options, Mail tab: Return
+  -- and Delete with Alt; nil reads as the default, on).
+  function M.Wanted()
+    local UI = ns.MailboxUI
+    if not (UI and UI.GetOption) then return true end
+    return UI.GetOption("rowMarks") and true or false
+  end
+
   -- panel -> whether its own inbox list is what is on screen, at a
-  -- mailbox, with nothing else owning the rows.
+  -- mailbox, with nothing else owning the rows, and the player wants the
+  -- marks there.
   function M.Eligible(panel)
     if not panel or panel._preview then return false end
+    if not M.Wanted() then return false end
     if not panel:IsVisible() then return false end
     local area = panel.MailListArea
     if not (area and area:IsShown()) then return false end
@@ -10089,6 +10107,21 @@ do
     self.hover = nil
     M.latched = false
     M.Aim(M.held)
+  end
+
+  -- The Options switch moved: the marks follow at once. Off, the event is
+  -- let go and the marks, the chip and the line go with no fade, a kept-on
+  -- mode ended (M.Sync); on, the watch starts again where the list is up.
+  function CT.MarksChanged()
+    local panel = M.panel
+    if not panel then
+      local UI = ns.MailboxUI
+      local frame = UI and UI._frame
+      panel = frame and frame.Tabs and frame.Tabs.collect
+    end
+    if panel then M.Sync(panel) end
+    -- A row's tooltip up now says Alt's words, or none, as the switch is.
+    M.Relight()
   end
 end
 

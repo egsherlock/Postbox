@@ -1063,6 +1063,11 @@ L["MARKS_NONE_UNREAD"]         = "Nothing to return; once read, it can be delete
 L["MARKS_KEY_TITLE"]           = "Return and Delete"
 L["MARKS_KEY_TIP"]             = "Kept on by a double-tap of Alt."
 L["MARKS_KEY_HINT"]            = "Click or Alt: finish"
+-- s33 behave: the Options switch for Return and Delete with Alt, the lit
+-- chip's line saying what the clicks do, and the finished mail's hint.
+L["OPT_ROW_MARKS_TITLE"]       = "Return and Delete with Alt"
+L["OPT_ROW_MARKS_DESC"]        = "Hold Alt on the Mail tab's list and a click on a mail that can go back sends it back, with no question; a right-click on finished mail deletes it. Double-tap Alt to keep them on.\n\nOff, Alt does nothing on the list."
+L["HINT_ROW_HOLD_ALT_DELETE"]  = "Hold Alt: delete"
 -- One per view, each true of exactly that view.
 L["EMPTY_LIST_ALL"]            = "Your mailbox is empty."
 L["EMPTY_LIST_DONE"]           = "Nothing finished yet."
@@ -1711,6 +1716,10 @@ if GetLocale() == "frFR" then
   L["MARKS_KEY_TITLE"]           = "Renvoyer et supprimer"
   L["MARKS_KEY_TIP"]             = "Gardés affichés par un double appui sur Alt."
   L["MARKS_KEY_HINT"]            = "Clic ou Alt : terminer"
+  -- s33 behave
+  L["OPT_ROW_MARKS_TITLE"]       = "Renvoyer et supprimer avec Alt"
+  L["OPT_ROW_MARKS_DESC"]        = "Maintiens Alt sur la liste de l'onglet Courrier : un clic sur un courrier qui peut être renvoyé le renvoie, sans rien demander ; un clic droit sur un courrier terminé le supprime. Appuie deux fois sur Alt pour les garder.\n\nDésactivé, Alt ne fait rien sur la liste."
+  L["HINT_ROW_HOLD_ALT_DELETE"]  = "Maintenir Alt : supprimer"
   L["EMPTY_LIST_ALL"]            = "Ta boîte aux lettres est vide."
   L["EMPTY_LIST_DONE"]           = "Rien de terminé."
   L["EMPTY_LIST_COLLECT"]        = "Rien à récupérer."
@@ -3081,6 +3090,10 @@ if GetLocale() == "deDE" then
   L["MARKS_KEY_TITLE"]           = "Zurückschicken und Löschen"
   L["MARKS_KEY_TIP"]             = "Durch zweimaliges Tippen auf Alt eingeschaltet."
   L["MARKS_KEY_HINT"]            = "Klick oder Alt: Beenden"
+  -- s33 behave
+  L["OPT_ROW_MARKS_TITLE"]       = "Zurückschicken und Löschen mit Alt"
+  L["OPT_ROW_MARKS_DESC"]        = "Halte Alt über der Liste im Post-Tab: Ein Klick auf Post, die zurückgehen kann, schickt sie ohne Rückfrage zurück; ein Rechtsklick auf erledigte Post löscht sie. Tippe zweimal auf Alt, damit es eingeschaltet bleibt.\n\nAusgeschaltet bewirkt Alt in der Liste nichts."
+  L["HINT_ROW_HOLD_ALT_DELETE"]  = "Alt halten: Löschen"
   L["EMPTY_LIST_ALL"]            = "Dein Briefkasten ist leer."
   L["EMPTY_LIST_DONE"]           = "Noch nichts erledigt."
   L["EMPTY_LIST_COLLECT"]        = "Nichts abzuholen."
@@ -4448,6 +4461,10 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MARKS_KEY_TITLE"]           = "Devolver y borrar"
   L["MARKS_KEY_TIP"]             = "Se mantienen con un doble toque de Alt."
   L["MARKS_KEY_HINT"]            = "Clic o Alt: terminar"
+  -- s33 behave
+  L["OPT_ROW_MARKS_TITLE"]       = "Devolver y borrar con Alt"
+  L["OPT_ROW_MARKS_DESC"]        = "Mantén Alt sobre la lista de la pestaña Correo: un clic en un correo que puede devolverse lo devuelve, sin preguntar; un clic derecho en un correo terminado lo borra. Pulsa Alt dos veces para mantenerlo.\n\nDesactivado, Alt no hace nada en la lista."
+  L["HINT_ROW_HOLD_ALT_DELETE"]  = "Mantener Alt: borrar"
   L["EMPTY_LIST_ALL"]            = "Tu buzón está vacío."
   L["EMPTY_LIST_DONE"]           = "Nada vaciado todavía."
   L["EMPTY_LIST_COLLECT"]        = "Nada que recoger."
@@ -5819,6 +5836,10 @@ L["MARKS_NONE_UNREAD"]         = "Возвращать нечего; после 
 L["MARKS_KEY_TITLE"]           = "Возврат и удаление"
 L["MARKS_KEY_TIP"]             = "Оставлены двойным нажатием Alt."
 L["MARKS_KEY_HINT"]            = "Щелчок или Alt: закончить"
+-- s33 behave
+L["OPT_ROW_MARKS_TITLE"]       = "Возврат и удаление с Alt"
+L["OPT_ROW_MARKS_DESC"]        = "Удерживайте Alt над списком вкладки «Почта»: щелчок по письму, которое можно вернуть, возвращает его без вопросов; правый клик по разобранному письму удаляет его. Нажмите Alt дважды, чтобы режим остался включённым.\n\nВыключено — Alt в списке ничего не делает."
+L["HINT_ROW_HOLD_ALT_DELETE"]  = "Удерживать Alt: удалить"
 L["EMPTY_LIST_ALL"]            = "Почтовый ящик пуст."
 L["EMPTY_LIST_DONE"]           = "Пока ничего не разобрано."
 L["EMPTY_LIST_COLLECT"]        = "Забирать нечего."
@@ -8073,6 +8094,10 @@ if GetLocale() == "zhCN" then
   L["MARKS_KEY_TITLE"]         = "退回和删除"
   L["MARKS_KEY_TIP"]           = "双击 Alt 后保持显示。"
   L["MARKS_KEY_HINT"]          = "点击或 Alt：结束"
+  -- s33 behave
+  L["OPT_ROW_MARKS_TITLE"]     = "按 Alt 退回和删除"
+  L["OPT_ROW_MARKS_DESC"]      = "在“收件”标签页的列表上按住 Alt：点击可以退回的邮件会直接将其退回，不再询问；右键点击已处理的邮件会将其删除。双击 Alt 可保持开启。\n\n关闭后，Alt 在列表上不起作用。"
+  L["HINT_ROW_HOLD_ALT_DELETE"] = "按住 Alt：删除"
   L["EMPTY_LIST_ALL"]          = "你的邮箱是空的。"
   L["EMPTY_LIST_DONE"]         = "还没有处理完成的邮件。"
   L["EMPTY_LIST_COLLECT"]      = "没有可收取的邮件。"
@@ -9417,6 +9442,10 @@ if GetLocale() == "zhTW" then
   L["MARKS_KEY_TITLE"]         = "退回和刪除"
   L["MARKS_KEY_TIP"]           = "雙擊 Alt 後保持顯示。"
   L["MARKS_KEY_HINT"]          = "點擊或 Alt：結束"
+  -- s33 behave
+  L["OPT_ROW_MARKS_TITLE"]     = "按 Alt 退回和刪除"
+  L["OPT_ROW_MARKS_DESC"]      = "在「收件」分頁的列表上按住 Alt：點擊可以退回的郵件會直接將其退回，不再詢問；右鍵點擊已處理的郵件會將其刪除。雙擊 Alt 可保持開啟。\n\n關閉後，Alt 在列表上不起作用。"
+  L["HINT_ROW_HOLD_ALT_DELETE"] = "按住 Alt：刪除"
   L["EMPTY_LIST_ALL"]          = "你的信箱是空的。"
   L["EMPTY_LIST_DONE"]         = "還沒有處理完成的郵件。"
   L["EMPTY_LIST_COLLECT"]      = "沒有可領取的郵件。"
