@@ -15556,6 +15556,7 @@ CT.Bag = {
   ProbeAtlas = ProbeAtlas, PinScrollBar = PinScrollBar, ConfirmCOD = ConfirmCOD,
   ItemRefusedMessage = ItemRefusedMessage, StatusMailboxClosed = StatusMailboxClosed, StuckLine = StuckLine,
   RefreshIdleSummary = RefreshIdleSummary, MailboxOpen = MailboxOpen, ExpiryState = ExpiryState,
+  ClearSelection = ClearSelection,
 }
 
 -------------------------------------------------------------

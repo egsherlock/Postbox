@@ -934,9 +934,13 @@ function BV.PaintSwitch(panel)
 end
 
 -- panel, on -> the choice saved (profile.bagView) and the list drawn for it.
+-- Rows picked with Shift or Ctrl are let go as the bag comes up: it shows
+-- every mail listed, so picks it cannot show would still steer All mail.
 function BV.Set(panel, on)
   local UI = ns.MailboxUI
   if not (UI and type(UI.SetOption) == "function") then return end
+  local P = Parts()
+  if on and P and P.ClearSelection then P.ClearSelection(panel) end
   UI.SetOption("bagView", on and true or false)
   ns.CollectTab.RefreshMailList(panel)
 end
