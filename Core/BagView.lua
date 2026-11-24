@@ -1376,15 +1376,18 @@ end
 function Many.Hidden(box)
   Many.open = false
   box:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+  box:UnregisterEvent("PLAYER_REGEN_DISABLED")
   if Many.kb then Many.kb:ClearFocus() end
   -- Hidden with the bag or the window: shut for good, so it is not there
   -- again when they are next shown.
   if box:IsShown() then box:Hide() end
 end
 
--- A press anywhere but on it closes it.
+-- A press anywhere but on it closes it, and so does combat starting: the
+-- keyboard is the game's again for the fight.
 function Many.Event(box, event)
-  if event == "GLOBAL_MOUSE_DOWN" and Many.open and not box:IsMouseOver() then Many.Close() end
+  if not Many.open then return end
+  if event == "PLAYER_REGEN_DISABLED" or (event == "GLOBAL_MOUSE_DOWN" and not box:IsMouseOver()) then Many.Close() end
 end
 
 function Many.Build()
@@ -1494,6 +1497,7 @@ function Many.Open(kind)
   Many.Paint()
   box:Show()
   box:RegisterEvent("GLOBAL_MOUSE_DOWN")
+  box:RegisterEvent("PLAYER_REGEN_DISABLED")
   Many.kb:SetFocus()
 end
 
