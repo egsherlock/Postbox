@@ -320,12 +320,21 @@ end
 -- painted first -- is handled on the other side: Activate() reads
 -- ns.SkinAppliedBy and stands down rather than layering a shell over an
 -- already-stripped window. Neither direction can now produce a half-skinned one.
+-- ElvUI's look chosen by name, beside EllesmereUI (the style "elvui"): this
+-- skin claims at login, ahead of EllesmereUI's, which declines it (its
+-- UI.HostSkinAllowed is "host" only).
+local function Chosen()
+  local UI = ns.MailboxUI
+  return UI and type(UI.GetStyleChoice) == "function" and UI.GetStyleChoice() == "elvui"
+end
+
 local function Claim()
   if ns.Skin and ns.Skin ~= Skin then return end
   -- The player can prefer Postbox's own look to ElvUI's. Both entry points --
   -- the immediate claim and the deferred one below -- come through here.
   local UI = ns.MailboxUI
-  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed() then
+  if UI and type(UI.HostSkinAllowed) == "function" and not UI.HostSkinAllowed()
+     and not Chosen() then
     return
   end
   ns.Skin = Skin
@@ -386,6 +395,10 @@ local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
   self:UnregisterEvent("PLAYER_LOGIN")
+  if Chosen() then
+    Claim()
+    return
+  end
   if _G.EllesmereUI then
     if C_Timer and C_Timer.After then
       C_Timer.After(6, function() if not ns.Skin then Claim() end end)

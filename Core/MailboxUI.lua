@@ -711,7 +711,11 @@ end
 -- "modern", Postbox Modern's key, reads as "postbox" and is never rewritten
 -- here; a profile coming from 1.40 has it cleared by the 1.50 reset (see
 -- MigrateModern).
-local STYLE_CHOICES = { host = true, blizzard = true, postbox = true }
+--
+-- "elvui" is ElvUI's look where EllesmereUI is loaded beside it: the one
+-- host entry then names EllesmereUI, and this is the second (UI.GetStyleChoice
+-- reads it as "host" where ElvUI is the only host).
+local STYLE_CHOICES = { host = true, elvui = true, blizzard = true, postbox = true }
 
 -- The creative window styles (Core/Skin_Creative.lua) register their own keys.
 -- Asked at call time: a saved creative key on a client whose files have not
@@ -750,6 +754,15 @@ function UI.GetStyleChoice()
   local host = HostInstalled()
   if host and not (profile and profile.styleHostAware) then
     return "host"
+  end
+
+  -- ElvUI's look, saved beside EllesmereUI: with ElvUI the only host it is
+  -- the host's own entry; with no ElvUI skin to wear it falls to the default
+  -- below and stays saved, as "host" does.
+  if stored == "elvui" then
+    if _G.ElvUI and not _G.EllesmereUI then return "host" end
+    if _G.ElvUI and ns.ElvUISkin then return "elvui" end
+    return UI.DefaultStyle()
   end
 
   -- A saved "host" with no host to wear falls to the default below, and

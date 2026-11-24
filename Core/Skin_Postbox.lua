@@ -2822,7 +2822,7 @@ boot:SetScript("OnEvent", function(self)
   local UI = ns.MailboxUI
   if not (UI and type(UI.GetStyleChoice) == "function") then return end
   local choice = UI.GetStyleChoice()
-  if choice == "blizzard" or choice == "host" then
+  if choice == "blizzard" or choice == "host" or choice == "elvui" then
     -- A look that never wears this skin, whatever happens later this session
     -- (a style change is a reload): the builder goes, and its code with it.
     -- A host UI's look is its own skin, or the Blizzard look when that skin
