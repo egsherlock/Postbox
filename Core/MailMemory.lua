@@ -714,6 +714,16 @@ function MM.OnItsWay(e, now)
   return true
 end
 
+-- s33 tiles: t (a sale's note time), now -> whether that sale's gold has not
+-- landed yet, by MM.OnItsWay's rule, for what keeps a time and not a note
+-- (a tally's newest sale, the sales let go past the cap). One table, kept.
+MM._landProbe = { k = "sold", t = 0 }
+function MM.LandsLater(t, now)
+  local probe = MM._landProbe
+  probe.t = t or 0
+  return MM.OnItsWay(probe, now)
+end
+
 -- The notifications' rows still describing mail that exists: an auction's
 -- mail lands within the hour and lives thirty days. `landed`: only the
 -- ones that are mail by now (a sale on its way left out).
@@ -747,7 +757,18 @@ local function LivePendingCount(watch, now)
     end
   end
   local more = tonumber(watch.pendingMore)
-  if more and more > 0 and (tonumber(watch.pendingMoreAt) or 0) > cutoff then count = count + more end
+  if more and more > 0 and (tonumber(watch.pendingMoreAt) or 0) > cutoff then
+    -- s33 tiles: sales let go past the cap before their gold landed are on
+    -- their way until the newest of them lands (`pendingMoreWay`, at
+    -- `pendingMoreWayAt`), as their item's tally is hidden till then.
+    local way = tonumber(watch.pendingMoreWay)
+    if way and way > 0 and MM.LandsLater(tonumber(watch.pendingMoreWayAt), now) then
+      if way > more then way = more end
+      count, onWay = count + more - way, onWay + way
+    else
+      count = count + more
+    end
+  end
   return count, onWay
 end
 
@@ -782,6 +803,7 @@ function MM._SettleWatch(realm, name, now, snapshot)
     MM.Auctions.Settle(watch, snapshot, now)
   else
     watch.pending, watch.pendingMore, watch.pendingMoreAt = nil, nil, nil
+    watch.pendingMoreWay, watch.pendingMoreWayAt = nil, nil
   end
   watch.uncountedAt = nil
   if watch.auctionsUntil and watch.auctionsUntil > now then
@@ -3413,6 +3435,12 @@ do
       watch.pendingMoreAt = math.max(tonumber(watch.pendingMoreAt) or 0, tonumber(gone and gone.t) or 0)
       -- What it was stays told, in its item's tally (A.Over).
       if gone then A.Over(watch, gone) end
+      -- A sale whose gold has not landed is on its way, not yet counted
+      -- (LivePendingCount).
+      if gone and MM.OnItsWay(gone, now) then
+        watch.pendingMoreWay = (tonumber(watch.pendingMoreWay) or 0) + 1
+        watch.pendingMoreWayAt = math.max(tonumber(watch.pendingMoreWayAt) or 0, tonumber(gone.t) or 0)
+      end
     end
     pending[#pending + 1] = entry
     CharactersChanged()
@@ -4137,6 +4165,7 @@ do
     local pending = type(watch.pending) == "table" and watch.pending or nil
     local known = type(watch.unlisted) == "table" and watch.unlisted or nil
     watch.pendingMore, watch.pendingMoreAt = nil, nil
+    watch.pendingMoreWay, watch.pendingMoreWayAt = nil, nil
     local room = Unlisted(snapshot, now)
     -- A sale noted before the look whose gold had not landed by it.
     local landsAfter = seenAt - MM.SALE_LANDS
@@ -6175,6 +6204,9 @@ do
   function R.OverItem(o, now)
     if type(o) ~= "table" or not AH[o.k] or (tonumber(o.n) or 0) <= 0 then return nil end
     if now - (tonumber(o.u) or 0) >= MAIL_LIFE then return nil end
+    -- A sale is mail once its gold lands: an item's sold tally stays hidden
+    -- until its newest sale's has (MM.LandsLater, the count's own rule).
+    if o.k == "sold" and MM.LandsLater(tonumber(o.u), now) then return nil end
     local A = MM.Auctions
     return A and A.Name(o) or nil
   end
