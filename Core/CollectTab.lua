@@ -6824,8 +6824,7 @@ local function FormatCount(n)
   return tostring(n)
 end
 
--- The dot that sets quiet words apart from a caption: the list's last line,
--- All mail's slot count where it follows the caption (RV.SLOTS).
+-- The dot that sets quiet words apart from a caption: the list's last line.
 RV.SLOT_DOT = " \194\183 "
 
 -- panel -> nothing. The three numbers come from CT.InboxCounts and from nowhere
@@ -17060,17 +17059,16 @@ end
 -- grey and the word in the quieter one. Where the caption leaves no room
 -- for it whole, it is not drawn: the caption comes first.
 do
-  -- The look, in one place. `place`: "end", at the button's right end as
-  -- the Ctrl+Enter hint stands, the caption centred as ever; "after", right
-  -- after the caption, RV.SLOT_DOT first ("All mail (98), dot, 94 slots"). `pad`: from
-  -- the button's right edge; `gap`: clear of the caption at the right end
-  -- (both the hint's, ST.HINT). `font`: the hint's face, in its host copy.
+  -- The look, in one place: at the button's right end as the Ctrl+Enter
+  -- hint stands, the caption centred as ever (his pick on f64). `pad`: from
+  -- the button's right edge; `gap`: clear of the caption (both the hint's,
+  -- ST.HINT). `font`: the hint's face, in its host copy.
   -- The inks where the look proves each to its ground (Theme's grounds:
   -- the Postbox style and the styles built on it), and one step lighter
   -- elsewhere (the Blizzard look's red art, EllesmereUI, ElvUI), where the
   -- hint keeps the secondary grey.
   RV.SLOTS = {
-    place = "end", pad = 8, gap = 12, y = 0, font = "GameFontWhiteTiny",
+    pad = 8, gap = 12, y = 0, font = "GameFontWhiteTiny",
     num = "textSecondary", word = "textDisabled",
     numBare = "textPrimary", wordBare = "textSecondary",
   }
@@ -17090,14 +17088,13 @@ do
     panel._allSlots = (RV.RoomCount(panel, false))
   end
 
-  -- The three texts, made on first use: the dot (only "after"), the number,
-  -- the rest of the words.
+  -- The two texts, made on first use: the number, the rest of the words.
   local function Make(button)
     local T, S = Th(), RV.SLOTS
     local on = T._Grounds and T._Grounds.on
     local face = _G[S.font]
     local fig = {}
-    for i, token in ipairs({ on and S.word or S.wordBare, on and S.num or S.numBare, on and S.word or S.wordBare }) do
+    for i, token in ipairs({ on and S.num or S.numBare, on and S.word or S.wordBare }) do
       local fs = T.CreateText(button, "secondary")
       if face then fs:SetFontObject(T.HostFont(face)) end
       T.SetColor(fs, token, "button")
@@ -17111,7 +17108,8 @@ do
   end
 
   local function Hide(fig)
-    for i = 1, 3 do fig[i]:Hide() end
+    fig[1]:Hide()
+    fig[2]:Hide()
   end
 
   -- panel, button (All mail's) -> nothing. The count drawn, or put away.
@@ -17125,37 +17123,33 @@ do
     end
     fig = fig or Make(button)
     local S = RV.SLOTS
-    local after = S.place == "after"
-    if fig.n ~= n or fig.after ~= after then
-      fig.n, fig.after = n, after
+    if fig.n ~= n then
+      fig.n = n
+      -- Every language puts the number first ("94 slots", "94 Plätze");
+      -- one that did not would show its words whole, in the word's ink.
       local words = ns.Plural("COUNT_SLOTS", n)
-      local lead, num, rest = words:match("^(%s*)(%d+)(.*)$")
-      if not num then lead, num, rest = "", "", words end
-      fig[1]:SetText(after and (RV.SLOT_DOT .. lead) or lead)
-      fig[2]:SetText(num)
-      fig[3]:SetText(rest)
+      local num, rest = words:match("^(%d+)(.*)$")
+      if not num then num, rest = "", words end
+      fig[1]:SetText(num)
+      fig[2]:SetText(rest)
     end
-    local w1, w2 = fig[1]:GetStringWidth() or 0, fig[2]:GetStringWidth() or 0
-    local width = w1 + w2 + (fig[3]:GetStringWidth() or 0)
+    local w1 = fig[1]:GetStringWidth() or 0
+    local width = w1 + (fig[2]:GetStringWidth() or 0)
     local bw = button:GetWidth() or 0
     local fs = button:GetFontString()
     local captionW = fs and fs:GetStringWidth() or 0
-    -- Either side of the centred caption.
-    local room = (bw - captionW) / 2
-    if width + S.pad + (after and 0 or S.gap) > room then
+    -- Either side of the centred caption: room for it, its inset and the gap.
+    if width + S.pad + S.gap > (bw - captionW) / 2 then
       Hide(fig)
       return
     end
-    local x = after and (bw + captionW) / 2 or (bw - S.pad - width)
+    local x = bw - S.pad - width
     fig[1]:ClearAllPoints()
     fig[1]:SetPoint("LEFT", button, "LEFT", x, S.y)
     fig[2]:ClearAllPoints()
     fig[2]:SetPoint("LEFT", button, "LEFT", x + w1, S.y)
-    fig[3]:ClearAllPoints()
-    fig[3]:SetPoint("LEFT", button, "LEFT", x + w1 + w2, S.y)
-    fig[1]:SetShown(after)
+    fig[1]:Show()
     fig[2]:Show()
-    fig[3]:Show()
   end
 end
 
