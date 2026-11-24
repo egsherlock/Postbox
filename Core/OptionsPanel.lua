@@ -8725,6 +8725,17 @@ function Pages.mail(col)
   })
   Shown(blocks.pair[1].entry, "grid")
   Shown(blocks.pair[2].entry, "band")
+  -- The slot count on All mail (CollectTab, RV.SLOTS): the same switch as
+  -- the All mail card's while arranging, which follows it.
+  Rows.Check(col, {
+    title = L["OPT_SLOT_COUNT_TITLE"], text = L["OPT_SLOT_COUNT_DESC"],
+    get = function() return ns.MailboxUI.GetOption("allMailSlots") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("allMailSlots", on)
+      if ns.MailboxUI.RefreshCollectCategoryButtons then ns.MailboxUI.RefreshCollectCategoryButtons() end
+      ArrangeFollows()
+    end,
+  })
   -- Character Groups: its button opens the groups' window (a second click
   -- closes it, as General's tile does) and says how many there are
   -- (State.Lists); as wide as the dropdowns in its column, with the tiles'

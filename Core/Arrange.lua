@@ -6734,6 +6734,19 @@ do
         if ui and ui.SetOption then ui.SetOption("expiryMarks", on) end
         AR.RowsChanged(true)
       end },
+    -- The slot count on All mail, on the All mail block's card (FillBlock):
+    -- the same switch as the Options row, named shorter, the card being
+    -- All mail's own.
+    { card = "all", title = "ARRANGE_SLOT_COUNT_TITLE", desc = "OPT_SLOT_COUNT_DESC",
+      get = function()
+        local ui = UI()
+        return ui and ui.GetOption and ui.GetOption("allMailSlots") and true or false
+      end,
+      set = function(on)
+        local ui = UI()
+        if ui and ui.SetOption then ui.SetOption("allMailSlots", on) end
+        if ui and ui.RefreshCollectCategoryButtons then ui.RefreshCollectCategoryButtons() end
+      end },
   }
   -- World of Warcraft: Forever's goods carry no quality mark: the badge's
   -- checkbox is not offered there, as the options panel offers none, and
@@ -6990,6 +7003,10 @@ local function FillBlock(host, id, y)
   if link then y = PutAction(link, y - P.ROW_WRAP) end
   local note = host.BlockNote and host.BlockNote(id)
   if note then y = PutNote(note, y) end
+  -- The block's own switches (All mail's: its slot count), where the view
+  -- has them.
+  local toggles = host.BlockToggles and host.BlockToggles(id)
+  if toggles then y = AR.PutToggles(y, true, toggles) end
   y = PutKicker(L()["ARRANGE_UNDER_LIST"], y)
   local order, n = host.StackOrder(), 0
   for i = 1, #order do
@@ -7154,7 +7171,8 @@ end
 -- with); ListHidden(put) (put(kind, key, name) for each hidden thing of
 -- its own) and ShowHidden(kind, key). A host with blocks under its list
 -- answers for them by id: BlockPresent, BlockName, BlockText, BlockNote
--- (or nil), BlockShown (a switch's state, or nil for none), SetBlockShown,
+-- (or nil), BlockToggles (the card's TOGGLES, or nil), BlockShown (a
+-- switch's state, or nil for none), SetBlockShown,
 -- CanMoveBlock(id, step), MoveBlock(id, step), StackOrder() and
 -- PaintBlocks() (the selection's ring moved, on a block or a button), and
 -- may offer a block's own way elsewhere: BlockLink(id) (its words, or nil)

@@ -6817,7 +6817,8 @@ local function FormatCount(n)
   return tostring(n)
 end
 
--- The dot that sets quiet words apart from a caption: the list's last line.
+-- The dot that sets quiet words apart from a caption: the list's last line,
+-- All mail's slot count where it follows the caption (RV.SLOTS).
 RV.SLOT_DOT = " \194\183 "
 
 -- panel -> nothing. The three numbers come from CT.InboxCounts and from nowhere
@@ -16813,6 +16814,119 @@ function RV.GridButton(panel, id)
   return button
 end
 
+-- All mail's slot count: "94 slots" on its button, off unless the player
+-- turns it on (MailboxUI option allMailSlots: Options > Mail tab, and the
+-- All mail card while arranging). The number is RV.RoomCount's, the walk
+-- All mail's tooltip says "Up to N items" from, so the two never differ:
+-- each attachment of what the click would take, a slot it needs at most
+-- (no C.O.D., nothing stuck or waiting for bag room, nothing the game has
+-- not listed; the picks under a selection, the rows shown under a search).
+-- Counted once per change of the list or the picks (CT.RefreshCategoryButtons),
+-- never while the switch is off; laid on every layout from that count.
+-- Drawn as the Send button's Ctrl+Enter is (SendTab, ST.BuildSendHint): a
+-- step under the caption in the game's tiny face, the number in the lighter
+-- grey and the word in the quieter one. Where the caption leaves no room
+-- for it whole, it is not drawn: the caption comes first.
+do
+  -- The look, in one place. `place`: "end", at the button's right end as
+  -- the Ctrl+Enter hint stands, the caption centred as ever; "after", right
+  -- after the caption, RV.SLOT_DOT first ("All mail (98), dot, 94 slots"). `pad`: from
+  -- the button's right edge; `gap`: clear of the caption at the right end
+  -- (both the hint's, ST.HINT). `font`: the hint's face, in its host copy.
+  -- The inks where the look proves each to its ground (Theme's grounds:
+  -- the Postbox style and the styles built on it), and one step lighter
+  -- elsewhere (the Blizzard look's red art, EllesmereUI, ElvUI), where the
+  -- hint keeps the secondary grey.
+  RV.SLOTS = {
+    place = "end", pad = 8, gap = 12, y = 0, font = "GameFontWhiteTiny",
+    num = "textSecondary", word = "textDisabled",
+    numBare = "textPrimary", wordBare = "textSecondary",
+  }
+
+  function RV.SlotCountOn()
+    local UI = ns.MailboxUI
+    return UI and type(UI.GetOption) == "function" and UI.GetOption("allMailSlots") and true or false
+  end
+
+  -- panel -> nothing. The count the next layouts draw, or nil while the
+  -- switch is off (nothing is walked then).
+  function RV.CountAllSlots(panel)
+    if not (RV.SlotCountOn() and type(panel._filtered) == "table" and type(panel._filteredDone) == "table") then
+      panel._allSlots = nil
+      return
+    end
+    panel._allSlots = (RV.RoomCount(panel, false))
+  end
+
+  -- The three texts, made on first use: the dot (only "after"), the number,
+  -- the rest of the words.
+  local function Make(button)
+    local T, S = Th(), RV.SLOTS
+    local on = T._Grounds and T._Grounds.on
+    local face = _G[S.font]
+    local fig = {}
+    for i, token in ipairs({ on and S.word or S.wordBare, on and S.num or S.numBare, on and S.word or S.wordBare }) do
+      local fs = T.CreateText(button, "secondary")
+      if face then fs:SetFontObject(T.HostFont(face)) end
+      T.SetColor(fs, token, "button")
+      fs:SetJustifyH("LEFT")
+      fs:SetWordWrap(false)
+      fs:Hide()
+      fig[i] = fs
+    end
+    button._slotFig = fig
+    return fig
+  end
+
+  local function Hide(fig)
+    for i = 1, 3 do fig[i]:Hide() end
+  end
+
+  -- panel, button (All mail's) -> nothing. The count drawn, or put away.
+  -- The words are written only when the number changes; one comparison
+  -- while the switch is off.
+  function RV.PlaceAllSlots(panel, button)
+    local fig, n = button._slotFig, panel._allSlots
+    if not n or n <= 0 or not button:IsEnabled() then
+      if fig then Hide(fig) end
+      return
+    end
+    fig = fig or Make(button)
+    local S = RV.SLOTS
+    local after = S.place == "after"
+    if fig.n ~= n or fig.after ~= after then
+      fig.n, fig.after = n, after
+      local words = ns.Plural("COUNT_SLOTS", n)
+      local lead, num, rest = words:match("^(%s*)(%d+)(.*)$")
+      if not num then lead, num, rest = "", "", words end
+      fig[1]:SetText(after and (RV.SLOT_DOT .. lead) or lead)
+      fig[2]:SetText(num)
+      fig[3]:SetText(rest)
+    end
+    local w1, w2 = fig[1]:GetStringWidth() or 0, fig[2]:GetStringWidth() or 0
+    local width = w1 + w2 + (fig[3]:GetStringWidth() or 0)
+    local bw = button:GetWidth() or 0
+    local fs = button:GetFontString()
+    local captionW = fs and fs:GetStringWidth() or 0
+    -- Either side of the centred caption.
+    local room = (bw - captionW) / 2
+    if width + S.pad + (after and 0 or S.gap) > room then
+      Hide(fig)
+      return
+    end
+    local x = after and (bw + captionW) / 2 or (bw - S.pad - width)
+    fig[1]:ClearAllPoints()
+    fig[1]:SetPoint("LEFT", button, "LEFT", x, S.y)
+    fig[2]:ClearAllPoints()
+    fig[2]:SetPoint("LEFT", button, "LEFT", x + w1, S.y)
+    fig[3]:ClearAllPoints()
+    fig[3]:SetPoint("LEFT", button, "LEFT", x + w1 + w2, S.y)
+    fig[1]:SetShown(after)
+    fig[2]:Show()
+    fig[3]:Show()
+  end
+end
+
 local function LayoutGrid(panel)
   local grid = panel.Grid
   if not grid or not panel._gridButtons then return end
@@ -16922,6 +17036,7 @@ local function LayoutGrid(panel)
       primary:SetEnabled(panel._moreOnServer or n > 0)
     end
     T.FitText(primary:GetFontString(), primary:GetWidth() - M.gap, caption, primary)
+    RV.PlaceAllSlots(panel, primary)
     if dress then dress(primary, n, true) end
   end
   for i = 1, #entries do
@@ -17712,6 +17827,8 @@ function CT.RefreshCategoryButtons(panel)
   RV.GridEntries(panel)
   panel.Footer:SetHeight(FooterHeight(panel))
   RV.PlaceStack(panel)
+  -- All mail's slot count, counted here and not on every layout (RV.SLOTS).
+  RV.CountAllSlots(panel)
   LayoutGrid(panel)
   if not panel._gridArranging and ShowCategoryButtons() and RV._floorRows ~= nil then
     local rows = ceil(RV.GridShownCount(panel) / GRID_COLUMNS)
@@ -18486,6 +18603,12 @@ function CT.ArrangeHost(panel)
   function host.BlockText(id)
     if id == "all" then return L()[RV.SlotTextKey(panel)] end
     return L()[RV.BLOCK_TEXT[id] or "ARRANGE_BLOCK_ALL_DESC"]
+  end
+  -- The card's own switches (Arrange's TOGGLES by card): All mail's slot
+  -- count, while the slot is All mail.
+  function host.BlockToggles(id)
+    if id == "all" and RV.SlotTextKey(panel) == "ARRANGE_BLOCK_ALL_DESC" then return "all" end
+    return nil
   end
   function host.BlockNote(id)
     if id == "grid" then return L()["ARRANGE_GRID_FOLD_NOTE"] end

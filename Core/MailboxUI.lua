@@ -178,6 +178,10 @@ local OPTION_DEFAULTS = {
   -- under the list close up and the window's floor comes down with them
   -- (CollectTab, CT.MinPanelHeight). The arrange mode hides and shows it too.
   showTotals      = true,
+  -- The slot count on the All mail button: the bag slots its click needs at
+  -- most (CollectTab, RV.SLOTS). Off: the button as it has always been. The
+  -- Options row and the All mail card while arranging are its two switches.
+  allMailSlots    = false,
   -- (keepRecipient, "leave the recipient in the To: box after a send",
   -- became "After sending, keep", which the Send tab's pins replaced:
   -- neither is read now.)
