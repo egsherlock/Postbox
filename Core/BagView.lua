@@ -106,18 +106,24 @@ function BV.On()
   return UI ~= nil and type(UI.GetOption) == "function" and UI.GetOption("bagView") == true
 end
 
--- panel -> whether the list on screen has no bag to show: the Done tab.
+-- panel -> whether the list on screen has no bag to show: the Done tab, and
+-- the list the arrange mode arranges or the sample mail stands in (the
+-- options' preview), where the list is what shows whatever was chosen. The
+-- switch is gray there, its click and right-click do nothing, and it is
+-- never lit over a list.
 function BV.Gray(panel)
   local P = Parts()
-  return P ~= nil and panel.viewMode == P.VIEW_DONE and not P.AV.Active(panel)
+  if not P then return false end
+  if panel._bagYield or panel._preview or P.RV.Arranging(panel) then return true end
+  return panel.viewMode == P.VIEW_DONE and not P.AV.Active(panel)
 end
 
 -- panel -> whether the bag is what is drawn: chosen, and the list on screen
--- one it can draw. The arrange mode and its Preview mail keep the list.
+-- one it can draw (BV.Gray).
 function BV.Active(panel)
   if not BV.On() then return false end
   local P = Parts()
-  if not P or panel._bagYield or panel._preview or P.RV.Arranging(panel) then return false end
+  if not P then return false end
   -- The reading view has the list's place while it is up.
   local detail = panel.Detail
   if detail and detail:IsShown() then return false end
