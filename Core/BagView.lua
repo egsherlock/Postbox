@@ -274,9 +274,11 @@ local function Gold(s, amount, where, free)
 end
 
 -- A C.O.D. mail: its own section under its price and who sent it, one tile
--- a stack (the key is the slot), so a click names one take, as the fan's
--- does. The line's words are made again only when the price or the sender
--- of that place changed.
+-- an ITEM of it (the key is the item, as in the main section): its stacks
+-- of that item counted together, the slot its first stack is in kept for
+-- the tooltip and the checks, so the price is shown once and one click
+-- asks once (BV.TakeCOD). The line's words are made again only when the
+-- price or the sender of that place changed.
 local function TallyCOD(P, index, sender, cod, itemCount, slots, held)
   local s = Sect(nil, 0)
   if s.codAmount ~= cod or s.codFrom ~= sender then
@@ -289,10 +291,12 @@ local function TallyCOD(P, index, sender, cod, itemCount, slots, held)
     local name, id, tex, count = GetInboxItem(index, slot)
     if tex then
       found = found + 1
-      local kind = Kind(s, slot)
+      local kind = Kind(s, id or name or tex)
       if kind then
-        kind.id, kind.name, kind.tex, kind.index, kind.slot = id, name, tex, index, slot
-        kind.cod, kind.live = true, true
+        if kind.stacks == 0 then
+          kind.id, kind.name, kind.tex, kind.index, kind.slot = id, name, tex, index, slot
+          kind.cod, kind.live = true, true
+        end
         Put(kind, tonumber(count) or 1, index, held == nil, held)
       end
       if found >= itemCount then break end
@@ -1290,7 +1294,13 @@ function BV.TipHints(kind)
   elseif src == "inbox" then
     if kind.cod then
       local index, slot = BV.LiveSlot(kind)
-      if index then T.TipHint(RV.TileHint(index, slot, kind.look == 1)) end
+      if index and kind.stacks > 1 and kind.look ~= 1 then
+        -- Its stacks in the mail are one take: all of them, as a tile's.
+        T.TipHint(L0("BAG_HINT_TAKE", kind.n))
+        T.TipHint(linkHint)
+      elseif index then
+        T.TipHint(RV.TileHint(index, slot, kind.look == 1))
+      end
     elseif kind.gold then
       T.TipHint(L0["FAN_GOLD_HINT"])
     else
@@ -1772,10 +1782,13 @@ do
 end
 
 -- A C.O.D. mail's tile: the fan's tile take (CollectTab, Fan.TakeItem),
--- from here. The question first (ConfirmCOD), the mail found again after
--- the wait by what was clicked, the slot still holding the item clicked,
--- and then MailService's TakeAttachment, the one place a take that pays is
--- sent, which checks all of it once more.
+-- from here. The question first (ConfirmCOD, once, with the mail's whole
+-- price), the mail found again after the wait by what was clicked, the
+-- slot still holding the item clicked, and then MailService's take: one
+-- stack, TakeAttachment; the item in two stacks or more, CollectMail with
+-- `only`, as a row's click collects a C.O.D. mail. Each is a place a take
+-- that pays is sent only with the player's answer, and checks all of it
+-- once more.
 function BV.TakeCOD(panel, kind)
   local P, M = Parts(), Mail()
   local RV, CT = P.RV, ns.CollectTab
@@ -1796,7 +1809,7 @@ function BV.TakeCOD(panel, kind)
     if now == nil or now ~= id then return CT.RequestRefresh(panel) end
     local record = RV.RecordFor(index)
     local before = RV.Before(index)
-    M.TakeAttachment(index, slot, function(status, refused, reason, _, paid)
+    local function done(status, refused, reason, _, paid)
       RV.SayCODPaid(paid)
       if status == "busy" then return end
       if status == "closed" then
@@ -1815,7 +1828,18 @@ function BV.TakeCOD(panel, kind)
         return
       end
       RV.AutoDelete(panel, index, before, record)
-    end, { allowCOD = true, history = record, fetch = true, clicked = what })
+    end
+    if kind.stacks > 1 and id then
+      -- Every stack of the item in this one mail, as one take of the mail
+      -- (Mail.CollectMail with `only`): the first take is the one that pays,
+      -- for what was clicked and nothing else; the rest go only to the same
+      -- mail, adopted once under its paid form, each stack found again by
+      -- its item and size before its command (RunPlan). Not seen to pay, or
+      -- the mail lost or changed, and nothing more is sent.
+      M.CollectMail(index, done, { allowCOD = true, history = record, clicked = what, only = id })
+    else
+      M.TakeAttachment(index, slot, done, { allowCOD = true, history = record, fetch = true, clicked = what })
+    end
   end)
 end
 
