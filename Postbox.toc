@@ -55,6 +55,9 @@ Core\MailService.lua
 Core\ContactService.lua
 Core\Arrange.lua
 Core\CollectTab.lua
+# The Mail tab's list drawn as one bag (the switch after Sort). Reads
+# ns.CollectTab at call time, so it follows it; inert while the switch is off.
+Core\BagView.lua
 Core\DividerNotch.lua
 Core\SendTab.lua
 Core\MailboxUI.lua

@@ -13808,6 +13808,11 @@ function CT.RefreshMailList(panel)
   -- means nothing else can leave a stale idle summary on screen mid-run.
   if CT.IsRunning() then CT.RefreshRunStatus() end
 
+  -- The list just built, drawn as one bag where the player chose that
+  -- (Core/BagView.lua): a comparison or two while the switch is off.
+  local Bag = ns.BagView
+  if Bag then Bag.Refresh(panel) end
+
   if perfAt then perf.End("refresh", perfAt) end
 end
 
@@ -15271,6 +15276,17 @@ end
 -- For a sweep drawn outside this file: a character group's button starts its
 -- run here with the token "group:<id>" (Core/CharacterGroups.lua).
 CT.StartCategoryRun = StartCategoryRun
+
+-- The Mail tab's own parts the bag view is built from (Core/BagView.lua),
+-- read there at call time: one copy of each rule, in this file.
+CT.Bag = {
+  RV = RV, AV = AV, HV = HV,
+  VIEW_COLLECT = VIEW_COLLECT, VIEW_HISTORY = VIEW_HISTORY, VIEW_DONE = VIEW_DONE, DIVIDER = DIVIDER,
+  EMPTY_SLOT_ART = EMPTY_SLOT_ART, ROW_WARNING = ROW_WARNING, WARNING_GLYPH = WARNING_GLYPH,
+  ProbeAtlas = ProbeAtlas, PinScrollBar = PinScrollBar, ConfirmCOD = ConfirmCOD,
+  ItemRefusedMessage = ItemRefusedMessage, StatusMailboxClosed = StatusMailboxClosed, StuckLine = StuckLine,
+  RefreshIdleSummary = RefreshIdleSummary, MailboxOpen = MailboxOpen, ExpiryState = ExpiryState,
+}
 
 -------------------------------------------------------------
 -- The detail view
@@ -18748,10 +18764,14 @@ function CT.ArrangeHost(panel)
     RV.FanClose(true)
     RV.HideTopRow(panel)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, true) end
+    -- The arrange mode arranges the list's rows: the bag stands aside for
+    -- it, and is back as it leaves (Core/BagView.lua).
+    if ns.BagView then ns.BagView.Yield(panel, true) end
   end
   function host.OnLeave()
     RV.ShowTopRow(panel)
     if RV.ArrangeGrid then RV.ArrangeGrid(panel, false) end
+    if ns.BagView then ns.BagView.Yield(panel, false) end
   end
   -- What the header and the rows' marks read, for the list on screen: its
   -- placement table (whose lanes RV.Place publishes), its row pool, its
