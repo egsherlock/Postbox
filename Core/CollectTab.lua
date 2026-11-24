@@ -4484,7 +4484,8 @@ do
   -- that slid while a refresh was on its way: LiveIndex).
   function RV.RowTip(row)
     local index = LiveIndex(row)
-    if not index then return false end
+    -- A row remembered past the list names no inbox index: its own.
+    if not index then return row.rem ~= nil and RV.RemTip(row) or false end
     local T, L0, H = Th(), L(), Helpers()
     local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
     money, cod = tonumber(money) or 0, tonumber(cod) or 0
@@ -7593,6 +7594,8 @@ local function BuildRow(panel)
     if not index and owner.fanSource and owner.fanSource == RV.SampleFan then
       return RV.SampleIcon(self, owner)
     end
+    -- A row remembered past the list: its own tooltip, from its icon too.
+    if not index and owner.rem then return RV.RemTip(owner, self) end
     if not (index and owner.iconSlot) then return end
     -- A mail with several items lists them all; one item, its own tooltip.
     -- Where the player chose the fan and it may open here, it opens after a
@@ -8393,6 +8396,293 @@ do
     if slotsMost > 0 then cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost) end
     counts.pv = box
     return earned, spent
+  end
+end
+
+-------------------------------------------------------------
+-- Mail rows :: the line, and the mail remembered past it
+--
+-- The game lists a page of the box and holds the rest back until it is
+-- asked again (Postbox asks after every collect run). The list says so in
+-- its last line, under everything listed, finished mail too ("45 more mails",
+-- then that the game does not list them yet): the number is the server's
+-- count less what is listed, and the only count of that mail on the tab.
+-- Under the line, the mail of it Postbox remembers (Core/MailMemory.lua, 3c), each as
+-- a row like any other -- its ground, its columns, its figures -- in one
+-- gray, with Mail Memory's mark in the read dot's place, in the box's order
+-- whatever the sort.
+--
+-- Neither is in panel._filtered: they stand past its end, the line one
+-- entry and each row another (panel._remExtra), and only the virtualiser and
+-- the list's height read them. So nothing that counts, sweeps, selects or
+-- totals what is listed ever sees one. A remembered row is bound through
+-- BindRow by its own source (RV.REM, a negative index), names no inbox
+-- index, and so can be neither clicked, picked nor collected; pointing at it
+-- says why (RV.RemTip).
+--
+-- The line stands whenever the game holds mail back, on the inbox's list
+-- (not the Done tab's, History's or another box's), and never under the
+-- stuck filter. While a search or a filter narrows the list it stands only over
+-- the remembered rows it lets through (a search looks in them as in listed
+-- mail, the filters read their gold, items and read flag), so a list the
+-- search empties still says it found nothing.
+-------------------------------------------------------------
+do
+  -- The remembered rows the list shows under the line, in its order: Mail
+  -- Memory's own tables (MM.Remembered), read, never written.
+  RV.remShown = {}
+  local shown = RV.remShown
+  local function At(index) return shown[-index] end
+
+  -- The source BindRow reads a remembered row through (as RV.LIVE and
+  -- RV.SAMPLE): `index` is minus its place under the line.
+  RV.REM = {}
+  RV.REM.Mail = At
+  function RV.REM.Header(index)
+    local m = At(index)
+    if not m then return nil end
+    return m.icon, nil, m.sender, m.subject, m.money, m.cod, m.days, m.items, m.read
+  end
+  function RV.REM.Classify(index)
+    local m = At(index)
+    return m and m.kind or "other", m ~= nil and m.cod > 0
+  end
+  function RV.REM.Stuck() return nil end
+  function RV.REM.Icon(index)
+    local m = At(index)
+    return m and m.icon or "Interface\\Icons\\INV_Letter_02"
+  end
+  function RV.REM.Attachments(index)
+    local m = At(index)
+    if not (m and m.items > 0) then return 0, 0, nil, 0, 0 end
+    return m.items, m.quantity, 1, m.iconCount, m.stacks
+  end
+  function RV.REM.Mark() return nil end
+  function RV.REM.Fate(index)
+    local m = At(index)
+    return m and m.fate or nil
+  end
+  function RV.REM.Money(index, hasCOD, moneyValue, codValue, brief, coins)
+    local m = At(index)
+    return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief, nil, coins, ns.Theme.ROW)
+  end
+  function RV.REM.Invoice() end
+
+  -- m -> its folded haystack, by the inbox's rule (Helpers.SearchHaystack):
+  -- its sender, its outcome's words, its subject. Made once a row.
+  function RV.RemHay(m)
+    local hay = m.hay
+    if hay then return hay end
+    local outcome = AUCTION_OUTCOME[m.kind]
+    hay = Helpers().SearchHaystack(m.sender, outcome and L()[outcome.key], m.subject, RV.NONE, 0)
+    m.hay = hay
+    return hay
+  end
+
+  -- The list's line and rows, after everything the walk listed (called by
+  -- CT.RefreshMailList, which passes what it already read): which rows
+  -- show (RV.remShown) and how many entries the two add (panel._remExtra),
+  -- the line's words, and the rows' figures measured into the columns as
+  -- the walk measures listed mail's. -> slotsMost, raised by theirs.
+  function RV.RemList(panel, sample, compact, measuring, senderCap, view, query, show, stuckOnly,
+      numItems, totalItems, slotsMost)
+    Clear(shown)
+    panel._remExtra = 0
+    local more = totalItems - numItems
+    if more <= 0 or stuckOnly or panel._preview or view == VIEW_DONE or view == VIEW_HISTORY
+        or AV.Active(panel) then
+      return slotsMost
+    end
+    local Memory = ns.MailMemory
+    local remembered = Memory and Memory.Remembered
+    if remembered then
+      local rows = remembered.Rows(time())
+      -- Never more of them than the game says it holds back: then some are
+      -- no longer true and nothing says which.
+      if #rows <= more then
+        for k = 1, #rows do
+          local m = rows[k]
+          if (query == "" or Helpers().SearchFinds(RV.RemHay(m), query))
+              and (not show or RV.Shows(show, m.money, m.items, m.read)) then
+            shown[#shown + 1] = m
+          end
+        end
+      end
+    end
+    if (query ~= "" or show) and #shown == 0 then return slotsMost end
+    panel._remExtra = 1 + #shown
+    -- The line's words, made again only when its number or its ink moved.
+    local T = Th()
+    local hex = T.InkHex("textSecondary")
+    if panel._lineN ~= more or panel._lineHex ~= hex then
+      panel._lineN, panel._lineHex = more, hex
+      panel._lineText = ns.Plural("ROWS_MORE", more) .. "|cff" .. hex .. RV.SLOT_DOT .. L()["ROWS_MORE_WHY"] .. "|r"
+    end
+    if not measuring or #shown == 0 then return slotsMost end
+    -- Their figures, measured as the walk measures listed mail's.
+    local cols = panel._cols
+    local showEarned, showSpent = compact and MoneyShown("earned"), compact and MoneyShown("spent")
+    local slotsOn, timeOn = compact and RowShows("slots"), compact and RowShows("time")
+    for k = 1, #shown do
+      local m = shown[k]
+      if cols.sender < senderCap then
+        local label = AUCTION_OUTCOME[m.kind] and L()[AUCTION_OUTCOME[m.kind].key]
+          or DisplaySender(m.sender) or L()["SENDER_UNKNOWN"]
+        cols.sender = min(max(cols.sender, MeasureWith(panel, sample.Sender, label) + 2), senderCap)
+      end
+      if compact then
+        local hasCOD = m.cod > 0
+        local text, kind = MoneyText(hasCOD, m.money, m.cod, m.price, true, nil,
+          RV.RowCoins(nil, sample.ColMoney), ns.Theme.ROW)
+        local on = true
+        if kind == "earned" then on = showEarned elseif kind == "spent" then on = showSpent end
+        if text and on then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text)) end
+        if slotsOn then slotsMost = max(slotsMost, m.items) end
+        if timeOn then
+          local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.REM, -k, m.money > 0 or m.items > 0)
+          if expiry then
+            cols.time = max(cols.time, MeasureWith(panel, sample.ColTime, expiry))
+            cols.timeMark = max(cols.timeMark, RV.FateMarkW(expiry))
+          end
+        end
+      end
+    end
+    return slotsMost
+  end
+
+  -- The line, in its slot `y` of the list, a row's `height` tall: its words
+  -- centred on the list's own ground, no ground of its own and nothing
+  -- under the pointer. Made the first time it shows.
+  function RV.PlaceLine(panel, y, height)
+    local line = panel.MoreLine
+    if not line then
+      line = CreateFrame("Frame", nil, panel.MailListChild)
+      line:EnableMouse(false)
+      line.Text = Th().CreateText(line, "value")
+      line.Text:SetPoint("CENTER", line, "CENTER", 0, 0)
+      line.Text:SetJustifyH("CENTER")
+      panel.MoreLine = line
+    end
+    line:ClearAllPoints()
+    line:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+    line:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+    line:SetHeight(height)
+    local inset = Th().Metrics.inset
+    Th().FitText(line.Text, UsableWidth(panel.MailListChild, FALLBACK_PANEL_WIDTH) - 2 * inset, panel._lineText, nil)
+    line:Show()
+    panel._lineUp = true
+  end
+
+  -- The quiet look of a remembered row, once BindRow has drawn it as any
+  -- mail: every word and figure in one gray (the row ground's quiet ink),
+  -- the icon gray and faint, and Mail Memory's mark where the read dot
+  -- stands. Each gray text is made once per text and kept, bounded, and
+  -- let go when the ink moves; the mark is made once a row. RV.Unquiet puts
+  -- a row bound as any other mail after it back as it was.
+  RV.quiet, RV.quietN, RV.quietHex = {}, 0, nil
+  RV.QUIET_ICON_A, RV.REM_MARK = 0.55, ROW_INDICATOR + 2
+  local QUIET = { "Sender", "Subject", "ColTime", "ColMoney", "ColSlots", "Detail" }
+
+  local function Gray(text, hex)
+    local known = RV.quiet
+    local out = known[text]
+    if out then return out end
+    if RV.quietN >= 256 then
+      for key in pairs(known) do known[key] = nil end
+      RV.quietN = 0
+    end
+    local bare = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    out = "|cff" .. hex .. bare .. "|r"
+    known[text] = out
+    RV.quietN = RV.quietN + 1
+    return out
+  end
+
+  function RV.Quiet(row)
+    local T = Th()
+    local hex = T.InkHex("textSecondary", T.ROW)
+    if hex ~= RV.quietHex then
+      for key in pairs(RV.quiet) do RV.quiet[key] = nil end
+      RV.quietN, RV.quietHex = 0, hex
+    end
+    for i = 1, #QUIET do
+      local fs = row[QUIET[i]]
+      if fs and fs:IsShown() then
+        local text = fs:GetText()
+        if type(text) == "string" and text ~= "" then fs:SetText(Gray(text, hex)) end
+      end
+    end
+    local count = row.IconCount
+    if count and count.__pbOn and count.__pbText then count:SetText(Gray(count.__pbText, hex)) end
+    row.Icon:SetDesaturated(true)
+    row.Icon:SetVertexColor(1, 1, 1, RV.QUIET_ICON_A)
+    local dot, mark = row.Indicator, row.RemMark
+    if dot:IsShown() then
+      if not mark and T.Glyph then
+        mark = T.Glyph(row, "memory", RV.REM_MARK, "ARTWORK")
+        if mark then
+          mark:SetPoint("CENTER", dot, "CENTER", 0, 0)
+          row.RemMark = mark
+        end
+      end
+      if mark then
+        T.SetColor(mark, "textSecondary", T.ROW)
+        mark:Show()
+      end
+      dot:Hide()
+      if dot.__pbShade then dot.__pbShade:Hide() end
+    elseif mark then
+      mark:Hide()
+    end
+    if T.RowQuiet then T.RowQuiet(row, true) end
+    row._quiet = true
+  end
+
+  function RV.Unquiet(row)
+    row._quiet = nil
+    row.Icon:SetDesaturated(false)
+    row.Icon:SetVertexColor(1, 1, 1, 1)
+    if row.RemMark then row.RemMark:Hide() end
+    -- The count is written only when it changes (RV.PaintCount): its own
+    -- text back.
+    local count = row.IconCount
+    if count and count.__pbText then count:SetText(count.__pbText) end
+    local T = Th()
+    if T.RowQuiet then T.RowQuiet(row, false) end
+  end
+
+  -- row, owner -> a remembered row's tooltip (from RV.RowTip, or its
+  -- icon's hover): its subject, that the game does not list it yet and
+  -- where Postbox knows it from, when it expires, and why it takes no click.
+  -- Built on hover, never on a bind.
+  local FROM = { sold = "ROWS_REM_SOLD", bought = "ROWS_REM_BOUGHT", canceled = "ROWS_REM_CANCELED",
+    expired = "ROWS_REM_EXPIRED", visit = "ROWS_REM_VISIT" }
+  function RV.RemTip(row, owner)
+    local m = row.rem
+    if not m then return false end
+    local T, L0 = Th(), L()
+    T.TipBegin(owner or row)
+    local title = m.subject
+    if not title or title == "" then title = m.sender or L0["SENDER_UNKNOWN"] end
+    T.TipTitle(title)
+    T.TipLine(L0["MINIMAP_TIP_UNLISTED"])
+    local from = FROM[m.src]
+    if from then T.TipLine(T.TipTone("muted", L0[from])) end
+    local left = m.expires - time()
+    if left > 0 then
+      local days = floor(left / 86400)
+      local when
+      if days >= 1 then
+        when = ns.Plural(m.approx and "ROWS_REM_ABOUT_DAYS" or "ROWS_REM_IN_DAYS", days)
+      else
+        when = ns.Plural(m.approx and "ROWS_REM_ABOUT_HOURS" or "ROWS_REM_IN_HOURS", max(1, floor(left / 3600)))
+      end
+      T.TipFact(L0["ROWS_REM_EXPIRES"], when)
+    end
+    T.TipHint(L0["ROWS_REM_HINT_WAIT"])
+    T.TipHint(L0["ROWS_REM_HINT_ASK"])
+    GameTooltip:Show()
+    return true
   end
 end
 
@@ -9294,8 +9584,9 @@ local function BindRow(panel, row, index, position, compact, done)
   local M = T.Metrics
   -- Where the mail's facts are read from: the inbox, or while the arrange
   -- mode previews sample mail, the sample set (RV.SAMPLE) -- the same
-  -- questions, so both are drawn by everything below alike.
-  local S = panel._preview and RV.SAMPLE or RV.LIVE
+  -- questions, so both are drawn by everything below alike. A negative
+  -- index is a row remembered past the list (RV.REM).
+  local S = (index < 0 and RV.REM) or (panel._preview and RV.SAMPLE) or RV.LIVE
 
   local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = S.Header(index)
   local kind, hasCOD = S.Classify(index)
@@ -9314,6 +9605,8 @@ local function BindRow(panel, row, index, position, compact, done)
   -- read from the sample (RV.SampleFan), never from the inbox.
   row.fanSource = (S == RV.SAMPLE) and RV.SampleFan or nil
   row.mail = (S == RV.SAMPLE) and S.Mail(index) or nil
+  -- A remembered row's own record, which its tooltip reads (RV.RemTip).
+  row.rem = (S == RV.REM) and S.Mail(index) or nil
   row.mailDone = showDelete
   -- The inbox's mark the list this row comes from was built at (RV.Acting).
   row._gen = panel._bindGen
@@ -9463,7 +9756,7 @@ local function BindRow(panel, row, index, position, compact, done)
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
   -- On Forever, the first name alone, or the last, where the arrangement
   -- asks for it and no other sender listed shares it (RV.Firsts).
-  if ns.IsForever and sender and not AUCTION_OUTCOME[kind] then
+  if ns.IsForever and sender and not AUCTION_OUTCOME[kind] and S ~= RV.REM then
     senderText = RV.Firsts.Inbox(panel, S, layout, senderText)
   end
   -- Whether the row shows less of the name than the mail has, for the
@@ -9540,6 +9833,13 @@ local function BindRow(panel, row, index, position, compact, done)
   RV.Place(row, spec)
   -- The icon's hover area goes with the icon.
   row.IconHit:SetShown(row.Icon:IsShown())
+  -- A remembered row in its quiet look; any other row out of it, where it
+  -- was one (RV.Quiet).
+  if row.rem then
+    RV.Quiet(row)
+  elseif row._quiet then
+    RV.Unquiet(row)
+  end
 
   row:Show()
 end
@@ -12558,7 +12858,7 @@ function RV.GoToBar(panel)
   if not at then return end
   local scroll = panel.MailListScroll
   local _, _, stride = RowMetrics()
-  local listed = #((panel._preview and panel._pvList) or panel._filtered)
+  local listed = #((panel._preview and panel._pvList) or panel._filtered) + (panel._remExtra or 0)
   local maxScroll = max(0, RV.ContentHeight(panel, listed, stride) - (scroll:GetHeight() or 0))
   local to = min((at - 1) * stride, maxScroll)
   local DN = ns.DividerNotch
@@ -12668,12 +12968,16 @@ local function UpdateVisibleRows(panel)
   local first = max(1, floor(offset / stride) + 1)
   if at and offset >= split then first = at + 1 + floor((offset - split) / stride) end
   local last = first - 1
+  -- Past the list's last entry, the line and the mail remembered past it
+  -- (RV.RemList): entries the list's end adds, read here and nowhere else.
+  local listEnd = #filtered
+  local entries = listEnd + ((historyView or away) and 0 or (panel._remExtra or 0))
   if viewport > 0 and not historyView and not away then
     local foot = offset + viewport
     if at and foot > split then
-      last = min(#filtered, at + ceil((foot - split) / stride))
+      last = min(entries, at + ceil((foot - split) / stride))
     else
-      last = min(#filtered, ceil(foot / stride))
+      last = min(entries, ceil(foot / stride))
     end
   end
   if historyView or away then panel._rowStride = COMPACT_ROW_HEIGHT + ROW_GAP end
@@ -12688,11 +12992,31 @@ local function UpdateVisibleRows(panel)
   panel._rowSpec.publish = true
   panel._markReserve = (compact and not historyView and not away and RV.LinedUp())
     and RV.MarkReserve(RV.Layout(), panel._cols, panel._markHas, panel._markAny, true) or false
+  -- The line is put away below unless this pass places it.
+  local lineWas = panel._lineUp
+  panel._lineUp = false
   -- The Island look draws the bar in its place too (Core/DividerNotch.lua,
   -- the island's one copy), so the bar in the list is Hairline's and Full
   -- row's only.
   for i = first, last do
-    if filtered[i] == DIVIDER then
+    if i > listEnd then
+      -- The line, then each remembered row, bound through its own source
+      -- (RV.REM, minus its place under the line); after the bar, where the
+      -- list has one, so they stand its lift higher.
+      local y = -((i - 1) * stride)
+      if at then y = y + lift end
+      if i == listEnd + 1 then
+        RV.PlaceLine(panel, y, height)
+      else
+        used = used + 1
+        local row = AcquireRow(panel, used)
+        ApplyRowMode(row, compact, height)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", panel.MailListChild, "TOPLEFT", 0, y)
+        row:SetPoint("TOPRIGHT", panel.MailListChild, "TOPRIGHT", 0, y)
+        BindRow(panel, row, listEnd + 1 - i, i, compact, nil)
+      end
+    elseif filtered[i] == DIVIDER then
       -- At the top of its slot, the bar's own height: the copy at the foot
       -- is that height too, so it hands over without moving. Painted once
       -- the rows are placed (below): its fold sign reads its place off them.
@@ -12721,6 +13045,7 @@ local function UpdateVisibleRows(panel)
     BindRow(panel, row, filtered[i], i, compact, filteredDone[i])
     end
   end
+  if lineWas and not panel._lineUp then panel.MoreLine:Hide() end
 
   for i = used + 1, #panel._rows do
     local row = panel._rows[i]
@@ -12731,6 +13056,7 @@ local function UpdateVisibleRows(panel)
     row.fingerprint = nil
     row.iconSlot = nil
     row.fanSource, row.mail = nil, nil
+    row.rem = nil
     row.stuckReason = nil
     row.tipMoney = nil
     row.Warning:Hide()
@@ -12778,7 +13104,9 @@ local function UpdateVisibleRows(panel)
   -- (Theme.ListGround); nil in every other look.
   local listGround = ns.Theme.ListGround
   if listGround then
-    local n, rise = #filtered, at and lift or 0
+    -- The line and the remembered rows are the list's too (none of them is
+    -- finished mail).
+    local n, rise = entries, at and lift or 0
     -- Whether the list ends in finished mail (or the bar over it, folded).
     local done = filteredDone[n] == true
     if historyView then
@@ -12925,9 +13253,10 @@ local CloseDetailIfStale  -- forward declaration
 -- is the difference between "you have collected everything" and "you have
 -- collected everything the game would show us".
 --
--- The hint line is the natural place for it, but that line yields to the view
--- segments when a long translation leaves no room -- and a notice the player
--- may not see is not a notice. So it is also said once in chat, on the
+-- The list says it, in its last line ("45 more mails", RV.RemList), with the
+-- whole list's width for it. It once stood in the top row as "90 of 135
+-- shown", where it came and went with the room the segments left; the top
+-- row now says nothing of it. It is also said once in chat, on the
 -- transition into the truncated state.
 local function UpdateHint(panel, numItems, totalItems)
   local hint = panel.Hint
@@ -12937,9 +13266,7 @@ local function UpdateHint(panel, numItems, totalItems)
   if StuckOnly(panel) then
     hint:SetText(Th().Colorize("warning", L()["HINT_STUCK_ONLY"], "window"))
   elseif truncated then
-    -- The top row has room for the numbers alone ("50 of 72 shown"); the
-    -- chat says why, once.
-    hint:SetText(L()("HINT_INBOX_TRUNCATED", numItems, totalItems))
+    hint:SetText("")
     if not panel._truncationTold then
       panel._truncationTold = true
       ns.Print(L()("MSG_INBOX_TRUNCATED", numItems, totalItems))
@@ -13240,6 +13567,10 @@ function CT.RefreshMailList(panel)
       end
     end
   end
+  -- Then the line for the mail the game holds back, and the mail Postbox
+  -- remembers of it, after everything listed (RV.RemList).
+  slotsMost = RV.RemList(panel, sample, compact, measureOpen, senderCap, view, query, show, stuckOnly,
+    numItems, totalItems, slotsMost)
 
   if slotsMost > 0 then
     cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
@@ -13258,7 +13589,7 @@ function CT.RefreshMailList(panel)
   -- are placed (RV.MarkReserve), from what this walk found.
 
   local _, _, stride = RowMetrics()
-  local listed = #filtered
+  local listed = #filtered + panel._remExtra
   if previewed then listed = #previewed end
   -- The history view lists the record, not the inbox. The walk above still
   -- ran: the segment counts describe the inbox whichever view is showing.
@@ -13371,7 +13702,7 @@ function CT.ApplyRowLayout(panel)
 
   local stride = panel._rowStride or 0
   if stride <= 0 then return end
-  local listed = #((panel._preview and panel._pvList) or panel._filtered)
+  local listed = #((panel._preview and panel._pvList) or panel._filtered) + (panel._remExtra or 0)
   if AV.Active(panel) then
     listed = #(panel._avRows or {})
   elseif panel.viewMode == VIEW_HISTORY then
@@ -17956,7 +18287,7 @@ function CT.SetSamples(panel, on, quiet)
   if keep.view == panel.viewMode and keep.alt == panel._alt and stride > 0 and (keep.stride or 0) > 0 then
     offset = (keep.stride == stride) and keep.offset or keep.offset / keep.stride * stride
   end
-  local listed = #panel._filtered
+  local listed = #panel._filtered + (panel._remExtra or 0)
   if AV.Active(panel) then
     listed = #(panel._avRows or {})
   elseif panel.viewMode == VIEW_HISTORY then

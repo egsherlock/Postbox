@@ -4349,6 +4349,7 @@ do
     T.ListGround = Skin.ListGround
     T.NoteGround = Skin.NoteGround
     T.RuleGround = Skin.RuleGround
+    T.RowQuiet = Skin.RowQuiet
     -- The game's UI scale or the screen moved: the papered rows laid again
     -- on their new pixels (Skin.ApplyScale does it for the window scale).
     if type(CreateFrame) == "function" then
@@ -4883,6 +4884,17 @@ do
     -- The stripe the row's paint just laid is washed already (Theme's
     -- StyleMailRow hands it to Wash) once the paper was on before this bind.
     if not washed then Wash(row, nil, row._hovered) end
+  end
+
+  -- Theme.RowQuiet: `row` was just bound as mail the game does not list yet
+  -- (`on`; the Mail tab's remembered rows, CollectTab's RV.Quiet), or bound
+  -- again as any other mail after being one. Its paper at QUIET_A, the
+  -- words already in the paper's quiet ink; back whole after.
+  local QUIET_A = 0.45
+  function Skin.RowQuiet(row, on)
+    local paper = row.__pbPaper
+    if not paper then return end
+    paper:SetAlpha((on and row.__pbPaperOn) and QUIET_A or 1)
   end
 
   -------------------------------------------------------------
