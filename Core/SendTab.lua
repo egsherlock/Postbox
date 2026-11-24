@@ -6653,6 +6653,8 @@ end
 --                    armor kits), the Consumable subclass the classic-rules
 --                    client files the same armor kits under ("Permanent")
 --   Gems and recipes one line for the Gem class, one for the Recipe class
+--                    ("Recipes" on the classic-rules client, which has no
+--                    gems)
 -- Each line carries the game's icon for its kind (Kind.ICONS), the kind's
 -- name as the client writes it and how many stacks. A pick attaches every
 -- stack of that kind -- the sweep Alt+right-click runs for one item
@@ -6735,8 +6737,16 @@ do
     { head = "KIND_HEAD_CONSUMABLES", sub = Class("Consumable", 0),
       subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4, [6] = 5 },
       whole = { [Class("ItemEnhancement", 8)] = 6 }, cap = 5 },
-    { head = "KIND_HEAD_GEMS", whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
+    -- The classic-rules client has no gems (its class 3 is an empty
+    -- "Jewelry"; raw gems are materials there): the heading says "Recipes".
+    { head = ns.IsForever and "KIND_HEAD_RECIPES" or "KIND_HEAD_GEMS",
+      whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
   }
+  -- Materials' subclasses the classic-rules client still files a few items
+  -- under while naming them "Trade Goods (OBSOLETE)" (0) and "Explosives
+  -- (OBSOLETE)" (2): those items stand on the Other line, named as Other
+  -- (Kind.At). Retail keeps its own subclasses as they are.
+  Kind.FOLD = ns.IsForever and { [0] = Kind.OTHER, [2] = Kind.OTHER } or nil
   -- The icon before each heading (`head`) and each line (by its key), by its
   -- file name under Interface\Icons (or a file ID), from the game's own
   -- art; every one is in both clients' interface files. A line whose key
@@ -6835,7 +6845,7 @@ do
   function Kind.Where(classID, subID)
     if subID == nil then return nil end
     local G = Kind.GROUPS
-    if classID == G[1].class then return 1, subID end
+    if classID == G[1].class then return 1, (Kind.FOLD and Kind.FOLD[subID]) or subID end
     if classID == G[2].sub and G[2].subs[subID] then return 2, subID end
     if G[2].whole[classID] then return 2, classID end
     if G[3].whole[classID] then return 3, classID end
@@ -6855,6 +6865,8 @@ do
     if not ok then return false end
     local g, k = Kind.Where(classID, subID)
     if not g then return false end
+    -- Folded into another kind (Kind.FOLD): named as the line it joins.
+    if g == 1 and k ~= subID then subName = nil end
     if want and (want.g ~= g or (want.key ~= nil and want.key ~= k)) then return false end
     local info = Q.ContainerInfo(bag, slot)
     if not info or info.isLocked or info.isBound then return false end
