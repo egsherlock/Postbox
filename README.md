@@ -123,7 +123,17 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   fits. **Keep bag slots free** (1 to 12) leaves room for loot; gold still
   comes out, and the title bar says `Kept free: 6 slots` when it stopped a
   run. If the bags fill anyway, the run stops and the title bar says how
-  many mails are left. Nothing is collected behind your back.
+  many mails are left. Nothing is collected behind your back. Special bags
+  (an herb bag, a quiver, a profession bag, the reagent bag) count only
+  for the items that fit them, and a run that has reached the slots it
+  keeps free goes on taking what fits one of those.
+- **Past the 100 mails the game lists at a time**, the list ends with a
+  line such as `45 more mails · not listed by the game yet`, and under it
+  the mail Postbox already knows of, as gray rows you can read and search
+  but not click. They come out as the game lists them.
+- **An opened mail's Delete is grayed** where the game will not delete the
+  mail for what it still holds, with the reason in its tooltip; a delete
+  the game turns down leaves the mail open and says so.
 - **Stuck** means one mail's own problem: a small triangle, the game's own
   words, and `Stuck: N` in the title bar, which filters the list to those
   mails. It clears itself once the mail can come out (for example once you
@@ -251,10 +261,12 @@ Most mail, Name or Last played.
 - **Auctions are counted as they happen:** each auction a character wins,
   sells, cancels or lets run out is a row in its box at once, with its
   item and, where the game gives it, its price, and counts as one mail
-  until the next mailbox visit lists the mail itself.
+  until the next mailbox visit lists the mail itself. A sold auction's
+  row says the gold its mail will hold (the price less the cut, plus your
+  deposit), with the price asked in its tooltip.
 - **One count everywhere:** Mail Memory, the character list, the minimap
   icon and its tooltip give the same number for a mailbox, the mail the
-  game has not listed yet included.
+  game has not listed yet and read mail you keep included.
 - **Warnings** name any character with mail holding gold or items (or a
   C.O.D.) under three days (one for C.O.D.) from expiring, or with mail
   known to be on its way and no mailbox visit in over three weeks, the
@@ -290,10 +302,11 @@ Most mail, Name or Last played.
   hide it; the star at its end favorites it.
 - **Pin a name** with the small pin in the Recipient box and that
   character starts every mailbox with it: a miner that always mails your
-  banker. The visit after a send to someone else opens with it too, and a
-  mail you were still writing comes back as you left it. Click the pin
-  again to unpin; your other characters are left alone. **Recipient pin**
-  (Options > Send tab) turns the pin off.
+  banker. The Subject box has the same pin. A pinned box keeps its words
+  after every send and at every mailbox, and a mail you were still writing
+  comes back as you left it. Click a pin again to unpin; your other
+  characters are left alone. **Recipient pin** (Options > Send tab) turns
+  the pins off.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
@@ -302,17 +315,19 @@ Most mail, Name or Last played.
   "Attachments" clears them all.
 - **Every stack at once:** Alt-right-click a bag item and every stack of
   it is attached. The small + after "Attachments" does the same for a
-  kind of material: it lists the kinds in your bags in the game's own
-  words (Cloth, Herb, Metal & Stone), each with how many stacks it would
-  add, and a line's tooltip lists the items. Bound and quest items are
-  left out of a kind. Either way, what is past twelve waits in the queue
-  and goes as the next mail, and a stack the game will not attach is
-  named in chat and leaves the rest to go on.
+  kind: it lists what is in your bags in the game's own words under
+  Materials (Cloth, Herb, Metal & Stone), Consumables, and Gems and
+  recipes, each line with how many stacks it would add. Click a heading
+  for everything under it; a line's or a heading's tooltip lists the
+  items first. Bound and quest items are left out of a kind. Either way,
+  what is past twelve waits in the queue and goes as the next mail, and a
+  stack the game will not attach is named in chat and leaves the rest to
+  go on.
 - **Gold asks first**, and asks again if the name, the amount, C.O.D. or the
   number of mails changes before you answer.
 - **Ctrl+Enter sends** from any box (a setting, on by default; the Send button
-  shows the keys). **After sending, keep** nothing, the recipient, or the
-  recipient and subject.
+  shows the keys). After a send the form clears, and each pinned box takes
+  its words back.
 - Shift-click an attached item to link it, Ctrl-click to try it on.
 - Unmailable items in your bags are grayed with a padlock while you compose,
   in the default bags, Baganator and EllesmereUI bags.
@@ -371,7 +386,8 @@ icon steps aside.
   anywhere on screen (Shift-drag; Alt-click locks it).
 - **Its tooltip** shows your own mailbox first: **Waiting to collect**
   with its senders, **Not listed by the game yet** for the part of it
-  past the 100 mails the game lists at a time, and **Last seen**. Then
+  past the 100 mails the game lists at a time, **Done (empty)** for read
+  mail you keep, and **Last seen**. Then
   each of your other
   characters with mail. Click for Mail Memory, right-click for the options.
 - Under EllesmereUI's minimap it restyles *their* mail button in place, and

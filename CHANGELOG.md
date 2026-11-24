@@ -17,12 +17,29 @@
   the run stops early, the line fades where it stopped; when the words
   beside it say why, it holds a moment in their color first. The words
   stay.
-- **Send tab: attach every stack of one kind of material.** The small
-  + after Attachments lists the kinds in your bags in the game's own
-  words (Cloth, Herb, Metal & Stone), each with how many stacks it would
-  add. Pick one and they are all attached; what is past twelve waits in
-  the queue and goes as the next mail. A line's tooltip lists the items
-  it would add, and bound and quest items are left out.
+- **Send tab: attach every stack of one kind.** The small + after
+  Attachments lists what is in your bags in the game's own words, under
+  three headings: Materials (Cloth, Herb, Metal & Stone and the rest),
+  Consumables (potions, elixirs, flasks, food and drink), and Gems and
+  recipes. Each line says how many stacks it would add. Pick a line and
+  they are all attached; click a heading for everything under it. What is
+  past twelve waits in the queue and goes as the next mail. A line's or a
+  heading's tooltip lists the items first, and bound and quest items are
+  left out.
+- **Send tab: pin a subject, as you pin a recipient.** The Subject box
+  has the same small pin. A pinned box keeps its words on that character
+  after every send and at every mailbox, until you unpin it, and its
+  tooltip says it is for this character only. With a pin on each box,
+  After sending, keep (Options > Send tab) is gone: after a send the
+  form clears and each pinned box takes its words back.
+- **Mail tab: the list says how much mail the game has not listed yet.**
+  Past the 100 mails the game lists at a time, the list ends with a line
+  such as "45 more mails · not listed by the game yet", under the
+  finished mail, and under it the mail Postbox already knows of, as gray
+  rows: auctions noted at the auction house, and mail your last visit
+  listed. They are there to read, not to click; they come out as the
+  game lists them. A search finds them too. "90 of 135 shown" beside
+  Search is gone.
 - **Mail Memory: auctions are counted as they happen.** Each auction you
   win, sell, cancel or let run out is a row at once, with its item and,
   where the game gives it, its price, and adds one to that character's
@@ -36,6 +53,14 @@
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
   on the icon.
+- **Mail tab, with TradeSkillMaster:** the first time TSM's own mail
+  window opens beside Postbox's, one line under the Mail tab's top row
+  says how to keep just one: click "WOW UI" on TSM's window, once. Shown
+  once, never again, and nothing at all without TSM.
+- **Options > Window > Window style offers ElvUI beside EllesmereUI.**
+  With both loaded the list reads EllesmereUI, ElvUI, Blizzard, Postbox,
+  so an ElvUI player running a piece of EllesmereUI can dress Postbox in
+  ElvUI's look. Nothing changes until you pick it.
 
 ### Improved
 
@@ -43,19 +68,45 @@
   needs, as "Inbox (14) · 8 slots", where it fits.
 - **Mail tab: "Kept free: 6 slots" in the title bar when Keep bag slots
   free stops a run**, in the title bar's own gray after what was
-  collected; the narrowest window still shows "Kept free". Point at the
-  words for how many mails wait and where the setting is.
+  collected. Point at the words for how many mails wait and where the
+  setting is.
+- **Mail tab, title bar: the words keep their numbers in a narrow
+  window.** Where a line does not fit beside the title it lets its units
+  go first, then its earlier parts, so the last number is the last thing
+  to go: "Collected: 11 — Kept free: 6", "Stuck: 2 — Bags full: 4 left".
+  A line that fits is unchanged, and the tooltip still has all of it.
+- **Bag room counts special bags for what they can take** (All mail's
+  tooltip, the check before a run, Keep bag slots free). An herb bag, a
+  quiver or a profession bag is room only for the items that fit it:
+  All mail's tooltip says "8 of these items fit in your special bags",
+  and warns only when the rest will not fit your ordinary bags. A bag
+  nothing in the mail can go in, such as a soul bag on WoW Forever, is
+  never counted or named. A run that reaches the slots it keeps free
+  goes on taking what fits a special bag or the reagent bag.
+- **Mail tab, an opened mail: Delete is grayed where the game will not
+  delete the mail** for what it still holds, and pointing at it says why,
+  as the faded x on its row does. If the game turns a delete down
+  anyway, the mail stays open and says so.
+- **Mail Memory: a sold auction's row says the gold its mail will hold**
+  before the mail comes: the price less the auction house's cut, plus
+  your deposit back. Its tooltip has the price you asked, the deposit
+  and the fee. On WoW Forever the cut is the faction house's or the
+  goblin house's, by where it was posted; a sale Postbox cannot place
+  keeps the price asked.
 
 - **One mail count everywhere:** Mail Memory, the minimap icon, its
   tooltip and the character list (Mail tab > Inbox) give the same number
-  for a mailbox. It includes the mail the game has not listed yet, which
-  only Mail Memory used to count.
+  for a mailbox. It includes the mail the game has not listed yet and
+  read mail you keep in the box, which only Mail Memory used to count.
 - **Minimap icon: the count is always the plain number** (Count on icon).
   A long one gets smaller to fit, where it could read 99+, and at a
   mailbox it follows as you collect.
 - **Minimap icon's tooltip:** Waiting to collect is counted as everywhere
   else, and a new line under its senders, Not listed by the game yet,
-  counts the mail past the 100 the game lists at a time.
+  counts the mail past the 100 the game lists at a time. Read mail with
+  nothing left in it has a line of its own, Done (empty), with a gray
+  number, so the lines add up to the icon's count. Last seen stands a
+  little apart under them.
 
 ### WoW Forever
 
@@ -78,9 +129,10 @@
   the mail's contents named, in the game's own words: its items and how
   many of each, then its gold. The name was missing from the question.
 - Send tab: on a character with a pinned name, the next mailbox visit
-  after a send opens with the pinned name, also when After sending, keep
-  is Recipient or Recipient and subject. A mail you were still writing
+  after a send opens with the pinned name. A mail you were still writing
   comes back as you left it.
+- Send tab: your own character's name can no longer be pinned (the game
+  refuses mail to yourself); the pin stays dim and says why.
 - Send tab: a stack the game will not attach no longer holds up the
   stacks queued behind it after an Alt-right-click on a bag item. It is
   named in chat and stays in your bags.
