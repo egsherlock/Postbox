@@ -92,6 +92,8 @@ local model = {
 BV.model = model
 
 local NONE = {}
+-- The "how many" box (section 5b).
+BV.Many = { open = false, steps = {}, stacks = {}, at = {}, n = 0, pick = 1 }
 
 -------------------------------------------------------------
 -- 1. The switch's state
@@ -154,7 +156,7 @@ local function Kind(s, key)
   m.n = k
   kind = m.kinds[k]
   if not kind then
-    kind = { ref = {}, cnt = {}, top = 0 }
+    kind = { ref = {}, cnt = {}, stk = {}, fre = {}, top = 0 }
     m.kinds[k] = kind
   end
   kind.key, kind.sect = key, s
@@ -183,10 +185,13 @@ local function Put(kind, count, where, free, why)
   local m = kind.mails
   if m > 0 and kind.ref[m] == where then
     kind.cnt[m] = kind.cnt[m] + count
+    kind.stk[m] = kind.stk[m] + 1
   else
     m = m + 1
     kind.mails = m
     kind.ref[m], kind.cnt[m] = where, count
+    -- The stacks it holds there, and whether a run may take them.
+    kind.stk[m], kind.fre[m] = 1, free and true or false
   end
 end
 
@@ -814,6 +819,7 @@ function BV.OnSize(scroll, width)
 end
 
 function BV.OnScroll()
+  if BV.Many.open then BV.Many.Close() end
   if BV.area and BV.area:IsShown() then BV.Bind() end
 end
 
@@ -831,6 +837,7 @@ function BV.Refresh(panel)
   BV.PaintSwitch(panel)
   local area = BV.area
   if not BV.Active(panel) then
+    if BV.Many.box then BV.Many.Close() end
     if area and area:IsShown() then
       area:Hide()
       if GameTooltip:IsShown() then GameTooltip:Hide() end
@@ -860,6 +867,7 @@ function BV.Refresh(panel)
   end
   if not BV.Build(panel) then BV.Layout() end
   BV.Apply(panel)
+  if BV.Many.open then BV.Many.Check() end
 end
 
 -- The arrange mode opened over the tab or left it (CT.ArrangeHost): it
@@ -1124,7 +1132,14 @@ function BV.TipHints(kind)
     else
       if kind.free > 0 then T.TipHint(L0("BAG_HINT_TAKE", kind.freeN)) end
       T.TipHint(mailsHint)
-      T.TipHint(linkHint)
+      -- In two mails or more a Shift-click with no chat box open asks how
+      -- many (BV.Many); the link's line stays where there is a try-on to say.
+      if BV.Many.Steps(kind) >= 2 then
+        T.TipHint(L0["BAG_HINT_MANY"])
+        if dress then T.TipHint(linkHint) end
+      else
+        T.TipHint(linkHint)
+      end
     end
   elseif src == "away" then
     local Memory = ns.MailMemory
@@ -1192,6 +1207,268 @@ function BV.Why(kind)
     end
   end
   return P.StuckLine(true)
+end
+
+-------------------------------------------------------------
+-- 5b. How many
+--
+-- A Shift-click on a tile in two mails or more, where the game had nowhere
+-- to put a link (no chat box open), opens a small box under the tile, as
+-- the game's own bags ask "how many" of a stack. The game cannot split a
+-- stack that is in the mail, so the box steps by whole stacks: one step is
+-- one mail's stacks of the item, in the order the list shows the mails, and
+-- its number is the running total (40, 80, 100, 120, 137). Take starts the
+-- run a plain click starts, for the first mails only, so every rule of a
+-- run holds. The arrows, the wheel and Left / Right step; Enter takes;
+-- Escape (the house's popup rule, and the box's own) or a press anywhere
+-- else closes it with nothing taken, as do a scroll, a list refresh that
+-- changes the tile, a run, the bag going away and the mailbox closing.
+--
+-- While it is open the keyboard is its own (an unseen edit box holds it,
+-- as a search box does); shut, it holds nothing. Made the first time it
+-- opens: a card on the popups' ground, as the fan's plate is, so each look
+-- dresses it as it dresses that; two segment plates, a house button.
+-------------------------------------------------------------
+local Many = BV.Many
+Many.W, Many.H, Many.CELL, Many.FIELD, Many.TAKE_W = 156, 54, 22, 46, 50
+
+-- kind -> how many steps it has: the mails of it a run may take.
+function Many.Steps(kind)
+  local n = 0
+  for i = 1, kind.mails do
+    if kind.fre[i] then n = n + 1 end
+  end
+  return n
+end
+
+-- kind -> whether a Shift-click asks how many of it: a tile a plain click
+-- would take every stack of, right now, in two mails or more.
+function Many.May(kind)
+  if model.src ~= "inbox" or kind.look ~= 0 or kind.cod or kind.gold or not kind.id then return false end
+  if not Parts().MailboxOpen() or ns.CollectTab.IsRunning() or Mail().IsBusy() then return false end
+  return BV.Current(kind) and Many.Steps(kind) >= 2
+end
+
+-- kind -> its steps read: which of its mails each is, the running total of
+-- the item and of its stacks; how many steps.
+function Many.Read(kind)
+  local n, count, stacks = 0, 0, 0
+  for i = 1, kind.mails do
+    if kind.fre[i] then
+      n = n + 1
+      count, stacks = count + kind.cnt[i], stacks + kind.stk[i]
+      Many.at[n], Many.steps[n], Many.stacks[n] = i, count, stacks
+    end
+  end
+  Many.n = n
+  return n
+end
+
+function Many.Paint()
+  local T = Th()
+  local pick, n = Many.pick, Many.n
+  Many.Num:SetText(tostring(Many.steps[pick] or ""))
+  Many.Sub:SetText(L()("BAG_MANY_STACKS", Many.stacks[pick] or 0, Many.stacks[n] or 0))
+  -- An arrow at its end is drawn disabled, and its click steps nowhere.
+  if Many.Less.Icon then T.SetColor(Many.Less.Icon, pick > 1 and "textSecondary" or "textDisabled") end
+  if Many.More.Icon then T.SetColor(Many.More.Icon, pick < n and "textSecondary" or "textDisabled") end
+end
+
+function Many.Step(by)
+  if not Many.open then return end
+  local pick = Many.pick + by
+  if pick < 1 then pick = 1 elseif pick > Many.n then pick = Many.n end
+  if pick ~= Many.pick then
+    Many.pick = pick
+    Many.Paint()
+  end
+end
+
+function Many.ArrowClick(plate)
+  Many.Step(plate.dir)
+end
+
+function Many.Wheel(_, delta)
+  Many.Step((delta or 0) > 0 and 1 or -1)
+end
+
+function Many.Key(_, key)
+  if key == "LEFT" or key == "DOWN" then
+    Many.Step(-1)
+  elseif key == "RIGHT" or key == "UP" then
+    Many.Step(1)
+  end
+end
+
+-- Whatever is typed while it has the keyboard is let go: it shows a
+-- number of its own, never one that was typed.
+function Many.Typed(kb)
+  if (kb:GetText() or "") ~= "" then kb:SetText("") end
+end
+
+function Many.Close()
+  Many.open = false
+  local box = Many.box
+  if box and box:IsShown() then box:Hide() end
+end
+
+-- Hidden, by Many.Close or with the bag: nothing of it is left listening,
+-- and the keyboard is the game's again.
+function Many.Hidden(box)
+  Many.open = false
+  box:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+  if Many.kb then Many.kb:ClearFocus() end
+  -- Hidden with the bag or the window: shut for good, so it is not there
+  -- again when they are next shown.
+  if box:IsShown() then box:Hide() end
+end
+
+-- A press anywhere but on it closes it.
+function Many.Event(box, event)
+  if event == "GLOBAL_MOUSE_DOWN" and Many.open and not box:IsMouseOver() then Many.Close() end
+end
+
+function Many.Build()
+  local box = Many.box
+  if box then return box end
+  local T = Th()
+  local cell = Many.CELL
+  box = CreateFrame("Frame", nil, BV.area, "BackdropTemplate")
+  box:SetSize(Many.W, Many.H)
+  -- Over the tiles and their marks, under the reading view.
+  box:SetFrameLevel(BV.scroll:GetFrameLevel() + 12)
+  box:EnableMouse(true)
+  box:EnableMouseWheel(true)
+  box:Hide()
+  box.__pbPopupAlways = true
+  T.ApplyCard(box)
+  for k = 1, 2 do
+    local plate = T.CreatePlate(box, "segment")
+    plate:SetSize(cell, cell)
+    plate:SetText("")
+    plate.dir = (k == 1) and -1 or 1
+    -- The number's field stands between the two, their edges its ends.
+    plate:SetPoint("TOPLEFT", box, "TOPLEFT", (k == 1) and 6 or (6 + cell + Many.FIELD - 2), -6)
+    plate.Icon = T.Glyph and T.Glyph(plate, (k == 1) and "arrow-left" or "arrow-right", nil, "OVERLAY") or nil
+    if plate.Icon then
+      plate.Icon:SetPoint("CENTER", plate, "CENTER", 0, 0)
+    else
+      plate:SetText((k == 1) and "<" or ">")
+    end
+    plate:SetScript("OnClick", Many.ArrowClick)
+    T.SetPlateSelected(plate, false)
+    if k == 1 then Many.Less = plate else Many.More = plate end
+  end
+  -- The field: a hairline over and under the number, from plate to plate.
+  for k = 1, 2 do
+    local line = box:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", Many.Less, (k == 1) and "TOPRIGHT" or "BOTTOMRIGHT", 0, (k == 1) and 0 or 1)
+    line:SetPoint("TOPRIGHT", Many.More, (k == 1) and "TOPLEFT" or "BOTTOMLEFT", 0, (k == 1) and 0 or 1)
+    T.FillChrome(line, 0.16)
+  end
+  Many.Num = T.CreateText(box, "value")
+  Many.Num:SetPoint("LEFT", Many.Less, "RIGHT", 0, 0)
+  Many.Num:SetPoint("RIGHT", Many.More, "LEFT", 0, 0)
+  Many.Num:SetJustifyH("CENTER")
+  Many.Num:SetWordWrap(false)
+  local take = T.CreateButton(nil, box)
+  take:SetSize(Many.TAKE_W, cell)
+  take:SetPoint("TOPLEFT", Many.More, "TOPRIGHT", 6, 0)
+  take:SetText(L()["BAG_MANY_TAKE"])
+  take:SetScript("OnClick", Many.Take)
+  Many.TakeButton = take
+  Many.Sub = T.CreateText(box, "secondary")
+  Many.Sub:SetPoint("TOPLEFT", box, "TOPLEFT", 8, -33)
+  Many.Sub:SetPoint("RIGHT", box, "RIGHT", -6, 0)
+  Many.Sub:SetJustifyH("LEFT")
+  Many.Sub:SetWordWrap(false)
+  -- The keyboard, while the box is open: an edit box nobody sees, in a
+  -- named font of the house's (Theme.SetBoxFont), given the focus as the
+  -- box opens and letting it go as it hides.
+  local kb = CreateFrame("EditBox", nil, box)
+  kb:SetSize(1, 1)
+  kb:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
+  kb:SetAlpha(0)
+  kb:SetAutoFocus(false)
+  local font = (T.FontObject and T.FontObject("numberSmall")) or GameFontHighlightSmall
+  if font then T.SetBoxFont(kb, font) end
+  if kb.SetAltArrowKeyMode then kb:SetAltArrowKeyMode(false) end
+  kb:SetScript("OnEscapePressed", Many.Close)
+  kb:SetScript("OnEnterPressed", Many.Take)
+  kb:SetScript("OnArrowPressed", Many.Key)
+  kb:SetScript("OnTextChanged", Many.Typed)
+  Many.kb = kb
+  box:SetScript("OnMouseWheel", Many.Wheel)
+  box:SetScript("OnEvent", Many.Event)
+  box:SetScript("OnHide", Many.Hidden)
+  -- One Escape closes it before any window (Helpers.RegisterEscPopup).
+  local H = ns.Core and ns.Core.UI and ns.Core.UI.Helpers
+  if H and type(H.RegisterEscPopup) == "function" then H.RegisterEscPopup(box, Many.Close) end
+  Many.box = box
+  if ns.Skin and ns.Skin.Refresh then pcall(ns.Skin.Refresh, box) end
+  return box
+end
+
+-- kind -> the box open under its tile, at one step: 3 under the tile's
+-- foot from its left edge, kept inside the bag's width, over the tile
+-- where there is no room under it.
+function Many.Open(kind)
+  local box = Many.Build()
+  if Many.Read(kind) < 2 then return end
+  Many.key, Many.total, Many.free, Many.x, Many.y = kind.key, kind.n, kind.free, kind.x, kind.y
+  Many.pick = 1
+  local child, scroll = BV.child, BV.scroll
+  local size = Th().Metrics.slotSize
+  local x, wide = kind.x, child:GetWidth() or 0
+  if x + Many.W > wide then x = max(0, wide - Many.W) end
+  local top = scroll:GetVerticalScroll() or 0
+  local under = kind.y + size + 3
+  box:ClearAllPoints()
+  if under + Many.H > top + (scroll:GetHeight() or 0) and kind.y - 3 - Many.H >= top then
+    box:SetPoint("BOTTOMLEFT", child, "TOPLEFT", x, -(kind.y - 3))
+  else
+    box:SetPoint("TOPLEFT", child, "TOPLEFT", x, -under)
+  end
+  if GameTooltip:IsShown() then GameTooltip:Hide() end
+  Many.open = true
+  Many.Paint()
+  box:Show()
+  box:RegisterEvent("GLOBAL_MOUSE_DOWN")
+  Many.kb:SetFocus()
+end
+
+-- After a list refresh while it is open: it stays only over the tile it
+-- was opened on, as that tile was (the same total, the same mails a run
+-- may take, the same place) and while a Shift-click would still open it.
+function Many.Check()
+  local main = model.sects[1]
+  local kind = main and main.by[Many.key]
+  if not kind or kind.n ~= Many.total or kind.free ~= Many.free or kind.x ~= Many.x or kind.y ~= Many.y
+      or not Many.May(kind) then
+    return Many.Close()
+  end
+  Many.Read(kind)
+end
+
+-- Take: the run a plain click starts (CollectTab's StartCategoryRun with
+-- the item's id), for the mails of the steps chosen and no others.
+function Many.Take()
+  if not Many.open then return end
+  local main = model.sects[1]
+  local kind = main and main.by[Many.key]
+  local panel, pick = BV.panel, Many.pick
+  if not (kind and panel) or kind.n ~= Many.total or kind.free ~= Many.free or not Many.May(kind) then
+    Many.Close()
+    if panel then ns.CollectTab.RequestRefresh(panel) end
+    return
+  end
+  Many.Read(kind)
+  local queue = BV.queue
+  for i = #queue, 1, -1 do queue[i] = nil end
+  for i = 1, pick do queue[i] = kind.ref[Many.at[i]] end
+  Many.Close()
+  ns.CollectTab.StartCategoryRun(panel, "all", kind.id, queue)
 end
 
 -------------------------------------------------------------
@@ -1286,10 +1563,21 @@ function BV.TileClick(tile, button)
   end
   if button ~= "LeftButton" then return end
   if RV.Modified() then
-    if not kind.gold and type(HandleModifiedItemClick) == "function" then
-      local link = BV.LinkOf(kind)
-      if link then HandleModifiedItemClick(link) end
+    if kind.gold then return end
+    -- The game's item rules first, as its own bag buttons have it: a link
+    -- into an open chat box, a try-on. Where it took the click, that is all.
+    local link = BV.LinkOf(kind)
+    if link and type(HandleModifiedItemClick) == "function" and HandleModifiedItemClick(link) then return end
+    -- It had nowhere to put a link: the game's split gesture (Shift) on a
+    -- tile in two mails or more that can be taken here asks how many, as
+    -- its bags do of a stack. Anything else is nothing, as before.
+    local split
+    if type(IsModifiedClick) == "function" then
+      split = IsModifiedClick("SPLITSTACK")
+    else
+      split = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
     end
+    if split and BV.Many.May(kind) then BV.Many.Open(kind) end
     return
   end
   -- Nothing can be taken from another character's box or from History;
