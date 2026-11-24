@@ -29,7 +29,7 @@
   a heading for everything under it. What is past twelve waits in the
   queue and goes as the next mail. A line's or a heading's tooltip lists
   the items first, and bound and quest items are left out.
-- **Mail tab: one bag.** The square button after Sort shows the list on
+- **Mail tab: one bag.** The pouch button after Sort shows the list on
   screen as a bag instead: one tile for each kind of item with its total
   across the mail shown, gold first, C.O.D. mail and mail the game has
   not listed yet under their own lines. A click on a tile takes every
@@ -61,13 +61,18 @@
   such as "45 more mails · the game lists 100 at a time", under the
   finished mail, and under it the mail Postbox already knows of, as gray
   rows: auctions noted at the auction house, and mail your last visit
-  listed. They are there to read, not to click; they come out as the
-  game lists them. A search finds them too. "90 of 135 shown" beside
-  Search is gone.
+  listed. Past the hundred auctions Postbox notes one by one it keeps a
+  count for each item, so the rest still shows: one gray row, or one gray
+  tile in the one-bag view, with the item's total. They are there to
+  read, not to click; they come out as the game lists them. A search
+  finds them too. "90 of 135 shown" beside Search is gone.
 - **Mail Memory: auctions are counted as they happen.** Each auction you
   win, sell, cancel or let run out is a row at once, with its item and,
-  where the game gives it, its price, and adds one to that character's
-  mail count.
+  where the game gives it, its price. A purchase, a win, an expiry or a
+  cancel adds one to that character's mail count at once; a sale adds one
+  when its gold lands, an hour after "A buyer has been found". Until
+  then its row says On its way, and the minimap icon's tooltip counts it
+  under On its way, so the icon's number is what the mailbox will hold.
 - **Mail tab: send back or delete a mail from its row.** Hold Alt and a
   return arrow shows in place of the read dot on every mail that can go
   back, and finished mail keeps its x: the Return and Delete marks.
@@ -101,9 +106,9 @@
 - **The mailbox window is a little wider:** 520 at its narrowest and by
   default, where it was 480, so auction labels and sums have room. A
   window you had narrower opens at 520, growing to the right.
-- **Mail tab: a sender's name that was cut gets room as you drag the
-  window wider.** The Subject still takes most of the added width; rows
-  whose names already fit do not move.
+- **Mail tab and Mail Memory: a sender's name that was cut gets room as
+  you drag the window wider.** The Subject still takes most of the added
+  width; rows whose names already fit do not move.
 - **Arrange > Gold column > Down to** (Gold, Silver, Copper): how far
   down a one-line row writes a sum under a thousand gold, as "8g",
   "8g 73s" or "8g 73s 12c". Silver by default on WoW Forever, Gold on
@@ -111,7 +116,8 @@
 - **Mail tab: a click where nothing can be taken says so.** In another
   character's box, in History and while searching every character, the
   mail or tile you click wears a small lock for a moment and the line at
-  the foot of the list lights, in the list and in the one-bag view.
+  the foot of the list lights, in the list and in the one-bag view. In
+  History the line says "Nothing to take here" under its own words.
 - **Mail tab: right-click the History button to leave History**, or
   right-click Received or Sent. You stay on the character you were
   looking at.
@@ -174,6 +180,10 @@
 
 ### Fixed
 
+- **Minimap icon: it stays put when the game's new-mail flag drops and
+  comes straight back** away from a mailbox, where the icon and its glow
+  could blink out for an instant. When mail is really gone the icon
+  leaves half a second later; at a mailbox it follows at once.
 - Send tab, Forever: while Blizzard has C.O.D. switched off, the C.O.D.
   box shows a lock and a gray label, and its tooltip says Blizzard has
   turned it off, with the game's own words, instead of letting a C.O.D.

@@ -133,7 +133,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   for the items that fit them, and a run that has reached the slots it
   keeps free goes on taking what fits one of those. When not everything
   fits, the run takes every mail that does, skipping one that does not.
-- **One bag:** the square button after Sort shows the list on screen as
+- **One bag:** the pouch button after Sort shows the list on screen as
   a bag: one tile for each kind of item with its total, gold first. A
   click takes every stack of that item as one collect run and leaves the
   rest of each mail; Shift-click asks how many (with a chat box open it
@@ -282,7 +282,8 @@ Most mail, Name or Last played.
 - **Auctions are counted as they happen:** each auction a character wins,
   sells, cancels or lets run out is a row in its box at once, with its
   item and, where the game gives it, its price, and counts as one mail
-  until the next mailbox visit lists the mail itself. A sold auction's
+  until the next mailbox visit lists the mail itself (a sale counts once
+  its gold lands, an hour later; until then it is On its way). A sold auction's
   row says the gold its mail will hold (the price less the cut, plus your
   deposit), with the price asked in its tooltip.
 - **One count everywhere:** Mail Memory, the character list, the minimap
