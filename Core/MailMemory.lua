@@ -3172,8 +3172,9 @@ end
 --
 -- Bounded: PENDING_MAX entries a character; past that the oldest is let go
 -- and counted on (`pendingMore`, `pendingMoreAt`), so the count stays every
--- auction noted. A visit to the mailbox settles them (A.Settle): the record
--- of the visit takes their place.
+-- auction noted, and what it was is kept in its item's tally (`over`, A.Over:
+-- a few numbers an item, never a record a mail). A visit to the mailbox
+-- settles them (A.Settle): the record of the visit takes their place.
 --
 -- Beside them, `up`: this character's auctions as they were posted, by
 -- auction id (the item, how many, the price asked; for an item's, its own
@@ -3350,6 +3351,8 @@ do
       local gone = table.remove(pending, 1)
       watch.pendingMore = (tonumber(watch.pendingMore) or 0) + 1
       watch.pendingMoreAt = math.max(tonumber(watch.pendingMoreAt) or 0, tonumber(gone and gone.t) or 0)
+      -- What it was stays told, in its item's tally (A.Over).
+      if gone then A.Over(watch, gone) end
     end
     pending[#pending + 1] = entry
     CharactersChanged()
@@ -3737,14 +3740,14 @@ do
   -- And for the mail remembered past the list (3c), told apart by it too.
   A.SubjectItem = SubjectItem
 
-  local function Count(set, kind, item)
+  local function Count(set, kind, item, n)
     if not (kind and item) then return end
     local byKind = set[kind]
     if not byKind then
       byKind = {}
       set[kind] = byKind
     end
-    byKind[item] = (byKind[item] or 0) + 1
+    byKind[item] = (byKind[item] or 0) + (n or 1)
   end
 
   local function Uncount(set, kind, item)
@@ -3763,7 +3766,108 @@ do
 
   local AUCTION_KINDS = { bought = true, sold = true, canceled = true, expired = true, auction = true }
 
-  function A.VisitBegan() Empty(taken) end
+  ---------------------------------------------------------
+  -- s33 tiles: the tallies past the cap.
+  --
+  -- A note let go past PENDING_MAX, or past UNLISTED_MAX at a visit's end,
+  -- is kept as a count in its item's tally, `over` beside `pending`, oldest
+  -- notes in it: one entry an outcome and item (the item's id where noted,
+  -- else its name), at most OVER_MAX a character, a new item past that only
+  -- counted (`pendingMore`) as before. An entry:
+  --   k, item, i, l, c   as a note's (the outcome, the item's name, id,
+  --                      link and own icon)
+  --   n     how many mails (one a note)
+  --   q     how many of the item they hold in all (a sale's: how many sold)
+  --   w     the most one of them holds, so a part gone can be held to what
+  --         can be true (A.Left)
+  --   m     copper, as a note's, summed; nil once any note had none or a part
+  --         is gone (the rest's is not known)
+  --   t, u  the oldest note's time and the newest's: the tally is let go
+  --         once its newest is as old as mail lives
+  -- Nothing in it names a mail: no sender's time, no expiry. Settled as the
+  -- notes are (A.SettleOver), and listed by the Mail tab as one gray row and
+  -- one gray tile an item (MM.Remembered).
+  ---------------------------------------------------------
+  local OVER_MAX = 40
+  -- Beside the counts of mails, the items they hold: of the mail taken
+  -- this visit, of what a visit listed, and of what the notes answered for.
+  local takenQ, listedQ, answered = {}, {}, {}
+
+  -- subject -> how many its trailing "(N)" says, else one.
+  function A.QtyOf(subject)
+    local n = type(subject) == "string" and tonumber((subject:match("%((%d+)%)%s*$"))) or nil
+    return (n and n > 0) and n or 1
+  end
+
+  -- watch, e (a note let go) -> into its item's tally, made where it has
+  -- none (and room is left).
+  function A.Over(watch, e)
+    if type(e) ~= "table" or not AUCTION_KINDS[e.k] or e.k == "auction" then return end
+    local id = tonumber(e.i)
+    local name = A.Name(e)
+    if not (id or name) then return end
+    local over = watch.over
+    if type(over) ~= "table" then
+      over = {}
+      watch.over = over
+    end
+    local found
+    for i = 1, #over do
+      local o = over[i]
+      if o.k == e.k then
+        local oid = tonumber(o.i)
+        if (id and oid) and id == oid or not (id and oid) and name ~= nil and A.Name(o) == name then
+          found = o
+          break
+        end
+      end
+    end
+    local n, t, m = tonumber(e.n) or 1, tonumber(e.t) or 0, tonumber(e.m)
+    if n < 1 then n = 1 end
+    if m and m <= 0 then m = nil end
+    if not found then
+      if #over >= OVER_MAX then return end
+      found = { k = e.k, item = name, i = id, l = e.l, c = e.c, n = 0, q = 0, w = 0, m = m, t = t, u = t }
+      over[#over + 1] = found
+    else
+      if found.m then found.m = m and (found.m + m) or nil end
+      if not found.i and id then found.i = id end
+      if not found.l and e.l then found.l = e.l end
+      if not found.c and e.c then found.c = e.c end
+      if t < (tonumber(found.t) or t) then found.t = t end
+      if t > (tonumber(found.u) or 0) then found.u = t end
+    end
+    found.n = (tonumber(found.n) or 0) + 1
+    found.q = (tonumber(found.q) or 0) + n
+    if n > (tonumber(found.w) or 0) then found.w = n end
+  end
+
+  -- over -> how many mails its tallies stand for.
+  function A.OverMails(over)
+    local sum = 0
+    for i = 1, #over do sum = sum + (tonumber(over[i].n) or 0) end
+    return sum
+  end
+
+  -- n mails holding q items, at most w in one; c of them gone, `est` of the
+  -- items gone by what was listed -> the items the rest hold: `est` held
+  -- to what can be true (each mail one item at least, w at most), so a
+  -- tally of one size a mail is exact whatever was listed.
+  function A.Left(n, q, w, c, est)
+    local rest = n - c
+    if rest <= 0 then return 0 end
+    if w < 1 then w = 1 end
+    local lo, hi = math.max(rest, q - c * w), math.min(q - c, rest * w)
+    if hi < lo then hi = lo end
+    local left = q - (est or c)
+    if left < lo then left = lo elseif left > hi then left = hi end
+    return left
+  end
+
+  function A.VisitBegan()
+    Empty(taken)
+    Empty(takenQ)
+  end
 
   -- A mail's first take this visit (MM.HistoryTook): noted only while this
   -- character has auctions noted to settle, so any other visit pays one
@@ -3772,17 +3876,126 @@ do
     if not AUCTION_KINDS[kind] then return end
     local realm, who = Me()
     local watch = WatchFor(realm, who, false)
-    if not (watch and (type(watch.pending) == "table" or type(watch.unlisted) == "table")) then return end
-    Count(taken, kind, SubjectItem(subject))
+    local over = watch and type(watch.over) == "table"
+    if not (watch and (type(watch.pending) == "table" or type(watch.unlisted) == "table" or over)) then return end
+    local item = SubjectItem(subject)
+    Count(taken, kind, item)
+    -- How many it held, for a tally's part gone (A.SettleOver).
+    if over then Count(takenQ, kind, item, A.QtyOf(subject)) end
   end
 
   -- e -> whether a mail the visit listed is this auction's: one of its kind
   -- and item, or one whose outcome the game never said ("auction") holding
-  -- that item. Each listed mail answers for one entry.
+  -- that item. Each listed mail answers for one entry (and so many items,
+  -- for the tallies: `answered`).
   local function Listed(e)
     local item = A.Name(e)
     if not item then return false end
-    return Uncount(seen, e.k, item) or Uncount(seen, "auction", item)
+    if Uncount(seen, e.k, item) or Uncount(seen, "auction", item) then
+      Count(answered, e.k, item, tonumber(e.n) or 1)
+      return true
+    end
+    return false
+  end
+
+  -- watch, snapshot, room, cutoff, filled -> the tallies settled against
+  -- the visit as its notes were (A.Settle, after them: the tallies are the
+  -- oldest notes, and a listed mail answers for the newest first), or nil
+  -- where none is left. With every mail listed (no room) all are let go;
+  -- one as old as mail lives is let go; of each, as many as the listed
+  -- mails of its kind and item that no note answered for go, and the items
+  -- they held by what was listed and taken (A.Left). `filled`: whether
+  -- A.Settle counted the visit's mails already.
+  function A.SettleOver(watch, snapshot, room, cutoff, filled)
+    local over = type(watch.over) == "table" and watch.over or nil
+    if not over then return nil end
+    if room <= 0 then
+      watch.over = nil
+      return nil
+    end
+    Empty(listedQ)
+    local mails = snapshot and type(snapshot.mails) == "table" and snapshot.mails or nil
+    for i = 1, mails and #mails or 0 do
+      local mail = mails[i]
+      if AUCTION_KINDS[mail.kind] then
+        local item = SubjectItem(mail.subject)
+        if not filled then Count(seen, mail.kind, item) end
+        if mail.kind ~= "auction" then Count(listedQ, mail.kind, item, A.QtyOf(mail.subject)) end
+      end
+    end
+    for kind, byKind in pairs(taken) do
+      for item, n in pairs(byKind) do
+        if not filled then Count(seen, kind, item, n) end
+      end
+    end
+    for kind, byKind in pairs(takenQ) do
+      for item, n in pairs(byKind) do Count(listedQ, kind, item, n) end
+    end
+    local write = 0
+    for i = 1, #over do
+      local o = over[i]
+      local n, item = tonumber(o.n) or 0, A.Name(o)
+      if n > 0 and item and (tonumber(o.u) or 0) > cutoff then
+        -- The mails of its kind the last visit left listed (`r`, A.OverStamp)
+        -- answered then: listed or taken again now, they answer for nothing.
+        local again = tonumber(o.r) or 0
+        local mine, any = seen[o.k], seen.auction
+        local c = ((mine and mine[item]) or 0) + ((any and any[item]) or 0) - again
+        if c > n then c = n end
+        for _ = 1, c do
+          if not Uncount(seen, o.k, item) then Uncount(seen, "auction", item) end
+        end
+        if c > 0 then
+          local q = tonumber(o.q) or n
+          local byKind, done = listedQ[o.k], answered[o.k]
+          local est = ((byKind and byKind[item]) or 0) - ((done and done[item]) or 0) - (tonumber(o.rq) or 0)
+          local left = A.Left(n, q, tonumber(o.w) or 1, c, est)
+          -- What this one answered for, should another tally be of its item.
+          Count(answered, o.k, item, q - left)
+          o.n, o.q, o.m = n - c, left, nil
+        end
+        if o.n > 0 then
+          write = write + 1
+          over[write] = o
+        end
+      end
+    end
+    for i = #over, write + 1, -1 do over[i] = nil end
+    if write == 0 then
+      watch.over = nil
+      return nil
+    end
+    return over
+  end
+
+  -- watch, snapshot -> each tally told how many mails of its kind the
+  -- visit's last look listed, and the items they held (`r`, `rq`): those
+  -- answered for notes at this visit, and stay in the box, so the next
+  -- visit, listing them again, cannot have them answer twice
+  -- (A.SettleOver).
+  function A.OverStamp(watch, snapshot)
+    local over = type(watch.over) == "table" and watch.over or nil
+    if not over then return end
+    -- Counted once a mail, into two of the visit's sets (both emptied as
+    -- the settle ends): mails in `answered`, items in `listedQ`.
+    Empty(answered)
+    Empty(listedQ)
+    local mails = snapshot and type(snapshot.mails) == "table" and snapshot.mails or nil
+    for j = 1, mails and #mails or 0 do
+      local mail = mails[j]
+      if AUCTION_KINDS[mail.kind] and mail.kind ~= "auction" then
+        local item = SubjectItem(mail.subject)
+        Count(answered, mail.kind, item)
+        Count(listedQ, mail.kind, item, A.QtyOf(mail.subject))
+      end
+    end
+    for i = 1, #over do
+      local o = over[i]
+      local item = A.Name(o)
+      local byN, byQ = answered[o.k], listedQ[o.k]
+      o.r = item and byN and byN[item] or nil
+      o.rq = item and byQ and byQ[item] or nil
+    end
   end
 
   -- watch, snapshot, now -> the auctions noted, settled against a visit
@@ -3843,13 +4056,27 @@ do
       for i = n, write + 1, -1 do pending[i] = nil end
       if write == 0 then watch.pending = nil end
     end
-    if kept and #kept > room then kept = nil end
+    -- The tallies past the cap, settled after the notes (A.SettleOver).
+    local over = A.SettleOver(watch, snapshot, room, cutoff, known ~= nil or pending ~= nil)
+    -- More than the server holds back: some are no longer true and nothing
+    -- says which. Where a tally stands, the notes join it (A.Over), so the
+    -- Mail tab can hold what it shows to what is certain (MM.Remembered,
+    -- R.Rows); else none is kept, as ever.
+    if kept and #kept + (over and A.OverMails(over) or 0) > room then
+      if over then
+        for i = 1, #kept do A.Over(watch, kept[i]) end
+      end
+      kept = nil
+    end
     if kept then
-      for _ = 1, #kept - UNLISTED_MAX do table.remove(kept, 1) end
+      for _ = 1, #kept - UNLISTED_MAX do A.Over(watch, table.remove(kept, 1)) end
     end
     watch.unlisted = kept
+    A.OverStamp(watch, snapshot)
     Empty(seen)
     Empty(taken)
+    Empty(takenQ)
+    Empty(answered)
   end
 
   -- realm, name -> the auctions known to be mail in that character's box
@@ -5562,7 +5789,8 @@ end
 -- of that kind goes first), and nothing ever adds one back. Nothing here
 -- counts, collects or is saved: a visit's rows are let go as it ends.
 -- Never shown past their date; the Mail tab shows none while they would
--- outnumber what the game says it holds back.
+-- outnumber what the game says it holds back, but for the rows of the
+-- tallies past the cap, which then show what is certain (R.Held).
 -------------------------------------------------------------
 MM.Remembered = {}
 do
@@ -5575,8 +5803,10 @@ do
   -- (`want`), and how many of each the last look listed (`last`; `now` is
   -- the look being read, the two swapped after it). Each a pair of maps:
   -- an auction's [outcome][item], any other mail's [sender][subject].
-  local function Pair() return { ah = {}, other = {} } end
-  local st = { started = false, rows = {}, gen = 0, want = Pair(), last = Pair(), now = Pair() }
+  -- `aq`: the items the listed mails of a tally's kind hold, [outcome][item]
+  -- (s33 tiles: only those kinds, `tk`, are counted there).
+  local function Pair() return { ah = {}, other = {}, aq = {} } end
+  local st = { started = false, rows = {}, gen = 0, want = Pair(), last = Pair(), now = Pair(), tk = {}, recq = {}, empty = {} }
   -- An auction subject's item (A.SubjectItem), kept by the subject: a look
   -- reads every listed mail's, and a run looks once a mail.
   local items, itemsN, ITEMS_MAX = {}, 0, 512
@@ -5630,7 +5860,11 @@ do
       if AH[kind] then
         if want.ah[kind] then
           local item = ItemOf(mail.subject)
-          if item and want.ah[kind][item] then Bump(pair.ah, kind, item) end
+          if item and want.ah[kind][item] then
+            Bump(pair.ah, kind, item)
+            local tk = st.tk[kind]
+            if tk and tk[item] then Bump(pair.aq, kind, item, R.Qty(mail.subject)) end
+          end
         end
       elseif kind ~= "auction" then
         local bySender = want.other[mail.sender]
@@ -5702,6 +5936,165 @@ do
       expires = expires, fate = fate, approx = false, days = 0, hay = false }
   end
 
+  ---------------------------------------------------------
+  -- s33 tiles: a tally's row.
+  --
+  -- The notes let go past the cap are kept as counts an item (2g, A.Over),
+  -- the oldest notes of all. Of a kind (outcome and item) with a tally,
+  -- the visit shows ONE row: the tally's mails left once the look's listed
+  -- mails of that kind have answered (the newest first, so the records
+  -- before the tally), with what remains of the records of that kind
+  -- folded into it. It names no mail: no time left, no sender's own; its
+  -- figures are counts (`n0` mails, `q0` items, `w` the most in one mail,
+  -- `m0` a sale's copper where every part of it is known), and what the
+  -- Mail tab shows of them is set by R.Show (the whole, or only what is
+  -- certain, R.Held).
+  ---------------------------------------------------------
+  -- subject -> how many its trailing "(N)" says (A.QtyOf), kept by the
+  -- subject as ItemOf keeps the item.
+  R.qtys, R.qtysN = {}, 0
+  function R.Qty(subject)
+    if type(subject) ~= "string" then return 1 end
+    local n = R.qtys[subject]
+    if not n then
+      local A = MM.Auctions
+      n = (A and A.QtyOf) and A.QtyOf(subject) or 1
+      if R.qtysN >= ITEMS_MAX then
+        for k in pairs(R.qtys) do R.qtys[k] = nil end
+        R.qtysN = 0
+      end
+      R.qtys[subject] = n
+      R.qtysN = R.qtysN + 1
+    end
+    return n
+  end
+
+  -- o (a tally, 2g), now -> its item's name, or nil for one that cannot be
+  -- told, holds nothing or is past its date.
+  function R.OverItem(o, now)
+    if type(o) ~= "table" or not AH[o.k] or (tonumber(o.n) or 0) <= 0 then return nil end
+    if now - (tonumber(o.u) or 0) >= MAIL_LIFE then return nil end
+    local A = MM.Auctions
+    return A and A.Name(o) or nil
+  end
+
+  -- o, n mails, q items, now, gen -> its row.
+  function R.OverRow(o, n, q, now, gen)
+    local kind, item = o.k, R.OverItem(o, now)
+    local template = _G[SUBJECT[kind]]
+    local subject = item
+    if type(template) == "string" then
+      local ok, text = pcall(string.format, template, item)
+      if ok and type(text) == "string" then subject = text end
+    end
+    local sold = (kind == "sold")
+    local w = tonumber(o.w) or 1
+    if w < 1 then w = 1 end
+    -- `note`: the tally, read (never written) by the bag view for the
+    -- item's id and link, as a note's (Core/BagView.lua).
+    return { src = kind, kind = kind, ah = true, a = kind, b = item, note = o, tally = true,
+      sender = L["MEMORY_FROM_AH"], subject = subject,
+      money = 0, cod = 0, price = nil,
+      items = sold and 0 or 1, quantity = 0, stacks = sold and 0 or 1, iconCount = 0,
+      read = false, icon = PendingIcon(o, gen),
+      expires = (tonumber(o.u) or now) + MAIL_LIFE, fate = nil, approx = true, days = nil, hay = false,
+      n0 = n, q0 = q, w = w, m0 = (sold and n == tonumber(o.n)) and tonumber(o.m) or nil, mails = n, times = q }
+  end
+
+  -- row (a tally's), cut -> its figures as the Mail tab shows them: the
+  -- whole, or `cut` mails fewer and the fewest items those can hold.
+  function R.Show(row, cut)
+    local q = row.q0
+    if cut > 0 then q = MM.Auctions.Left(row.n0, row.q0, row.w, cut, cut * row.w) end
+    local sold = (row.kind == "sold")
+    row.mails, row.times = row.n0 - cut, q
+    row.quantity = sold and 0 or q
+    row.iconCount = row.quantity
+    row.money = (cut == 0 and sold and row.m0) or 0
+  end
+
+  -- rows, c (a record the visit keeps) -> whether a tally's row of its kind
+  -- took it in: its id's where two are of one name.
+  function R.Fold(rows, c)
+    local into
+    for i = 1, #rows do
+      local row = rows[i]
+      if row.tally and row.a == c.a and row.b == c.b then
+        if not into then into = row end
+        local id = c.note and tonumber(c.note.i) or (c.seen and tonumber(c.seen.id))
+        if id and tonumber(row.note.i) == id then
+          into = row
+          break
+        end
+      end
+    end
+    if not into then return false end
+    local q = R.Qty(c.subject)
+    into.n0, into.q0 = into.n0 + 1, into.q0 + q
+    if q > into.w then into.w = q end
+    if into.m0 and (c.money or 0) > 0 then into.m0 = into.m0 + c.money else into.m0 = nil end
+    if c.expires > into.expires then into.expires = c.expires end
+    return true
+  end
+
+  -- over (watch.over), all, last, want, rows, cands, now, gen: at the first
+  -- look, after `all` counted them: each tally's row, as many of its mails
+  -- as the look's listed mails of its kind leave (the newest answer
+  -- first), and its items by what those listed mails held (A.Left).
+  function R.OverRows(over, all, last, want, rows, cands, now, gen)
+    local recq, tk = st.recq, st.tk
+    for _, m in pairs(recq) do
+      for k in pairs(m) do m[k] = nil end
+    end
+    for i = 1, #cands do
+      local c = cands[i]
+      local m = c.ah and tk[c.a]
+      if m and m[c.b] then Bump(recq, c.a, c.b, R.Qty(c.subject)) end
+    end
+    for i = 1, #over do
+      local o = over[i]
+      local item = R.OverItem(o, now)
+      if item then
+        local n = tonumber(o.n) or 0
+        local keep = Get(all.ah, o.k, item) - Get(last.ah, o.k, item) - Get(want.ah, o.k, item)
+        if keep > n then keep = n end
+        if keep > 0 then
+          Bump(want.ah, o.k, item, keep)
+          local q = tonumber(o.q) or n
+          local left = q
+          if keep < n then
+            local est = Get(last.aq, o.k, item) - Get(recq, o.k, item)
+            left = MM.Auctions.Left(n, q, tonumber(o.w) or 1, n - keep, est)
+            -- So much answered for, should another tally be of this item.
+            Bump(recq, o.k, item, q - left)
+          end
+          rows[#rows + 1] = R.OverRow(o, keep, left, now, gen)
+        end
+      end
+    end
+  end
+
+  -- over, all, now -> whether a tally stands: each counted into `all` as
+  -- its mails, and its kind marked (`tk`).
+  function R.CountOver(over, all, now)
+    local any = false
+    for i = 1, #over do
+      local o = over[i]
+      local item = R.OverItem(o, now)
+      if item then
+        Bump(all.ah, o.k, item, tonumber(o.n) or 0)
+        local m = st.tk[o.k]
+        if not m then
+          m = {}
+          st.tk[o.k] = m
+        end
+        m[item] = true
+        any = true
+      end
+    end
+    return any
+  end
+
   local function Oldest(x, y) return x.expires < y.expires end
   local function Newest(x, y) return x.expires > y.expires end
 
@@ -5733,13 +6126,16 @@ do
     if seen then
       for i = 1, #seen do cands[#cands + 1] = VisitRow(seen[i], now) end
     end
-    if #cands == 0 then return end
+    -- The tallies past the cap (2g, A.Over): the oldest notes of all.
+    local over = watch and type(watch.over) == "table" and watch.over[1] ~= nil and watch.over or nil
+    if #cands == 0 and not over then return end
     -- How many candidates of each kind, and how many of each the look lists.
     local all = Pair()
     for i = 1, #cands do
       local c = cands[i]
       Bump(c.ah and all.ah or all.other, c.a, c.b)
     end
+    if over and not R.CountOver(over, all, now) then over = nil end
     st.want = all
     Tally(mails, count, st.last)
     -- Of each kind, the oldest past what the look lists.
@@ -5747,12 +6143,14 @@ do
     local want = Pair()
     st.want = want
     local rows, last = st.rows, st.last
+    if over then R.OverRows(over, all, last, want, rows, cands, now, gen) end
     for i = 1, #cands do
       local c = cands[i]
       local half = c.ah and "ah" or "other"
       if Get(want[half], c.a, c.b) < Get(all[half], c.a, c.b) - Get(last[half], c.a, c.b) then
         Bump(want[half], c.a, c.b)
-        rows[#rows + 1] = c
+        -- Of a kind with a tally, in the tally's row (R.Fold).
+        if not (over and c.ah and R.Fold(rows, c)) then rows[#rows + 1] = c end
       end
     end
     if #rows == 0 then return end
@@ -5774,19 +6172,36 @@ do
     local gone = false
     for half, map in pairs(now) do
       local before = last[half]
-      for a, m in pairs(map) do
+      -- (`aq` holds items, read with its kind's mails below.)
+      for a, m in pairs(half ~= "aq" and map or st.empty) do
         for b, n in pairs(m) do
           local more = n - Get(before, a, b)
           local ah = (half == "ah")
+          -- Items listed more, for a tally's row (s33 tiles).
+          local est = ah and (Get(now.aq, a, b) - Get(last.aq, a, b)) or 0
           -- The newest of that kind first: the rows stand newest first.
           local i = 1
           while more > 0 and i <= #rows do
             local row = rows[i]
             if row.ah == ah and row.a == a and row.b == b then
-              table.remove(rows, i)
+              local take = 1
+              if row.tally then
+                -- A tally's row: so many of its mails fewer, and their
+                -- items by what was listed (A.Left).
+                take = (more < row.n0) and more or row.n0
+                local q = row.q0
+                row.q0 = MM.Auctions.Left(row.n0, q, row.w, take, est)
+                row.n0, row.m0 = row.n0 - take, nil
+                est = est - (q - row.q0)
+              end
+              if not row.tally or row.n0 <= 0 then
+                table.remove(rows, i)
+              else
+                i = i + 1
+              end
               local held = st.want[half][a]
-              if held and held[b] then held[b] = held[b] - 1 end
-              more = more - 1
+              if held and held[b] then held[b] = held[b] - take end
+              more = more - take
               gone = true
             else
               i = i + 1
@@ -5802,8 +6217,13 @@ do
   -- now -> the rows, newest first, their time left as of `now` (days, as a
   -- row reads it), and those past their date let go; and the mark that
   -- moves whenever the rows do. Read, never written, by the Mail tab.
+  -- now, more -> the rows, newest first, their time left as of `now` (days,
+  -- as a row reads it; a tally's row has none), and those past their date
+  -- let go; and the mark that moves whenever the rows do. With `more`, the
+  -- game's count of the mail it holds back, only the rows that count can
+  -- bear (R.Held). Read, never written, by the Mail tab.
   local NONE = {}
-  function R.Rows(now)
+  function R.Rows(now, more)
     local rows = st.rows
     -- Mail Memory switched off: Postbox remembers nothing.
     if rows[1] == nil or not MemoryEnabled() then return NONE, st.gen end
@@ -5813,11 +6233,54 @@ do
       if left <= 0 then
         table.remove(rows, i)
         st.gen = st.gen + 1
-      else
+      elseif not row.tally then
         row.days = left / 86400
       end
     end
-    return rows, st.gen
+    if not more then return rows, st.gen end
+    return R.Held(rows, more), st.gen
+  end
+
+  -- rows, more -> what of them stands under a line of `more` mails. Each
+  -- row claims a mail, a tally's its mails. Claiming no more than `more`:
+  -- all of them, as they are. Claiming more: some are no longer true (taken
+  -- elsewhere, returned, gone) and nothing says which, so no row naming one
+  -- mail stands; a tally's row stands for what is certain whichever they
+  -- are, its mails less the excess and the fewest items those can hold
+  -- (R.Show), and none where that leaves nothing. With no tally that is
+  -- none at all, as ever. Into one table, kept.
+  R.held = {}
+  function R.Held(rows, more)
+    local out = R.held
+    for i = #out, 1, -1 do out[i] = nil end
+    local claimed, tallies = 0, false
+    for i = 1, #rows do
+      local row = rows[i]
+      if row.tally then
+        claimed = claimed + row.n0
+        tallies = true
+      else
+        claimed = claimed + 1
+      end
+    end
+    if not tallies then
+      if claimed <= more then return rows end
+      return NONE
+    end
+    local cut = claimed - more
+    if cut < 0 then cut = 0 end
+    for i = 1, #rows do
+      local row = rows[i]
+      if row.tally then
+        if row.n0 > cut then
+          R.Show(row, cut)
+          out[#out + 1] = row
+        end
+      elseif cut == 0 then
+        out[#out + 1] = row
+      end
+    end
+    return out
   end
 
   -- A visit begins or ends: nothing of the last one is kept.
@@ -5828,6 +6291,9 @@ do
     Empty(st.want)
     Empty(st.last)
     Empty(st.now)
+    for _, m in pairs(st.tk) do
+      for k in pairs(m) do m[k] = nil end
+    end
     st.gen = st.gen + 1
   end
 end

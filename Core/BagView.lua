@@ -1370,6 +1370,9 @@ end
 function BV.TipMail(kind, i)
   local P, T, H = Parts(), Th(), ns.Helpers
   local where, count = kind.ref[i], kind.cnt[i]
+  -- A tally's row (Mail Memory, s33 tiles) names no mail: its count is in
+  -- the line above (BV.MailsOf).
+  if type(where) == "table" and where.tally then return end
   local who, days, age
   if type(where) == "number" then
     local _, _, sender, _, _, _, daysLeft = GetInboxHeaderInfo(where)
@@ -1392,6 +1395,17 @@ function BV.TipMail(kind, i)
     right = right .. P.RV.SLOT_DOT .. (short and T.TipTone("warning", left) or left)
   end
   GameTooltip:AddDoubleLine(who, right, 0.82, 0.82, 0.82, 1, 1, 1)
+end
+
+-- kind -> how many mails it is in: one a mail, and a tally's row (Mail
+-- Memory, s33 tiles) its mails.
+function BV.MailsOf(kind)
+  local sum = 0
+  for i = 1, kind.mails do
+    local where = kind.ref[i]
+    sum = sum + ((type(where) == "table" and where.tally and where.mails) or 1)
+  end
+  return sum
 end
 
 BV.FROM = { sold = "ROWS_REM_SOLD", bought = "ROWS_REM_BOUGHT", canceled = "ROWS_REM_CANCELED",
@@ -1484,7 +1498,8 @@ function BV.TileEnter(tile)
   T.TipBegin(tile)
   if kind.gold then
     T.TipTitle(L0["LABEL_GOLD"] .. H.FormatMoney(kind.n))
-    if kind.mails > 1 then T.TipLine(ns.Plural("COUNT_MAILS", kind.mails)) end
+    local mails = BV.MailsOf(kind)
+    if mails > 1 then T.TipLine(ns.Plural("COUNT_MAILS", mails)) end
   else
     BV.TipItem(kind)
     if kind.cod then
@@ -1493,7 +1508,7 @@ function BV.TileEnter(tile)
         T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(tonumber(cod))))
       end
     else
-      T.TipLine(L0("BAG_IN_MAILS", tostring(kind.n), ns.Plural("COUNT_MAILS", kind.mails)))
+      T.TipLine(L0("BAG_IN_MAILS", tostring(kind.n), ns.Plural("COUNT_MAILS", BV.MailsOf(kind))))
     end
   end
   if not kind.cod and (src ~= "inbox" or kind.sect.look == 2 or BV.Current()) then

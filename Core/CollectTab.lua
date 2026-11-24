@@ -8586,6 +8586,25 @@ do
     return MoneyText(hasCOD, moneyValue, codValue, m and m.price or nil, brief, nil, coins, ns.Theme.ROW)
   end
   function RV.REM.Invoice() end
+  -- A tally's row (Mail Memory, s33 tiles: the notes past the cap, an item
+  -- a row) -> its count where a row's slots stand, "× 265", or nil for any
+  -- other row. Made once a count and kept, bounded.
+  RV.times, RV.timesN = {}, 0
+  function RV.REM.Times(index)
+    local m = At(index)
+    if not (m and m.tally) then return nil end
+    local n = m.times or 0
+    local text = RV.times[n]
+    if text then return text end
+    if RV.timesN >= 64 then
+      for key in pairs(RV.times) do RV.times[key] = nil end
+      RV.timesN = 0
+    end
+    text = L()("ROWS_REM_TIMES", n)
+    RV.times[n] = text
+    RV.timesN = RV.timesN + 1
+    return text
+  end
 
   -- m -> its folded haystack, by the inbox's rule (Helpers.SearchHaystack):
   -- its sender, its outcome's words, its subject. Made once a row.
@@ -8607,6 +8626,8 @@ do
       numItems, totalItems, slotsMost)
     Clear(shown)
     panel._remExtra = 0
+    -- The widest "× 265" of a tally's row, for the slots column (s33 tiles).
+    panel._remSlotsW = 0
     local more = totalItems - numItems
     if more <= 0 or stuckOnly or panel._preview or view == VIEW_DONE or view == VIEW_HISTORY
         or AV.Active(panel) then
@@ -8615,16 +8636,15 @@ do
     local Memory = ns.MailMemory
     local remembered = Memory and Memory.Remembered
     if remembered then
-      local rows = remembered.Rows(time())
       -- Never more of them than the game says it holds back: then some are
-      -- no longer true and nothing says which.
-      if #rows <= more then
-        for k = 1, #rows do
-          local m = rows[k]
-          if (query == "" or Helpers().SearchFinds(RV.RemHay(m), query))
-              and (not show or RV.Shows(show, m.money, m.items, m.read)) then
-            shown[#shown + 1] = m
-          end
+      -- no longer true and nothing says which, and only what is certain of
+      -- a tally past the cap stands (Mail Memory, R.Held).
+      local rows = remembered.Rows(time(), more)
+      for k = 1, #rows do
+        local m = rows[k]
+        if (query == "" or Helpers().SearchFinds(RV.RemHay(m), query))
+            and (not show or RV.Shows(show, m.money, m.items, m.read)) then
+          shown[#shown + 1] = m
         end
       end
     end
@@ -8660,6 +8680,10 @@ do
         if kind == "earned" then on = showEarned elseif kind == "spent" then on = showSpent end
         if text and on then cols.money = max(cols.money, MeasureWith(panel, sample.ColMoney, text)) end
         if slotsOn then slotsMost = max(slotsMost, m.items) end
+        -- A tally's row says its count where the slots stand (RV.REM.Times).
+        if slotsOn and m.tally then
+          panel._remSlotsW = max(panel._remSlotsW, MeasureWith(panel, sample.ColSlots, RV.REM.Times(-k)))
+        end
         if timeOn then
           local expiry = RowExpiryText(m.days, hasCOD, nil, sample.ColTime, RV.REM, -k, m.money > 0 or m.items > 0)
           if expiry then
@@ -8787,7 +8811,8 @@ do
 
   -- row, owner -> a remembered row's tooltip (from RV.RowTip, or its
   -- icon's hover): its subject, that the game does not list it yet and
-  -- where Postbox knows it from, when it expires, and why it takes no click.
+  -- where Postbox knows it from, when it expires (a tally's: how many, in
+  -- how many mails), and why it takes no click.
   -- Built on hover, never on a bind.
   local FROM = { sold = "ROWS_REM_SOLD", bought = "ROWS_REM_BOUGHT", canceled = "ROWS_REM_CANCELED",
     expired = "ROWS_REM_EXPIRED", visit = "ROWS_REM_VISIT" }
@@ -8802,7 +8827,15 @@ do
     T.TipLine(L0["MINIMAP_TIP_UNLISTED"])
     local from = FROM[m.src]
     if from then T.TipLine(T.TipTone("muted", L0[from])) end
-    local left = m.expires - time()
+    -- A tally's row (s33 tiles) names no mail: how many, in how many
+    -- mails, and no time left.
+    if m.tally and m.kind == "sold" then
+      -- Its mails hold the gold, not the item.
+      T.TipLine(ns.Plural("COUNT_MAILS", m.mails or 0))
+    elseif m.tally then
+      T.TipLine(L0("BAG_IN_MAILS", tostring(m.times or 0), ns.Plural("COUNT_MAILS", m.mails or 0)))
+    end
+    local left = (not m.tally) and (m.expires - time()) or 0
     if left > 0 then
       local days = floor(left / 86400)
       local when
@@ -10417,6 +10450,9 @@ local function BindRow(panel, row, index, position, compact, done)
   -- The two-line row spells its figures out, with no column to say what a
   -- bare "4" counts, and the tooltip always has the words (below).
   local slots = (remaining > 0) and T.Colorize("textSecondary", RV.SlotsText(remaining, showSlots and compact), T.ROW) or nil
+  -- A tally's row (Mail Memory, s33 tiles) says its count there instead.
+  local times = (S == RV.REM) and RV.REM.Times(index) or nil
+  if times then slots = T.Colorize("textSecondary", times, T.ROW) end
 
   -- Time left is a warning, not a column: on the row only when it is short;
   -- in the tooltip whenever the row does not say it. A short mail that
@@ -14328,6 +14364,7 @@ function CT.RefreshMailList(panel)
   if slotsMost > 0 then
     cols.slots = RV.SlotsWidth(panel, sample.ColSlots, slotsMost)
   end
+  if (panel._remSlotsW or 0) > cols.slots then cols.slots = panel._remSlotsW end
   -- The arrange mode's Preview mail lists its samples in the inbox's place
   -- (RV.PreviewList). The walk above has still run: the counts it recorded
   -- stay the inbox's.

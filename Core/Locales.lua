@@ -1203,6 +1203,8 @@ L["ROWS_REM_ABOUT_HOURS_ONE"]  = "in about %d hour"
 L["ROWS_REM_ABOUT_HOURS_OTHER"] = "in about %d hours"
 L["ROWS_REM_HINT_WAIT"]        = "Can't be taken until the game lists it"
 L["ROWS_REM_HINT_ASK"]         = "Postbox asks for more after each collect run"
+-- s33 tiles: a count row's figure, where a row's slots stand
+L["ROWS_REM_TIMES"]            = "× %d"
 L["REPLY_PREFIX"]              = "Re: %s"
 
 -- Collection safety (server handshake / bag space)
@@ -2907,6 +2909,8 @@ if GetLocale() == "frFR" then
   L["ROWS_REM_ABOUT_HOURS_OTHER"] = "dans environ %d heures"
   L["ROWS_REM_HINT_WAIT"]        = "Ne peut pas être récupéré avant que le jeu l'affiche"
   L["ROWS_REM_HINT_ASK"]         = "Postbox en demande d'autres après chaque récupération"
+  -- s33 tiles: a count row's figure, where a row's slots stand
+  L["ROWS_REM_TIMES"]            = "× %d"
   L["REPLY_PREFIX"]              = "Re: %s"
   L["OPT_STYLE_TITLE"]           = "Style de la fenêtre"
   L["OPT_STYLE_BLIZZARD"]        = "Blizzard"
@@ -4167,6 +4171,8 @@ if GetLocale() == "deDE" then
   L["ROWS_REM_ABOUT_HOURS_OTHER"] = "in etwa %d Stunden"
   L["ROWS_REM_HINT_WAIT"]        = "Erst abholbar, wenn das Spiel ihn anzeigt"
   L["ROWS_REM_HINT_ASK"]         = "Postbox fragt nach jedem Abholen nach weiteren"
+  -- s33 tiles: a count row's figure, where a row's slots stand
+  L["ROWS_REM_TIMES"]            = "× %d"
   L["REPLY_PREFIX"]              = "Re: %s"
   L["CONTACT_FAVORITES"]         = "Favoriten"
   L["CONTACT_FAV_COUNT"]         = "%d in deinen Favoriten."
@@ -5551,6 +5557,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["ROWS_REM_ABOUT_HOURS_OTHER"] = "en aproximadamente %d horas"
   L["ROWS_REM_HINT_WAIT"]        = "No se puede recoger hasta que el juego lo muestre"
   L["ROWS_REM_HINT_ASK"]         = "Postbox pide más tras cada recogida"
+  -- s33 tiles: a count row's figure, where a row's slots stand
+  L["ROWS_REM_TIMES"]            = "× %d"
   L["REPLY_PREFIX"]              = "Re: %s"
   L["CONTACT_FAVORITES"]         = "Favoritos"
   L["CONTACT_FAV_COUNT"]         = "%d en tus favoritos."
@@ -7002,6 +7010,8 @@ L["ROWS_REM_ABOUT_HOURS_FEW"]  = "примерно через %d часа"
 L["ROWS_REM_ABOUT_HOURS_MANY"] = "примерно через %d часов"
 L["ROWS_REM_HINT_WAIT"]        = "Нельзя забрать, пока игра его не покажет"
 L["ROWS_REM_HINT_ASK"]         = "Postbox запрашивает ещё после каждого сбора"
+-- s33 tiles: a count row's figure, where a row's slots stand
+L["ROWS_REM_TIMES"]            = "× %d"
 L["REPLY_PREFIX"]              = "Re: %s"
 L["CONTACT_FAVORITES"]         = "Избранные"
 L["CONTACT_FAV_COUNT"]         = "%d в избранном."
@@ -8276,6 +8286,8 @@ if GetLocale() == "zhCN" then
   L["ROWS_REM_ABOUT_HOURS_OTHER"] = "约 %d 小时后"
   L["ROWS_REM_HINT_WAIT"]      = "游戏列出之前无法收取"
   L["ROWS_REM_HINT_ASK"]       = "每次收取后 Postbox 都会请求更多"
+  -- s33 tiles: a count row's figure, where a row's slots stand
+  L["ROWS_REM_TIMES"]          = "× %d"
   L["REPLY_PREFIX"]            = "回复：%s"
   L["MSG_MAIL_TIMEOUT"]        = "邮箱未及时响应。该操作可能尚未完成：请重新打开邮箱检查。"
   L["MSG_COD_PAID"]            = "已支付货到付款：%s。"
@@ -9637,6 +9649,8 @@ if GetLocale() == "zhTW" then
   L["ROWS_REM_ABOUT_HOURS_OTHER"] = "約 %d 小時後"
   L["ROWS_REM_HINT_WAIT"]      = "遊戲列出之前無法領取"
   L["ROWS_REM_HINT_ASK"]       = "每次領取後 Postbox 都會請求更多"
+  -- s33 tiles: a count row's figure, where a row's slots stand
+  L["ROWS_REM_TIMES"]          = "× %d"
   L["REPLY_PREFIX"]            = "回覆：%s"
   L["MSG_MAIL_TIMEOUT"]        = "信箱未即時回應。該操作可能尚未完成：請重新打開信箱檢查。"
   L["MSG_COD_PAID"]            = "已支付貨到付款：%s。"
