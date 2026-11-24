@@ -904,6 +904,10 @@ function BV.Refresh(panel)
   if panel.MailListArea:IsShown() then panel.MailListArea:Hide() end
   if not area:IsShown() then
     area:Show()
+    -- What the bag last drew is not held in place as it comes up, even
+    -- during a run: the mail may have changed while it was away, so it is
+    -- tallied anew from the list (BV.Build holds only a bag left up).
+    model.sn = 0
     local RV = Parts().RV
     RV.FanClose(true)
     -- Alt's marks belong to the list's rows: with the list out of sight
