@@ -357,6 +357,9 @@ local function CaptureNow()
     local Icon = ns.MinimapButton
     if Icon and Icon.MemoryChanged then Icon.MemoryChanged() end
   end
+  -- The mail remembered past the list, read against this look (3c).
+  local remembered = MM.Remembered
+  if remembered then remembered.Look(mails, count, totalItems) end
   if perfAt then perf.End("capture", perfAt) end
 end
 
@@ -3731,6 +3734,8 @@ do
     if type(item) ~= "string" then return nil end
     return (item:gsub("%s*%(%d+%)%s*$", ""))
   end
+  -- And for the mail remembered past the list (3c), told apart by it too.
+  A.SubjectItem = SubjectItem
 
   local function Count(set, kind, item)
     if not (kind and item) then return end
@@ -5518,6 +5523,290 @@ local function PendingRows(watch, arrived, from, snap)
     end
   end
   return out
+end
+
+-------------------------------------------------------------
+-- 3c. The mail remembered past the list
+--
+-- The game lists a page of the box and holds the rest back until it is
+-- asked again. Under its line for that rest, the Mail tab draws the mail of
+-- it Postbox can describe (CollectTab, RV.RemList): the auctions noted that
+-- no visit listed (2g, watch.unlisted), the auctions noted since the last
+-- visit, and the mail the last visit listed that still waits (Holds).
+--
+-- Worked out once a visit, at its first look, against what that look
+-- lists. Mail is told apart by an auction's outcome and item, or by any
+-- other mail's sender and subject (a "kind" below): of each kind, as many
+-- are remembered as the candidates outnumber the mails listed, the oldest
+-- of them. After that the rows only ever leave: a look that lists more of a
+-- kind than the look before stands for one of them listed now (the newest
+-- of that kind goes first), and nothing ever adds one back. Nothing here
+-- counts, collects or is saved: a visit's rows are let go as it ends.
+-- Never shown past their date; the Mail tab shows none while they would
+-- outnumber what the game says it holds back.
+-------------------------------------------------------------
+MM.Remembered = {}
+do
+  local R = MM.Remembered
+  local AH = { sold = true, bought = true, canceled = true, expired = true }
+  -- The game's own subject for each outcome, by its global's name.
+  local SUBJECT = { sold = "AUCTION_SOLD_MAIL_SUBJECT", bought = "AUCTION_WON_MAIL_SUBJECT",
+    canceled = "AUCTION_REMOVED_MAIL_SUBJECT", expired = "AUCTION_EXPIRED_MAIL_SUBJECT" }
+  -- The visit's rows, newest first; how many of each kind the rows hold
+  -- (`want`), and how many of each the last look listed (`last`; `now` is
+  -- the look being read, the two swapped after it). Each a pair of maps:
+  -- an auction's [outcome][item], any other mail's [sender][subject].
+  local function Pair() return { ah = {}, other = {} } end
+  local st = { started = false, rows = {}, gen = 0, want = Pair(), last = Pair(), now = Pair() }
+  -- An auction subject's item (A.SubjectItem), kept by the subject: a look
+  -- reads every listed mail's, and a run looks once a mail.
+  local items, itemsN, ITEMS_MAX = {}, 0, 512
+
+  local function ItemOf(subject)
+    if type(subject) ~= "string" then return nil end
+    local item = items[subject]
+    if item == nil then
+      local A = MM.Auctions
+      item = (A and A.SubjectItem and A.SubjectItem(subject)) or false
+      if itemsN >= ITEMS_MAX then
+        for k in pairs(items) do items[k] = nil end
+        itemsN = 0
+      end
+      items[subject] = item
+      itemsN = itemsN + 1
+    end
+    return item or nil
+  end
+
+  local function Bump(map, a, b, n)
+    local m = map[a]
+    if not m then
+      m = {}
+      map[a] = m
+    end
+    m[b] = (m[b] or 0) + (n or 1)
+  end
+
+  local function Get(map, a, b)
+    local m = map[a]
+    return m and m[b] or 0
+  end
+
+  local function Empty(pair)
+    for _, map in pairs(pair) do
+      for _, m in pairs(map) do
+        for k in pairs(m) do m[k] = nil end
+      end
+    end
+  end
+
+  -- The listed mails of a look, counted by kind into `pair`: only the kinds
+  -- the rows hold, so a look of mail none of them is makes nothing.
+  local function Tally(mails, count, pair)
+    Empty(pair)
+    local want = st.want
+    for i = 1, count do
+      local mail = mails[i]
+      local kind = mail.kind
+      if AH[kind] then
+        if want.ah[kind] then
+          local item = ItemOf(mail.subject)
+          if item and want.ah[kind][item] then Bump(pair.ah, kind, item) end
+        end
+      elseif kind ~= "auction" then
+        local bySender = want.other[mail.sender]
+        if bySender and bySender[mail.subject] then Bump(pair.other, mail.sender, mail.subject) end
+      end
+    end
+  end
+
+  -- e (an auction noted, 2g), now, gen -> its row, or nil for one that
+  -- cannot be told or is past its date. Its time left is the game's thirty
+  -- days from the notice: about, never exact.
+  local function NoteRow(e, now, gen)
+    local kind = e.k
+    if not AH[kind] then return nil end
+    local A = MM.Auctions
+    local item = A and A.Name(e)
+    local t = tonumber(e.t) or 0
+    if not item or now - t >= MAIL_LIFE then return nil end
+    local n = tonumber(e.n) or 1
+    local said = (n > 1) and (item .. " (" .. n .. ")") or item
+    local template = _G[SUBJECT[kind]]
+    local subject = said
+    if type(template) == "string" then
+      local ok, text = pcall(string.format, template, said)
+      if ok and type(text) == "string" then subject = text end
+    end
+    local sum = tonumber(e.m)
+    if sum and sum <= 0 then sum = nil end
+    local slots = (kind ~= "sold") and (A.Slots(e) or 1) or 0
+    return { src = kind, kind = kind, ah = true, a = kind, b = item,
+      sender = L["MEMORY_FROM_AH"], subject = subject,
+      money = (kind == "sold") and sum or 0, cod = 0, price = (kind == "bought") and sum or nil,
+      items = slots, quantity = (slots > 0) and n or 0, stacks = (slots > 0) and 1 or 0,
+      iconCount = (slots > 0) and n or 0, read = false, icon = PendingIcon(e, gen),
+      expires = t + MAIL_LIFE, fate = nil, approx = true, days = 0, hay = false }
+  end
+
+  -- mail (one of the last visit's look), now -> its row, or nil for mail
+  -- that no longer waits, or that cannot be told (an auction's mail whose
+  -- subject never came).
+  local function VisitRow(mail, now)
+    if type(mail) ~= "table" or not Holds(mail, now) then return nil end
+    local expires = tonumber(mail.expires) or 0
+    if expires <= now then return nil end
+    local kind = mail.kind or "other"
+    local a, b, ah
+    if AH[kind] then
+      a, b, ah = kind, ItemOf(mail.subject), true
+      if not b then return nil end
+    elseif kind == "auction" then
+      return nil
+    else
+      a, b, ah = tostring(mail.sender or ""), tostring(mail.subject or ""), false
+    end
+    local slots = tonumber(mail.items) or 0
+    local first = tonumber(mail.count) or 1
+    local fate = nil
+    if mail.back == true then fate = "back" elseif mail.back == false then fate = "gone" end
+    return { src = "visit", kind = kind, ah = ah, a = a, b = b,
+      sender = tostring(mail.sender or ""), subject = tostring(mail.subject or ""),
+      money = tonumber(mail.money) or 0, cod = tonumber(mail.cod) or 0, price = tonumber(mail.paid) or nil,
+      items = slots, quantity = (slots == 1) and first or 0, stacks = slots,
+      iconCount = (slots > 0) and first or 0, read = mail.read and true or false,
+      icon = mail.icon or "Interface\\Icons\\INV_Letter_02",
+      expires = expires, fate = fate, approx = false, days = 0, hay = false }
+  end
+
+  local function Oldest(x, y) return x.expires < y.expires end
+  local function Newest(x, y) return x.expires > y.expires end
+
+  -- The Mail tab, told the rows moved: it lists them again once.
+  local function Tell()
+    st.gen = st.gen + 1
+    local UI = ns.MailboxUI
+    local panel = UI and UI._frame and UI._frame.Tabs and UI._frame.Tabs.collect
+    local CT = ns.CollectTab
+    if panel and CT and CT.RequestRefresh then CT.RequestRefresh(panel) end
+  end
+
+  -- The first look of a visit: the rows, from the candidates.
+  local function Begin(mails, count, total)
+    if total <= count or not MemoryEnabled() then return end
+    local realm, name = Me()
+    local now = time()
+    local gen = MM.PostsGen and MM.PostsGen() or 0
+    local cands = {}
+    local watch = WatchFor(realm, name, false)
+    local known = watch and type(watch.unlisted) == "table" and watch.unlisted or nil
+    if known then
+      for i = 1, #known do cands[#cands + 1] = NoteRow(known[i], now, gen) end
+    end
+    local pending = LivePending(watch, now)
+    for i = 1, #pending do cands[#cands + 1] = NoteRow(pending[i], now, gen) end
+    local snapshot = StoredSnapshot()
+    local seen = snapshot and type(snapshot.mails) == "table" and snapshot.mails or nil
+    if seen then
+      for i = 1, #seen do cands[#cands + 1] = VisitRow(seen[i], now) end
+    end
+    if #cands == 0 then return end
+    -- How many candidates of each kind, and how many of each the look lists.
+    local all = Pair()
+    for i = 1, #cands do
+      local c = cands[i]
+      Bump(c.ah and all.ah or all.other, c.a, c.b)
+    end
+    st.want = all
+    Tally(mails, count, st.last)
+    -- Of each kind, the oldest past what the look lists.
+    table.sort(cands, Oldest)
+    local want = Pair()
+    st.want = want
+    local rows, last = st.rows, st.last
+    for i = 1, #cands do
+      local c = cands[i]
+      local half = c.ah and "ah" or "other"
+      if Get(want[half], c.a, c.b) < Get(all[half], c.a, c.b) - Get(last[half], c.a, c.b) then
+        Bump(want[half], c.a, c.b)
+        rows[#rows + 1] = c
+      end
+    end
+    if #rows == 0 then return end
+    table.sort(rows, Newest)
+    Tell()
+  end
+
+  -- mails, count, total: a look of the visit (CaptureNow), its mails and
+  -- the game's count of the whole box.
+  function R.Look(mails, count, total)
+    if not st.started then
+      st.started = true
+      return Begin(mails, count, total)
+    end
+    local rows = st.rows
+    if #rows == 0 then return end
+    local now, last = st.now, st.last
+    Tally(mails, count, now)
+    local gone = false
+    for half, map in pairs(now) do
+      local before = last[half]
+      for a, m in pairs(map) do
+        for b, n in pairs(m) do
+          local more = n - Get(before, a, b)
+          local ah = (half == "ah")
+          -- The newest of that kind first: the rows stand newest first.
+          local i = 1
+          while more > 0 and i <= #rows do
+            local row = rows[i]
+            if row.ah == ah and row.a == a and row.b == b then
+              table.remove(rows, i)
+              local held = st.want[half][a]
+              if held and held[b] then held[b] = held[b] - 1 end
+              more = more - 1
+              gone = true
+            else
+              i = i + 1
+            end
+          end
+        end
+      end
+    end
+    st.now, st.last = last, now
+    if gone then Tell() end
+  end
+
+  -- now -> the rows, newest first, their time left as of `now` (days, as a
+  -- row reads it), and those past their date let go; and the mark that
+  -- moves whenever the rows do. Read, never written, by the Mail tab.
+  local NONE = {}
+  function R.Rows(now)
+    local rows = st.rows
+    -- Mail Memory switched off: Postbox remembers nothing.
+    if rows[1] == nil or not MemoryEnabled() then return NONE, st.gen end
+    for i = #rows, 1, -1 do
+      local row = rows[i]
+      local left = row.expires - now
+      if left <= 0 then
+        table.remove(rows, i)
+        st.gen = st.gen + 1
+      else
+        row.days = left / 86400
+      end
+    end
+    return rows, st.gen
+  end
+
+  -- A visit begins or ends: nothing of the last one is kept.
+  function R.Reset()
+    st.started = false
+    local rows = st.rows
+    for i = #rows, 1, -1 do rows[i] = nil end
+    Empty(st.want)
+    Empty(st.last)
+    Empty(st.now)
+    st.gen = st.gen + 1
+  end
 end
 
 -- For the minimap tooltip's "arrived" section: what the notifications named,
@@ -8215,6 +8504,9 @@ function MM.DataCleared()
   MM.HistoryChanged()
   MM.SentChanged()
   MM.ClosePicker()
+  -- The mail remembered past the Mail tab's list was read from those
+  -- records: let go, and read again at the next look from what is left (3c).
+  MM.Remembered.Reset()
   local frame = MM._frame
   if not frame then return end
   frame.viewing = nil
@@ -8577,6 +8869,8 @@ local function OnMailboxClosed()
   local perfAt = perf and perf.visit and perf.Mark()
   PersistOnClose()
   if perfAt then perf.ClosePart("memory", perfAt) end
+  -- The visit's remembered rows go with it (3c).
+  MM.Remembered.Reset()
 end
 
 -- The real mailbox supersedes its memory: the moment a mail session opens,
@@ -8585,8 +8879,10 @@ end
 local function OnMailboxOpened()
   local frame = MM._frame
   if frame and frame:IsShown() then frame:Hide() end
-  -- A visit begins: nothing has been taken in it yet (2g).
+  -- A visit begins: nothing has been taken in it yet (2g), and nothing is
+  -- remembered past its list until its first look (3c).
   MM.Auctions.VisitBegan()
+  MM.Remembered.Reset()
 end
 
 -- Registration results surface in Diagnose (`registered`, declared in
