@@ -7654,6 +7654,13 @@ local function BuildRow(panel)
     -- mail loses nothing.
     local index = RV.Acting(parent)
     if not index then return end
+    -- While the marks show it is a mark's delete: none under 0.4 s after
+    -- the last return or delete (RV.Marks.Calm).
+    local marks = RV.Marks
+    if marks.goal == 1 then
+      if marks.Calm() then return end
+      marks.actAt = GetTime()
+    end
     DeleteOneMail(parent.panel, index, parent.fingerprint)
   end)
 
@@ -8963,6 +8970,10 @@ do
     -- The fade in and out (the fan's), a tap's longest press and the
     -- longest wait for the second, the faded x's share of its ink.
     IN = 0.15, OUT = 0.09, TAP = 0.3, FADED = 0.5,
+    -- After a mark's return or delete, how long a further one does nothing
+    -- (the list bound again under a still pointer shows the next mail), and
+    -- when the last was sent.
+    CALM = 0.4, actAt = nil,
     -- The arrow's art, in units: on one-line rows and on two-line rows.
     SIZE = 9, SIZE_LARGE = 12,
     -- The light on the row under the pointer (f57 B01 "tone"): its alpha at
@@ -9526,7 +9537,7 @@ do
     if M.goal ~= 1 then return end
     -- Only once the marks are fully in: a click already on its way as
     -- Alt went down does nothing.
-    if M.p < 1 then return end
+    if M.p < 1 or M.Calm() then return end
     if RV.Arranging(panel) or CT.IsRunning() then return end
     local index = RV.Acting(row)
     if not index then return end
@@ -9534,6 +9545,7 @@ do
     local holds = (tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0
     if not RV.Offers(index, (tonumber(cod) or 0) > 0, holds, wasRead) then return end
     M.Used()
+    M.actAt = GetTime()
     GameTooltip:Hide()
     RV.ReturnOne(panel, index, row.fingerprint, Mail().Stamp(), Mail().FirstItem(index))
   end
@@ -9558,10 +9570,18 @@ do
     end
     if button == "LeftButton" then
       if row._mkKind == "back" and not row.mailDone then M.ReturnRow(row) end
-    elseif button == "RightButton" and row.mailDone then
+    elseif button == "RightButton" and row.mailDone and not M.Calm() then
+      M.actAt = GetTime()
       DeleteOneMail(row.panel, index, row.fingerprint)
     end
     return true
+  end
+
+  -- Whether a mark's return or delete was sent under CALM ago: a further
+  -- one does nothing yet (one time kept and compared; no timer).
+  function M.Calm()
+    local at = M.actAt
+    return at ~= nil and GetTime() - at < M.CALM
   end
 
   -- row -> what its click does while the marks show: "back" (a click
