@@ -1444,10 +1444,11 @@ function BV.TipHints(kind)
       if kind.free > 0 then T.TipHint(L0("BAG_HINT_TAKE", kind.freeN)) end
       T.TipHint(mailsHint)
       -- In two mails or more a Shift-click with no chat box open asks how
-      -- many (BV.Many); the link's line stays where there is a try-on to say.
+      -- many (BV.Many), and links with one open: one line says both, and
+      -- the try-on has a line of its own.
       if BV.Many.Steps(kind) >= 2 then
         T.TipHint(L0["BAG_HINT_MANY"])
-        if dress then T.TipHint(linkHint) end
+        if dress then T.TipHint(L0["BAG_HINT_TRY_ON"]) end
       else
         T.TipHint(linkHint)
       end
