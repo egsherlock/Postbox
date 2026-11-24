@@ -706,9 +706,12 @@ function BV.Bind()
       head:ClearAllPoints()
       head:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -s.y)
       head:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -s.y)
-      if s.rem then
-        -- On the look's ground for such a line where it has one, the words
-        -- in its one ink; the hairline is the ground's then.
+      do
+        -- On the look's ground for a line of words where it has one (the
+        -- Blizzard look's gold-edged note, Theme.LineGround, on its page):
+        -- the words in the ground's one ink, a C.O.D. line's price still in
+        -- its own, and the hairline the ground's. Asked for every line at
+        -- every bind, so a line follows Row texture to None and back.
         local T = Th()
         local grounded = T.LineGround and T.LineGround(head) or false
         if head.grounded ~= grounded then
@@ -794,6 +797,12 @@ end
 function BV.Apply(panel)
   local m = model
   local scroll, child, area = BV.scroll, BV.child, BV.area
+  -- One sheet of the look's paper under the whole bag where the look has
+  -- one for it (Theme.PageGround: the Blizzard look, Row texture Light or
+  -- Dark). On one page the part not listed yet cannot stand on dimmer
+  -- paper than the rest, so its tiles alone carry the gray.
+  local page = Th().PageGround
+  BV.paged = page and page(area) or false
   local height = max(m.height, 1)
   local most = max(0, m.height - (scroll:GetHeight() or 0))
   if (scroll:GetVerticalScroll() or 0) > most then scroll:SetVerticalScroll(most) end

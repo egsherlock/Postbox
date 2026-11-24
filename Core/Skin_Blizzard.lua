@@ -4349,6 +4349,7 @@ do
     T.ListGround = Skin.ListGround
     T.NoteGround = Skin.NoteGround
     T.LineGround = Skin.LineGround
+    T.PageGround = Skin.PageGround
     T.RuleGround = Skin.RuleGround
     T.RowQuiet = Skin.RowQuiet
     -- The game's UI scale or the screen moved: the papered rows laid again
@@ -5024,6 +5025,17 @@ do
 
   function Parts.MessageGrounds()
     for wrap in pairs(grounds) do Parts.MessageGround(wrap) end
+  end
+
+  -- Theme.PageGround: one sheet of the paper under a whole frame, inside
+  -- its bevel, as the Send tab's Message box has, and by the same hand
+  -- (Parts.MessageGround, which lays it again when Row texture changes):
+  -- the Mail tab's bag (Core/BagView.lua), whose tiles stand on one page.
+  -- Light and Dark are the paper at each one's value; None is no sheet,
+  -- the dark list. -> whether a sheet is laid.
+  function Skin.PageGround(frame)
+    Parts.MessageGround(frame)
+    return R.mode ~= "none"
   end
 
   -- The setting changed (Options > Window): the inks put in force and every
