@@ -13305,6 +13305,17 @@ function RV.ContentHeight(panel, listed, stride)
 end
 
 local function UpdateVisibleRows(panel)
+  -- While the bag is drawn in the list's place (Core/BagView.lua) the list
+  -- is out of sight and its rows are not bound: the bag binds them once as
+  -- the list comes back (BV.Refresh, CT.RebindRows). Only the stride is
+  -- kept, which a scroll offset is read against (CT.ApplyRowLayout).
+  local Bag = ns.BagView
+  if Bag and Bag.Active(panel) then
+    local _, _, stride = RowMetrics()
+    if AV.Active(panel) or panel.viewMode == VIEW_HISTORY then stride = COMPACT_ROW_HEIGHT + ROW_GAP end
+    panel._rowStride = stride
+    return
+  end
   -- Timed, with the rows it binds, while an open is being measured
   -- (Postbox.lua, 5b); nil otherwise.
   local perf = ns.Perf
