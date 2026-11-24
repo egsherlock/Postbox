@@ -1618,6 +1618,8 @@ function ErrorWatch.Open()
     local f = CreateFrame("Frame")
     f:SetScript("OnEvent", function(_, _, a1, a2)
       if not ErrorWatch.active then return end
+      -- Words the game keeps secret cannot be compared or kept: not ours.
+      if issecretvalue and (issecretvalue(a1) or issecretvalue(a2)) then return end
       -- Retail passes (errorType, message); older signatures pass the message
       -- alone. Take whichever argument is the string.
       local msg = (type(a2) == "string" and a2) or (type(a1) == "string" and a1) or nil

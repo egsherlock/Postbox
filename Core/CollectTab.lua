@@ -16592,10 +16592,12 @@ do
   RV.DeleteWatch = W
 
   function W.OnEvent(_, _, a1, a2)
+    -- Words the game keeps secret are not ours: looked at before anything
+    -- tests them.
+    if issecretvalue and (issecretvalue(a1) or issecretvalue(a2)) then return end
     -- Retail passes (errorType, message); older clients the message alone.
     local said = (type(a2) == "string" and a2) or (type(a1) == "string" and a1) or nil
     if not said then return end
-    if issecretvalue and issecretvalue(said) then return end
     if said == _G["ERR_MAIL_DELETE_ITEM_ERROR"] then W.heard = true end
   end
 
