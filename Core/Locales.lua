@@ -1017,6 +1017,8 @@ L["MINIMAP_TIP_STUCK"]         = "Stuck"
 L["MINIMAP_TIP_UNLISTED"]      = "Not listed by the game yet"
 L["MINIMAP_TIP_UNLISTED_WHY"]  = "The game lists 100 mails at a time."
 L["MINIMAP_TIP_DONE"]          = "Done (empty)"
+-- s33 mmcount
+L["MEMORY_ON_WAY"]             = "On its way"
 L["MINIMAP_TIP_MAILBOX"]       = "%s's mailbox"
 L["MINIMAP_TIP_SEEN"]          = "Last seen"
 L["OPT_MINIMAP_GLOW_TITLE"]    = "Glow"
@@ -2710,6 +2712,8 @@ if GetLocale() == "frFR" then
   L["MINIMAP_TIP_UNLISTED"]      = "Pas encore affichés par le jeu"
   L["MINIMAP_TIP_UNLISTED_WHY"]  = "Le jeu affiche 100 courriers à la fois."
   L["MINIMAP_TIP_DONE"]          = "Terminé (vide)"
+  -- s33 mmcount
+  L["MEMORY_ON_WAY"]             = "En route"
   L["MINIMAP_TIP_MAILBOX"]       = "Boîte aux lettres : %s"
   L["MINIMAP_TIP_SEEN"]          = "Vu"
   L["OPT_MINIMAP_GLOW_TITLE"]    = "Halo"
@@ -3972,6 +3976,8 @@ if GetLocale() == "deDE" then
   L["MINIMAP_TIP_UNLISTED"]      = "Vom Spiel noch nicht angezeigt"
   L["MINIMAP_TIP_UNLISTED_WHY"]  = "Das Spiel zeigt 100 Briefe auf einmal an."
   L["MINIMAP_TIP_DONE"]          = "Erledigt (leer)"
+  -- s33 mmcount
+  L["MEMORY_ON_WAY"]             = "Unterwegs"
   L["MINIMAP_TIP_MAILBOX"]       = "Briefkasten von %s"
   L["MINIMAP_TIP_SEEN"]          = "Zuletzt gesehen"
   L["OPT_MINIMAP_GLOW_TITLE"]    = "Leuchten"
@@ -5358,6 +5364,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MINIMAP_TIP_UNLISTED"]      = "Aún no mostrados por el juego"
   L["MINIMAP_TIP_UNLISTED_WHY"]  = "El juego muestra 100 correos a la vez."
   L["MINIMAP_TIP_DONE"]          = "Hecho (vacío)"
+  -- s33 mmcount
+  L["MEMORY_ON_WAY"]             = "En camino"
   L["MINIMAP_TIP_MAILBOX"]       = "Buzón de %s"
   L["MINIMAP_TIP_SEEN"]          = "Visto"
   L["OPT_MINIMAP_GLOW_TITLE"]    = "Brillo"
@@ -6804,6 +6812,8 @@ L["MINIMAP_TIP_STUCK"]         = "Застряло"
 L["MINIMAP_TIP_UNLISTED"]      = "Ещё не показаны игрой"
 L["MINIMAP_TIP_UNLISTED_WHY"]  = "Игра показывает по 100 писем за раз."
 L["MINIMAP_TIP_DONE"]          = "Готово (пусто)"
+-- s33 mmcount
+L["MEMORY_ON_WAY"]             = "В пути"
 L["MINIMAP_TIP_MAILBOX"]       = "Почтовый ящик: %s"
 L["MINIMAP_TIP_SEEN"]          = "Просмотрено"
 L["OPT_MINIMAP_GLOW_TITLE"]    = "Свечение"
@@ -8146,6 +8156,8 @@ if GetLocale() == "zhCN" then
   L["MINIMAP_TIP_UNLISTED"]     = "游戏尚未列出"
   L["MINIMAP_TIP_UNLISTED_WHY"] = "游戏每次列出 100 封邮件。"
   L["MINIMAP_TIP_DONE"]         = "完成（空）"
+  -- s33 mmcount
+  L["MEMORY_ON_WAY"]            = "在途中"
   L["MINIMAP_TIP_MAILBOX"]      = "%s的邮箱"
   L["MINIMAP_TIP_SEEN"]         = "上次查看"
   L["OPT_MINIMAP_GLOW_TITLE"]  = "光晕"
@@ -9509,6 +9521,8 @@ if GetLocale() == "zhTW" then
   L["MINIMAP_TIP_UNLISTED"]     = "遊戲尚未列出"
   L["MINIMAP_TIP_UNLISTED_WHY"] = "遊戲每次列出 100 封郵件。"
   L["MINIMAP_TIP_DONE"]         = "完成（空）"
+  -- s33 mmcount
+  L["MEMORY_ON_WAY"]            = "在途中"
   L["MINIMAP_TIP_MAILBOX"]      = "%s的信箱"
   L["MINIMAP_TIP_SEEN"]         = "上次查看"
   L["OPT_MINIMAP_GLOW_TITLE"]  = "光暈"

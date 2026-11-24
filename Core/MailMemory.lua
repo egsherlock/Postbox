@@ -692,14 +692,40 @@ do
   end
 end
 
+-- s33 mmcount. A sale is mail only once its gold lands: the auction house
+-- sends it SALE_LANDS after the sale (an hour, on Retail and on WoW
+-- Forever), where a purchase, an expiry and a cancel send theirs at once.
+-- Until then the sale's note (2g) is "on its way": in no count, said apart
+-- where there is room (the minimap tooltip's On its way, Mail Memory's row).
+-- Read from the note's own time at each reading, so nothing runs for it;
+-- the minimap icon arms one timer for the next landing while it is up
+-- (MM.NextLanding). A visit that lists its mail settles it sooner (A.Settle).
+MM.SALE_LANDS = 3600
+-- The soonest landing the last count read saw, or false (MM.NextLanding).
+MM._landNext = false
+
+-- e, now -> whether a noted auction is a sale whose gold has not landed yet.
+function MM.OnItsWay(e, now)
+  if e.k ~= "sold" then return false end
+  local lands = (tonumber(e.t) or 0) + MM.SALE_LANDS
+  if lands <= now then return false end
+  local soonest = MM._landNext
+  if not soonest or lands < soonest then MM._landNext = lands end
+  return true
+end
+
 -- The notifications' rows still describing mail that exists: an auction's
--- mail lands within the hour and lives thirty days.
-local function LivePending(watch, now)
+-- mail lands within the hour and lives thirty days. `landed`: only the
+-- ones that are mail by now (a sale on its way left out).
+local function LivePending(watch, now, landed)
   local out = {}
   local pending = watch and type(watch.pending) == "table" and watch.pending or {}
-  local cutoff = (now or time()) - MAIL_LIFE
+  now = now or time()
+  local cutoff = now - MAIL_LIFE
   for i = 1, #pending do
-    if (tonumber(pending[i].t) or 0) > cutoff then out[#out + 1] = pending[i] end
+    if (tonumber(pending[i].t) or 0) > cutoff and not (landed and MM.OnItsWay(pending[i], now)) then
+      out[#out + 1] = pending[i]
+    end
   end
   return out
 end
@@ -707,18 +733,22 @@ end
 -- How many LivePending would list, by its rule, without the list: the
 -- character list counts every character's. And the ones the list let go to
 -- stay bounded (2g, `pendingMore`: how many, and when the newest of them
--- came), so the count is every auction noted, however many.
+-- came), so the count is every auction noted, however many. Second: the
+-- sales of those still on their way, which the first leaves out.
 local function LivePendingCount(watch, now)
   local pending = watch and type(watch.pending) == "table" and watch.pending or nil
-  if not pending then return 0 end
+  if not pending then return 0, 0 end
   local cutoff = now - MAIL_LIFE
-  local count = 0
+  local count, onWay = 0, 0
   for i = 1, #pending do
-    if (tonumber(pending[i].t) or 0) > cutoff then count = count + 1 end
+    local e = pending[i]
+    if (tonumber(e.t) or 0) > cutoff then
+      if MM.OnItsWay(e, now) then onWay = onWay + 1 else count = count + 1 end
+    end
   end
   local more = tonumber(watch.pendingMore)
   if more and more > 0 and (tonumber(watch.pendingMoreAt) or 0) > cutoff then count = count + more end
-  return count
+  return count, onWay
 end
 
 -- Mail the server holds past what it listed at the last look: `total`, the
@@ -815,7 +845,9 @@ end
 --   stuck      of those, the ones the server refused
 --   finished   mails in its snapshot still in date, read and holding nothing
 --   unlisted   mail the server held past what the visit listed (Unlisted)
---   pending    the auctions noted since the visit, one each (2g), and `sent`
+--   pending    the auctions noted since the visit, one each (2g), and `sent`;
+--              a sale only once its gold has landed (MM.OnItsWay)
+--   onWay      the sales noted whose gold has not landed yet: in no count
 --   sent       the mail Postbox sent it from another character since
 --              (MM.SentSince; never on the character being played)
 --   collect    the mail to collect: waiting + unlisted + pending
@@ -842,7 +874,7 @@ local function Status(realm, name, now, look, st)
     st.realm, st.name, st.waiting, st.pending, st.sent = realm, name, 0, 0, 0
     st.soon, st.soonest, st.held, st.unseenDays, st.warn = nil, nil, nil, nil, false
     st.gone, st.goneSoonest, st.goneText, st.uncounted = nil, nil, nil, false
-    st.stuck, st.finished = 0, 0
+    st.stuck, st.finished, st.onWay = 0, 0, 0
   else
     -- Every field it will carry, here and in MM.Characters, named at once so
     -- the table is sized once rather than grown twice; the ones left nil are
@@ -851,7 +883,7 @@ local function Status(realm, name, now, look, st)
       soon = nil, soonest = nil, held = nil, pending = 0, sent = 0, uncounted = false, unseenDays = nil, warn = false,
       gone = nil, goneSoonest = nil, goneText = nil,
       me = nil, hidden = nil, label = nil, text = nil,
-      stuck = 0, finished = 0, unlisted = 0, collect = 0, count = 0, box = 0, more = false }
+      stuck = 0, finished = 0, unlisted = 0, collect = 0, count = 0, box = 0, more = false, onWay = 0 }
   end
   st.seenAt = snap and snap.seenAt or nil
   local mails = snap and snap.mails or {}
@@ -898,7 +930,10 @@ local function Status(realm, name, now, look, st)
   local watch = WatchFor(realm, name, false)
   -- At a mailbox the look holds what came since the visit before: counted
   -- once, there.
-  st.pending = look and 0 or LivePendingCount(watch, now)
+  -- (A sale on its way is on its way at a mailbox too: the look holds
+  -- only what has landed.)
+  local noted, onWay = LivePendingCount(watch, now)
+  st.pending, st.onWay = look and 0 or noted, onWay
   -- And the mail Postbox sent it from another of the player's characters
   -- since its last visit (MM.SentSince), counted with the mail known to
   -- be on its way. Never the character being played: its own box knows.
@@ -1191,6 +1226,8 @@ function MM.Characters()
     return memo.list
   end
   local seen, list = {}, {}
+  -- The soonest sale to land, as this reading finds them (MM.OnItsWay).
+  MM._landNext = false
   local function Add(realm, name)
     local key = realm .. "\001" .. name
     if seen[key] then return end
@@ -1232,6 +1269,29 @@ function MM.Characters()
   memo.memory, memo.watches, memo.hiddenRoot = memory, watches, hiddenRoot
   memo.realm, memo.name = myRealm, myName
   return list
+end
+
+-- s33 mmcount. The next sale to land, for a count that must rise when it
+-- does: ONE one-shot timer, armed only by a caller showing the count (the
+-- minimap icon while it is up), for a second past the soonest landing the
+-- last reading found; when it fires, the list is read again
+-- (CharactersChanged) and the caller may arm it for the next. Never more
+-- than one, never repeating; none while no sale is on its way.
+do
+  local armed = false
+  local function Landed()
+    armed = false
+    CharactersChanged()
+  end
+  function MM.ArmLanding()
+    if armed then return true end
+    local at = MM._landNext
+    if not at then return false end
+    armed = true
+    C_Timer.After(math.max(1, at - time() + 1), Landed)
+    return true
+  end
+  function MM.LandingArmed() return armed end
 end
 
 -- Whether `st` (one of MM.Characters) is warned of under `mode`, Warn
@@ -3357,8 +3417,10 @@ do
     pending[#pending + 1] = entry
     CharactersChanged()
     NoteArrival(realm, who)
+    -- A sale is new mail when its gold lands (MM.OnItsWay, Arrived), not at
+    -- its notice; every other outcome's mail comes at once.
     local snap = StoredSnapshot()
-    if snap then snap.newSince = true end
+    if snap and kind ~= "sold" then snap.newSince = true end
     if MM.Refresh then MM.Refresh() end
     return entry, true
   end
@@ -4011,13 +4073,30 @@ do
   --     `unlisted`) -- and never more of them than that count: if there
   --     are, some are no longer true and nothing says which, so none is
   --     kept.
+  --   * s33 mmcount: a sale whose gold had not landed by that look (MM.SALE_LANDS
+  --     from its notice) stays as it is, on its way, unless a sale's mail of
+  --     that item the visit listed or took answers for it (the older notes
+  --     answered first; a house that sends sooner): it becomes mail when it
+  --     lands, and the next visit lists it.
   function A.Settle(watch, snapshot, now)
     local seenAt = snapshot and tonumber(snapshot.seenAt) or now
     local pending = type(watch.pending) == "table" and watch.pending or nil
     local known = type(watch.unlisted) == "table" and watch.unlisted or nil
     watch.pendingMore, watch.pendingMoreAt = nil, nil
     local room = Unlisted(snapshot, now)
-    if room > 0 and (known or pending) then
+    -- A sale noted before the look whose gold had not landed by it.
+    local landsAfter = seenAt - MM.SALE_LANDS
+    local onWay = false
+    if pending then
+      for i = 1, #pending do
+        local t = tonumber(pending[i].t) or 0
+        if pending[i].k == "sold" and t <= seenAt and t > landsAfter then
+          onWay = true
+          break
+        end
+      end
+    end
+    if (room > 0 and (known or pending)) or onWay then
       Empty(seen)
       local mails = type(snapshot.mails) == "table" and snapshot.mails or {}
       for i = 1, #mails do
@@ -4048,6 +4127,15 @@ do
         if t > seenAt then
           write = write + 1
           pending[write] = e
+        elseif onWay and e.k == "sold" and t > landsAfter then
+          -- On its way at the look, and no mail the visit had is it.
+          if not Listed(e) then
+            write = write + 1
+            pending[write] = e
+          end
+        elseif onWay and room <= 0 then
+          -- In the visit's record; its mail answers for it first.
+          Listed(e)
         elseif room > 0 and t > cutoff and not Listed(e) then
           kept = kept or {}
           kept[#kept + 1] = e
@@ -5152,7 +5240,13 @@ local function RowTexts(mail, now, fs)
     else
       at = LastShownFigure(R, texts)
     end
-    if at then texts[at] = T.Colorize("positive", L["MEMORY_NEW_ROW"], T.ROW) end
+    if at then
+      if mail.onWay then
+        texts[at] = T.Colorize("textSecondary", L["MEMORY_ON_WAY"], T.ROW)
+      else
+        texts[at] = T.Colorize("positive", L["MEMORY_NEW_ROW"], T.ROW)
+      end
+    end
     return texts
   end
   texts.money, texts.slots, texts.time, texts.facts, texts.expiryText, texts.expired, texts.cod = Figures(mail, now, fs)
@@ -5696,11 +5790,14 @@ function Arrivals.Row(p, gen)
   if not row then
     row = { pending = true, auction = true, sender = "", subject = "", read = false, stuck = false,
       kind = false, icon = false, count = false, items = 0, money = 0, cod = 0, paid = false, asked = false,
-      net = false, deposit = false, cut = false, link = false, id = false, at = false }
+      net = false, deposit = false, cut = false, link = false, id = false, at = false, onWay = false }
     Arrivals.rowOf[p] = row
   end
   -- When the notice came: what Mail Memory's wash reads (MM.Wash).
   row.at = tonumber(p.t) or false
+  -- s33 mmcount: a sale whose gold has not landed (MM.OnItsWay) says so
+  -- where its time left would stand, and is in no count.
+  row.onWay = MM.OnItsWay(p, time())
   local A = MM.Auctions
   local item = A and A.Name(p) or p.item
   local n = tonumber(p.n)
@@ -6305,7 +6402,8 @@ end
 function MM.PendingSummary(most)
   local realm, name = Me()
   local watch = WatchFor(realm, name, false)
-  local pending = LivePending(watch)
+  -- What has arrived: a sale on its way is not yet (MM.OnItsWay).
+  local pending = LivePending(watch, nil, true)
   local R = Rules()
   local A = MM.Auctions
   local out = {}
@@ -7230,6 +7328,24 @@ local function Arrived(snapshot)
   local arrived = snapshot.newSince == true
     or (flagNow and snapshot.baseNew == false)
     or (tripleNow ~= nil and snapshot.baseFrom ~= nil and tripleNow ~= snapshot.baseFrom)
+  -- s33 mmcount. A sale noted whose gold has landed since the visit (its
+  -- notice set no mark: MM.OnItsWay).
+  if not arrived and away then
+    local realm, name = Me()
+    local watch = WatchFor(realm, name, false)
+    local pending = watch and type(watch.pending) == "table" and watch.pending or nil
+    if pending then
+      local now, seenAt = time(), tonumber(snapshot.seenAt) or 0
+      for i = #pending, 1, -1 do
+        local e = pending[i]
+        local lands = e.k == "sold" and (tonumber(e.t) or 0) + MM.SALE_LANDS or nil
+        if lands and lands <= now and lands > seenAt then
+          arrived = true
+          break
+        end
+      end
+    end
+  end
   return arrived and true or false
 end
 
@@ -9138,6 +9254,8 @@ function MM.MailboxSummary(most)
     newFrom     = arrived and newFrom or nil,
     pending     = pending,
     pendingN    = noted,
+    -- s33 mmcount: the sales noted whose gold has not landed, in no count.
+    onWay       = t.onWay,
   }
 end
 
@@ -9174,7 +9292,8 @@ function MM.Diagnose()
     -- purchase show here as the same kind seconds apart.
     local prior = pending and pending[#pending - 1]
     local over = watch and type(watch.over) == "table" and watch.over or nil
-    parts[#parts + 1] = string.format("auctions noted %d%s%s%s%s", LivePendingCount(watch, time()),
+    local landed, onWay = LivePendingCount(watch, time())
+    parts[#parts + 1] = string.format("auctions noted %d, sales on their way %d%s%s%s%s", landed, onWay,
       last and string.format(" (last %s, signals %s, id %s)", tostring(last.k), tostring(last.s), tostring(last.a)) or "",
       (last and prior) and string.format(" (before it %s, signals %s, %ds earlier)", tostring(prior.k), tostring(prior.s),
         (tonumber(last.t) or 0) - (tonumber(prior.t) or 0)) or "",
@@ -9218,6 +9337,7 @@ end
 -- of which the client sends a handful an hour at most.
 local LOGIN_SETTLE = 10
 local CLOSE_SETTLE = 5
+
 
 -- The last pending-mail events of this session, for /postbox debug: each
 -- one's verdict, whether the sound played, how long since the mailbox

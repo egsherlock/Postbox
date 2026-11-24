@@ -654,6 +654,15 @@ local function Evaluate()
   view.alone = alert and not up
   view.shown = up or view.alone
   view.count = (countMode == "me" and mine) or (countMode == "all" and all) or 0
+  -- s33 mmcount. A sale on its way joins the count when its gold lands: while
+  -- the icon is up wearing a count (or Mail on any character, which a
+  -- landing can bring up), Mail Memory arms its one timer for the next
+  -- landing (MailMemory.ArmLanding; nothing when none is on its way or one
+  -- is armed already).
+  if (mode == "any" or (view.shown and countMode ~= "off")) and Memory and type(Memory.ArmLanding) == "function"
+    and MemoryOn() then
+    Memory.ArmLanding()
+  end
   return view
 end
 
@@ -2312,6 +2321,16 @@ ShowTooltip = function(button, hostMode)
       -- "Nothing waiting" only while nothing has arrived since: over new
       -- mail it would be the snapshot's stale answer.
       GameTooltip:AddLine(L["MEMORY_NOTHING_WAITING"], TIP.MUTED, TIP.MUTED, TIP.MUTED)
+    end
+    -- s33 mmcount. The sales whose gold has not landed yet: in no count, so
+    -- a line of their own, with the auction house's word for them under it.
+    local onWay = tonumber(state.onWay) or 0
+    if onWay > 0 then
+      TIP.Fact(L["MEMORY_ON_WAY"], onWay)
+      local R = ns.CollectTab and ns.CollectTab.RowRules
+      local label = R and R.OutcomeSender and R.OutcomeSender("sold", "tooltip") or L["MEMORY_FROM_AH"]
+      local m = TIP.MUTED
+      GameTooltip:AddDoubleLine(TIP.INDENT .. label, "x" .. onWay, m, m, m, m, m, m)
     end
     -- Read mail kept in the box with nothing in it: a line of its own, in
     -- the Mail tab's word for it, set apart from mail to collect by its
