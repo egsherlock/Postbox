@@ -118,10 +118,32 @@ function BV.Gray(panel)
   return panel.viewMode == P.VIEW_DONE and not P.AV.Active(panel)
 end
 
+-- panel -> whether a tile's mails are on screen (BV.ShowMails): for this
+-- visit only, the list in the bag's place, searched for the tile's item,
+-- while the saved choice stays the bag. `_bagPeek` is the view it was asked
+-- on and `_bagPeekAlt` the box. It holds while the search box has words in
+-- it, on that list, whatever the words are now; it ends, and the bag is
+-- back, once the box is emptied (its x, Escape, the words deleted, the
+-- mailbox closing), the view changes (History, Done, another character) or
+-- the bag's own button is clicked. Never saved. A comparison and a find, no
+-- garbage.
+function BV.Peek(panel)
+  local view = panel._bagPeek
+  if view == nil then return false end
+  local box = panel.SearchBox
+  local text = box and box:GetText()
+  if view == panel.viewMode and panel._alt == panel._bagPeekAlt and type(text) == "string" and text:find("%S") then
+    return true
+  end
+  panel._bagPeek, panel._bagPeekAlt = nil, nil
+  return false
+end
+
 -- panel -> whether the bag is what is drawn: chosen, and the list on screen
--- one it can draw (BV.Gray).
+-- one it can draw (BV.Gray), and not a tile's mails (BV.Peek).
 function BV.Active(panel)
   if not BV.On() then return false end
+  if BV.Peek(panel) then return false end
   local P = Parts()
   if not P then return false end
   -- The reading view has the list's place while it is up.
@@ -959,12 +981,13 @@ function BV.PaintGlyph(icon)
   if cell._gray then icon:SetAlpha(0.35) end
 end
 
--- Lit while the bag is on; gray where the list on screen has none to show.
+-- Lit while the bag is on; gray where the list on screen has none to show;
+-- unlit while a tile's mails are the list on screen (BV.Peek).
 function BV.PaintSwitch(panel)
   local cell = panel.BagSwitch
   if not cell then return end
   local gray = BV.Gray(panel)
-  local on = BV.On() and not gray
+  local on = BV.On() and not gray and not BV.Peek(panel)
   if cell.isSelected ~= on or cell._gray ~= gray then
     cell._gray = gray
     if cell.isSelected ~= on then Th().SetPlateSelected(cell, on) end
@@ -1012,12 +1035,29 @@ function BV.SwitchLeave(cell)
 end
 
 -- A right-click is the way back to the list: while the bag is lit it is the
--- click itself; while the list is up it does nothing.
+-- click itself; while the list is up it does nothing. While a tile's mails
+-- are up (BV.Peek) a click is the way back to the bag, the search the
+-- right-click set cleared; the saved choice never changed.
 function BV.SwitchClick(cell, button)
   if cell._gray then return end
   if button == "RightButton" and not cell.isSelected then return end
-  BV.Set(cell._panel, not BV.On())
+  local panel = cell._panel
+  if BV.Peek(panel) then
+    BV.Back(panel)
+  else
+    BV.Set(panel, not BV.On())
+  end
   if GameTooltip:IsOwned(cell) then BV.SwitchTip(cell) end
+end
+
+-- A tile's mails let go: the search emptied, the bag drawn again.
+function BV.Back(panel)
+  panel._bagPeek, panel._bagPeekAlt = nil, nil
+  local box = panel.SearchBox
+  -- The box's own change lists the mail again; where a text set from code
+  -- told nobody, the list is drawn here.
+  if box and (box:GetText() or "") ~= "" then box:SetText("") end
+  if not (BV.area and BV.area:IsShown()) then ns.CollectTab.RefreshMailList(panel) end
 end
 
 -- The switch, built with the find plate (CollectTab's BuildSearchBox): a
@@ -1094,8 +1134,15 @@ end
 function BV.NameOf(kind)
   local name = kind.name
   if not name and type(kind.link) == "string" then name = kind.link:match("|h%[(.-)%]|h") end
-  if not name and kind.id and C_Item and type(C_Item.GetItemInfo) == "function" then
-    name = C_Item.GetItemInfo(kind.id)
+  if not name and kind.id then
+    -- The searches' own cache of names: where the client has not loaded
+    -- the item, it is asked for, and BV.NamesArrived hears it come.
+    local H = ns.Helpers
+    if H and type(H.SearchItemName) == "function" then
+      name = H.SearchItemName(kind.id)
+    elseif C_Item and type(C_Item.GetItemInfo) == "function" then
+      name = C_Item.GetItemInfo(kind.id)
+    end
   end
   if type(name) ~= "string" then return nil end
   name = name:gsub("%s*|A:.-|a", "")
@@ -1546,16 +1593,17 @@ end
 
 -- Right-click: the list, narrowed to the mails that hold the item -- the
 -- list's own search for its name, which the player sees in the box and can
--- clear; the bag is switched off for it.
+-- clear -- for as long as the search has words (BV.Peek); the bag is back
+-- as it is emptied, and the saved choice is never touched.
 function BV.ShowMails(panel, kind)
   if kind.gold then return end
-  local name = BV.NameOf(kind)
   local box = panel.SearchBox
-  if not (box and name and name ~= "") then return end
-  local UI = ns.MailboxUI
-  if not (UI and type(UI.SetOption) == "function") then return end
-  UI.SetOption("bagView", false)
+  if not box then return end
+  local name = BV.NameOf(kind)
+  if not (name and name ~= "") then return BV.WaitName(kind) end
+  BV.want = nil
   GameTooltip:Hide()
+  panel._bagPeek, panel._bagPeekAlt = panel.viewMode, panel._alt
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
   if (box:GetText() or "") == name then
     ns.CollectTab.RefreshMailList(panel)
@@ -1565,6 +1613,43 @@ function BV.ShowMails(panel, kind)
     box:SetText(name)
     if BV.area and BV.area:IsShown() then ns.CollectTab.RefreshMailList(panel) end
   end
+end
+
+-- The client has not got the item's name yet, so there is nothing to search
+-- for: it has been asked for (BV.NameOf), and the right-click is answered
+-- when the name comes, if it comes within BV.NAME_WAIT seconds and the bag
+-- is still the one clicked (the same build, still up). Otherwise nothing.
+BV.NAME_WAIT = 3
+function BV.WaitName(kind)
+  if not kind.id then return end
+  BV.want, BV.wantBuild, BV.wantAt = kind, model.build, GetTime()
+end
+
+-- Names the searches asked for have come (Helpers.OnSearchNames).
+function BV.NamesArrived()
+  local kind, panel = BV.want, BV.panel
+  if not kind then return end
+  if model.build ~= BV.wantBuild or GetTime() - (BV.wantAt or 0) > BV.NAME_WAIT or kind.n <= 0
+      or not (panel and panel:IsShown() and BV.area and BV.area:IsShown()) then
+    BV.want = nil
+    return
+  end
+  local name = BV.NameOf(kind)
+  if name and name ~= "" then BV.ShowMails(panel, kind) end
+end
+
+-- The mailbox closed: a tile's mails, and a name waited for, end with the
+-- visit (the search is emptied too, CollectTab's CT.ClearSearch).
+function BV.Closed()
+  local panel = BV.panel
+  if panel then panel._bagPeek, panel._bagPeekAlt = nil, nil end
+  BV.want = nil
+end
+do
+  local H = ns.Helpers
+  if H and type(H.OnSearchNames) == "function" then H.OnSearchNames(BV.NamesArrived) end
+  local bus = ns.Events
+  if bus and type(bus.Register) == "function" then bus.Register("MAIL_CLOSED", BV.Closed) end
 end
 
 -- A C.O.D. mail's tile: the fan's tile take (CollectTab, Fan.TakeItem),
