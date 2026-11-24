@@ -5287,70 +5287,90 @@ local function HookPooledSlots(frame)
   for _, button in ipairs(frame.Items) do HookSlot(button) end
 end
 
--- Only the buttons the frame currently counts as in range. Preferred where the
--- client offers it, because it skips the pooled tail.
-local function HookLiveSlots(frame)
-  if not IsOnScreen(frame) then return end
-  if type(frame.EnumerateValidItems) == "function" then
-    for _, button in frame:EnumerateValidItems() do HookSlot(button) end
-  else
-    HookPooledSlots(frame)
-  end
+-- The client's own container frames are found by name and only read: the
+-- combined bag, then ContainerFrame1, 2, ... until the names run out (the
+-- client numbers them from 1 with no gaps, so nothing hard-codes a count
+-- that ages). Never through the client's own enumerator or its bag
+-- functions: those write the client's bag state as they go (the enumerator
+-- builds its frame lists on a first call, a frame's Update its refresh and
+-- the search box's anchor), and from Postbox's code that state would carry
+-- Postbox's name into every later bag the game opens.
+function ST.ClientBag(index)
+  if index == 0 then return ContainerFrameCombinedBags end
+  return _G["ContainerFrame" .. index]
 end
 
+-- Every button the shown frames own, the pooled ones beyond the current bag
+-- size included, the combined bag's too (its buttons are recycled across
+-- bag-size changes we do not get told about).
 local function HookVisibleSlots()
-  local Enumerate = ContainerFrameUtil_EnumerateContainerFrames
-  if type(Enumerate) == "function" then
-    for _, frame in Enumerate() do HookLiveSlots(frame) end
-  end
-
-  -- Swept on its own and by pool rather than by range: the enumerator lists
-  -- this frame only while the combined layout is the active one, and its
-  -- buttons are recycled across bag-size changes we do not get told about.
-  HookPooledSlots(ContainerFrameCombinedBags)
-
-  -- Fallback for a client with no enumerator. Walked by name until the names
-  -- run out -- the client numbers these from 1 with no gaps -- so the sweep
-  -- neither hard-codes a count that ages nor pokes at frames never created.
-  local index = 1
+  local index = 0
   while true do
-    local frame = _G["ContainerFrame" .. index]
-    if not frame then break end
+    local frame = ST.ClientBag(index)
+    if not frame and index > 0 then break end
     HookPooledSlots(frame)
     index = index + 1
   end
 end
 
--- Whether any of the client's own container frames is on screen: the frames
--- ContainerFrame_UpdateAll walks, from the same enumerator, asked IsVisible
--- where it asks IsShown. EllesmereUIBags and Baganator each park every one of
--- them under a hidden frame of their own (EllesmereUIBags' KillBlizzard, run
--- again after every OpenAllBags; Baganator's HideDefaultBackpack), but the
--- mailbox still opens them (MailFrame_Show -> OpenAllBags), so they count as
--- shown, and ContainerFrame_UpdateAll repainted every slot of them unseen,
--- with a padlock verdict on each: 30 ms a call on a 150-slot bag. With no
--- enumerator to ask, the answer is yes, and the repaint runs as it always did.
+-- Whether any of the client's own container frames is on screen, asked
+-- IsVisible where the client asks IsShown. EllesmereUIBags and Baganator each
+-- park every one of them under a hidden frame of their own (EllesmereUIBags'
+-- KillBlizzard, run again after every OpenAllBags; Baganator's
+-- HideDefaultBackpack), but the mailbox still opens them (MailFrame_Show ->
+-- OpenAllBags), so they count as shown; their slots were judged unseen, a
+-- padlock verdict on each: 30 ms a pass on a 150-slot bag.
 function ST.ClientBagsOnScreen()
-  local Enumerate = ContainerFrameUtil_EnumerateContainerFrames
-  if type(Enumerate) ~= "function" then return true end
-  for _, frame in Enumerate() do
+  local index = 0
+  while true do
+    local frame = ST.ClientBag(index)
+    if not frame and index > 0 then return false end
     if type(frame) == "table" and type(frame.IsVisible) == "function" and frame:IsVisible() then
       return true
     end
+    index = index + 1
   end
-  return false
 end
 
--- One container repaint per user action: the hooks do the marking, this only
--- asks the client to run them. The client's bags need nothing more while they
--- are closed: ContainerFrame_UpdateAll repaints only the open ones, and a bag
--- opening draws every slot afresh (ContainerFrame_GenerateFrame -> Update),
--- which runs the hooks. Nor while none is on screen: the only bags the player
--- sees then are another addon's, which are asked for their own repaint.
+-- The slots of every shown frame, the ones each frame counts as in range (its
+-- size, read, never asked for), judged afresh on the Send tab and cleared off
+-- it. Clearing puts back the colour of an item Postbox greyed as spoken for
+-- (InventoryLock.UnmarkQueued), and leaves it grey where the client reports
+-- it locked: the colour the client's own redraw gives every slot.
+function ST.JudgeClientBags()
+  local index = 0
+  while true do
+    local frame = ST.ClientBag(index)
+    if not frame and index > 0 then break end
+    local items = IsOnScreen(frame) and frame.Items
+    if type(items) == "table" then
+      local size = type(frame.size) == "number" and frame.size or #items
+      for i = 1, size do
+        local button = items[i]
+        if not button then break end
+        if hookedSlots[button] then
+          if sendTabActive then
+            RefreshSlotOverlay(button)
+          else
+            ClearOverlay(button)
+            InventoryLock.UnmarkQueued(button)
+          end
+        end
+      end
+    end
+    index = index + 1
+  end
+end
+
+-- One pass over the client's bags per user action. Postbox marks the slots
+-- itself; the client is never asked to redraw them. Closed bags need nothing:
+-- a bag opening draws every slot afresh (ContainerFrame_GenerateFrame ->
+-- Update), and the hook on each slot follows that draw. Nor while none is on
+-- screen: the only bags the player sees then are another addon's, which are
+-- asked for their own repaint.
 local function RepaintContainers()
-  if type(ContainerFrame_UpdateAll) ~= "function" or not ST.ClientBagsOnScreen()
-     or not ST.PaintDue("blizz") then return end
-  ST.Timed("blizz", ContainerFrame_UpdateAll)
+  if not ST.ClientBagsOnScreen() or not ST.PaintDue("blizz") then return end
+  ST.Timed("blizz", ST.JudgeClientBags)
 end
 
 -------------------------------------------------------------
