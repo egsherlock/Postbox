@@ -1581,8 +1581,10 @@ function BV.TileClick(tile, button)
     return
   end
   -- Nothing can be taken from another character's box or from History;
-  -- the line under the list says where. (A reminder here is not built.)
-  if model.src ~= "inbox" or kind.look ~= 0 or not P.MailboxOpen() then return end
+  -- the line under the list says where, and lights for a moment to say so
+  -- (BV.Flash).
+  if model.src ~= "inbox" or not P.MailboxOpen() then return BV.Flash(panel) end
+  if kind.look ~= 0 then return end
   if CT.IsRunning() or M.IsBusy() then return end
   if not BV.Current(kind) then return CT.RequestRefresh(panel) end
   if kind.cod then return BV.TakeCOD(panel, kind) end
@@ -1591,4 +1593,101 @@ function BV.TileClick(tile, button)
   for i = #queue, 1, -1 do queue[i] = nil end
   for i = 1, kind.mails do queue[i] = kind.ref[i] end
   CT.StartCategoryRun(panel, "all", kind.gold and "money" or kind.id, queue)
+end
+
+-------------------------------------------------------------
+-- 6b. The line at the foot, lit
+--
+-- A plain click on a tile where nothing can be taken (another character's
+-- box, History) takes nothing, and the line already under the list that
+-- says where to collect it ("Seen 2 hours ago. Log in on Charge to collect
+-- it.") answers: the buttons' pointer wash across its slot and its words
+-- white, in at once (0.10 s), held (0.60 s), eased out (0.40 s). No new
+-- words, no chat line, no sound.
+--
+-- The wash's fade is the client's own animation on the one texture; the
+-- words are set as it starts and put back by ONE C_Timer.After of the
+-- flash's length, told from an older one by two counts (timers of one
+-- length fire in the order they were set), so a second click starts the
+-- flash again and only the last timer ends it. Hidden mid-flash (the tab,
+-- the window, the mailbox), it ends there: the words as they were, the
+-- animation stopped. Nothing runs between flashes.
+-------------------------------------------------------------
+BV.FLASH_IN, BV.FLASH_HOLD, BV.FLASH_OUT = 0.10, 0.60, 0.40
+BV.FLASH_H, BV.FLASH_A = 28, 0.10
+BV.flashArmed, BV.flashFired = 0, 0
+
+-- panel -> the note standing in All mail's place, if one is.
+function BV.Note(panel)
+  local note = panel.AltNote
+  if note and note:IsShown() then return note end
+  note = panel.HistoryNote
+  if note and note:IsShown() then return note end
+  return nil
+end
+
+-- The flash is over: the words in their own ink again, the wash away.
+function BV.FlashEnd()
+  local note = BV.flashNote
+  if not note then return end
+  BV.flashNote = nil
+  Th().SetColor(note, "textSecondary", "window")
+  local wash = BV.wash
+  if wash then
+    if wash.Fade then wash.Fade:Stop() end
+    if wash:IsShown() then wash:Hide() end
+  end
+end
+
+function BV.FlashDue()
+  BV.flashFired = BV.flashFired + 1
+  if BV.flashFired == BV.flashArmed then BV.FlashEnd() end
+end
+
+function BV.Flash(panel)
+  local note = BV.Note(panel)
+  if not (note and panel.Footer) then return end
+  local T = Th()
+  local wash = BV.wash
+  if not wash then
+    -- The note's slot: the footer's width, a button tall, about the note.
+    wash = CreateFrame("Frame", nil, panel.Footer)
+    wash:SetPoint("TOPLEFT", panel.Footer, "LEFT", 0, BV.FLASH_H / 2)
+    wash:SetPoint("BOTTOMRIGHT", panel.Footer, "RIGHT", 0, -BV.FLASH_H / 2)
+    wash:EnableMouse(false)
+    wash.Tex = wash:CreateTexture(nil, "BACKGROUND")
+    wash.Tex:SetAllPoints()
+    wash.Tex:SetColorTexture(1, 1, 1, BV.FLASH_A)
+    if type(wash.Tex.CreateAnimationGroup) == "function" then
+      local fade = wash.Tex:CreateAnimationGroup()
+      local up = fade:CreateAnimation("Alpha")
+      up:SetFromAlpha(0)
+      up:SetToAlpha(1)
+      up:SetDuration(BV.FLASH_IN)
+      up:SetOrder(1)
+      local down = fade:CreateAnimation("Alpha")
+      down:SetFromAlpha(1)
+      down:SetToAlpha(0)
+      down:SetStartDelay(BV.FLASH_HOLD)
+      down:SetDuration(BV.FLASH_OUT)
+      down:SetSmoothing("OUT")
+      down:SetOrder(2)
+      if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
+      wash.Fade = fade
+    end
+    wash:SetScript("OnHide", BV.FlashEnd)
+    wash:Hide()
+    BV.wash = wash
+  end
+  -- Another note was lit (History's, then a box's): that one first.
+  if BV.flashNote and BV.flashNote ~= note then BV.FlashEnd() end
+  BV.flashNote = note
+  T.SetColor(note, "textPrimary", "window")
+  wash:Show()
+  if wash.Fade then
+    wash.Fade:Stop()
+    wash.Fade:Play()
+  end
+  BV.flashArmed = BV.flashArmed + 1
+  C_Timer.After(BV.FLASH_IN + BV.FLASH_HOLD + BV.FLASH_OUT, BV.FlashDue)
 end
