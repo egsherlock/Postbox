@@ -308,7 +308,9 @@ end
 function BV.TallyRemembered(panel)
   if (panel._remExtra or 0) <= 0 then return end
   local s = Sect(panel._lineText, 2)
-  s.rem = true
+  -- Its words without their inks, for a look that lays the line on a
+  -- ground of its own (BV.Bind).
+  s.rem, s.plain = true, panel._linePlain
   local shown = Parts().RV.remShown
   for k = 1, #shown do
     local m = shown[k]
@@ -641,8 +643,27 @@ end
 function BV.Head(i)
   local head = BV.heads[i]
   if head then return head end
+  head = BV.NewHead()
+  BV.heads[i] = head
+  return head
+end
+
+-- The line over the mail the game has not listed yet is the list's own
+-- line, so it wears what the list's wears: a frame of its own, never one
+-- of the pool, since a look may lay a ground on it (Theme.LineGround, the
+-- Blizzard look's, as CollectTab's RV.PlaceLine asks for the list's).
+function BV.RemHead()
+  local head = BV.remHead
+  if not head then
+    head = BV.NewHead()
+    BV.remHead = head
+  end
+  return head
+end
+
+function BV.NewHead()
   local T = Th()
-  head = CreateFrame("Frame", nil, BV.child)
+  local head = CreateFrame("Frame", nil, BV.child)
   head:SetHeight(BV.HEAD)
   head:EnableMouse(false)
   head.Rule = head:CreateTexture(nil, "ARTWORK")
@@ -654,7 +675,6 @@ function BV.Head(i)
   head.Text:SetPoint("CENTER", head, "CENTER", 0, -1)
   head.Text:SetJustifyH("CENTER")
   head.Text:SetWordWrap(false)
-  BV.heads[i] = head
   return head
 end
 
@@ -667,19 +687,36 @@ function BV.Bind()
   local size = Th().Metrics.slotSize
   local offset = scroll:GetVerticalScroll() or 0
   local top, bottom = offset - size, offset + (scroll:GetHeight() or 0)
-  local used, lines = 0, 0
+  local used, lines, remUp = 0, 0, false
   for si = 1, m.sn do
     local s = m.sects[si]
     if s.shown and s.y >= offset - BV.HEAD and s.y <= bottom then
-      lines = lines + 1
-      local head = BV.Head(lines)
+      local head, text = nil, s.head
+      if s.rem then
+        head, remUp = BV.RemHead(), true
+      else
+        lines = lines + 1
+        head = BV.Head(lines)
+      end
       head:ClearAllPoints()
       head:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -s.y)
       head:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -s.y)
+      if s.rem then
+        -- On the look's ground for such a line where it has one, the words
+        -- in its one ink; the hairline is the ground's then.
+        local T = Th()
+        local grounded = T.LineGround and T.LineGround(head) or false
+        if head.grounded ~= grounded then
+          if not grounded and head.grounded ~= nil then T.ApplyTextRole(head.Text, "value") end
+          head.grounded = grounded
+          head.Rule:SetShown(not grounded)
+        end
+        if grounded and s.plain then text = s.plain end
+      end
       local width = child:GetWidth() or 0
-      if head.pbText ~= s.head or head.pbWidth ~= width then
-        head.pbText, head.pbWidth = s.head, width
-        Th().FitText(head.Text, width - 2 * Th().Metrics.inset, s.head, nil)
+      if head.pbText ~= text or head.pbWidth ~= width then
+        head.pbText, head.pbWidth = text, width
+        Th().FitText(head.Text, width - 2 * Th().Metrics.inset, text, nil)
       end
       head:Show()
     end
@@ -708,6 +745,7 @@ function BV.Bind()
     end
   end
   for i = lines + 1, #heads do heads[i]:Hide() end
+  if BV.remHead and not remUp then BV.remHead:Hide() end
   Th().TipFollow(child)
 end
 
@@ -812,7 +850,13 @@ function BV.Refresh(panel)
   if panel.MailListArea:IsShown() then panel.MailListArea:Hide() end
   if not area:IsShown() then
     area:Show()
-    Parts().RV.FanClose(true)
+    local RV = Parts().RV
+    RV.FanClose(true)
+    -- Alt's marks belong to the list's rows: with the list out of sight
+    -- they end now, held or kept on, and stay off while the bag is up
+    -- (RV.Marks is eligible only while the list's own container shows).
+    -- Nothing a tile does returns or deletes mail.
+    if RV.Marks and RV.Marks.Sync then RV.Marks.Sync(panel) end
   end
   if not BV.Build(panel) then BV.Layout() end
   BV.Apply(panel)
