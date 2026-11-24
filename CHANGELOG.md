@@ -15,14 +15,15 @@
   mails or more draws a thin line in your accent under the title bar (a
   gold thread in the Blizzard look), filling as each mail comes out. If
   the run stops early, the line fades where it stopped; when the words
-  beside it say why, it holds a moment in their color first. The words
+  beside it say why, it holds a moment in their color first. When a run
+  has taken everything the line glows softly and trails away. The words
   stay.
 - **Send tab: attach every stack of one kind.** The small + after
   Attachments lists what is in your bags in the game's own words, under
   three headings: Materials (Cloth, Herb, Metal & Stone and the rest),
   Consumables (potions, elixirs, flasks, food and drink, item
-  enhancements), and Gems and recipes (Recipes on WoW Forever, which has
-  no gem kind). Each line wears the game's icon for its kind and says how
+  enhancements), and Gems and recipes (on WoW Forever, which has no gem
+  kind, one entry: Recipes). Each line wears the game's icon for its kind and says how
   many stacks it would add. Pick a line and they are all attached; click
   a heading for everything under it. What is past twelve waits in the
   queue and goes as the next mail. A line's or a heading's tooltip lists
@@ -34,11 +35,16 @@
   stack of that item as one collect run, with every rule of a run (your
   bags are checked first, Keep bag slots free is kept, C.O.D. asks
   first), and only that item leaves a mail that holds other things.
-  Shift-click asks how many when the item is in several mails; right-click
-  shows the mails that hold it; Ctrl-click tries it on. It follows a
-  search, the sort and the filters, and it works on another character's
-  box and in History, where it shows what is there and takes nothing.
-  Click the button again for the list.
+  Shift-click asks how many when the item is in several mails (with a
+  chat box open it links the item, as ever); right-click shows the mails
+  that hold it, and the bag is back when you clear the search; Ctrl-click
+  tries it on. A C.O.D. mail has one tile for each item it holds, and a
+  click asks once, with the mail's price, before anything is paid. It
+  follows a search, the sort and the filters, and it works on another
+  character's box and in History, where it shows what is there and takes
+  nothing. Click or right-click the button for the list again. Rather
+  not have it? Options > Mail tab > One-bag button takes the button away
+  and gives Search its room back.
 - **Send tab: pin a subject, as you pin a recipient.** The Subject box
   has the same small pin. A pinned box keeps its words on that character
   after every send and at every mailbox, until you unpin it, and its
@@ -59,10 +65,12 @@
   mail count.
 - **Mail tab: send back or delete a mail from its row.** Hold Alt and a
   return arrow shows in place of the read dot on every mail that can go
-  back, and finished mail keeps its x. While the marks show, a click
-  anywhere on a row sends that mail back and a right-click deletes
-  finished mail; the row under the pointer lights to say which, and a
-  row that can do neither says why. Auction mail that still holds
+  back, and finished mail keeps its x: the Return and Delete marks.
+  While they show, a click anywhere on a row sends that mail back and a
+  right-click deletes finished mail; the row under the pointer lights to
+  say which, and a row that can do neither says why. Alt does nothing
+  while you are typing, and a click acts only once the marks are fully
+  showing, and only on the mail you pressed. Auction mail that still holds
   something shows a faded x: it can only be taken. Double-tap Alt to keep
   the marks on: a small chip in the title bar and a thin line along the
   top of the list say so, and a tap of Alt or a click on the chip ends it.
@@ -87,9 +95,6 @@
   selection. Off unless you turn it on: Show slot count on All mail
   button (Options > Mail tab), or Show slot count on the All mail card
   while arranging.
-- **Mail tab, the progress line: a softer finish.** When a run has taken
-  everything the line's glow is gentler and it trails away instead of
-  stopping.
 - **Mail tab: "Kept free: 6 slots" in the title bar when Keep bag slots
   free stops a run**, in the title bar's own gray after what was
   collected. Point at the words for how many mails wait and where the
@@ -107,10 +112,10 @@
   nothing in the mail can go in, such as a soul bag on WoW Forever, is
   never counted or named. A run that reaches the slots it keeps free
   goes on taking what fits a special bag or the reagent bag.
-- **Collecting when not everything fits takes what fits anywhere.** The
-  question before a run counts every mail that fits, skipping one that
-  does not, and the run takes exactly those ("Only 12 of 13 fit"), where
-  it used to stop at the first mail without room.
+- **Mail tab: when not everything fits, a run takes every mail that
+  does.** The question before a run counts every mail that fits ("Only 12
+  of 13 fit") and the run takes exactly those, skipping one without room,
+  where it used to stop at the first.
 - **Mail tab, an opened mail: Delete is grayed where the game will not
   delete the mail** for what it still holds, and pointing at it says why,
   as the faded x on its row does. If the game turns a delete down
@@ -121,7 +126,6 @@
   and the fee. On WoW Forever the cut is the faction house's or the
   goblin house's, by where it was posted; a sale Postbox cannot place
   keeps the price asked.
-
 - **One mail count everywhere:** Mail Memory, the minimap icon, its
   tooltip and the character list (Mail tab > Inbox) give the same number
   for a mailbox. It includes the mail the game has not listed yet and
@@ -166,6 +170,8 @@
   named in chat and stays in your bags.
 - Mail Memory: Last seen at the window's foot and in the minimap icon's
   tooltip give the same age.
+- Mail Memory and History: a caged battle pet's row and tile name the
+  pet in their tooltip.
 - Send tab, the game's own bags: Postbox marks unmailable items itself,
   without asking the game to redraw its bags.
 

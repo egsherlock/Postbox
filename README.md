@@ -87,17 +87,19 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **All mail** collects everything still holding something, one server
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
-  collects your picks. C.O.D. mail is never swept.
+  collects your picks. C.O.D. mail is never swept. A run of three mails
+  or more draws a thin line under the title bar as it goes; if it stops
+  early, the line fades where it stopped, holding a moment first in the
+  color of the words beside it when they say why.
 - **Hold Alt** to send back or delete from the list: a return arrow takes
   the read dot's place on every mail that can go back, finished mail keeps
   its x, and auction mail still holding something shows a faded x (it can
   only be taken). While the marks show, a click anywhere on a row sends
   that mail back and a right-click deletes finished mail; the row lights
   to say which. Double-tap Alt to keep them on (a small chip in the title
-  bar and a line along the top of the list say so); one tap ends it. A run of three mails
-  or more draws a thin line under the title bar as it goes; if it stops
-  early, the line fades where it stopped, holding a moment first in the
-  color of the words beside it when they say why.
+  bar and a line along the top of the list say so); one tap, or a click
+  on the chip, ends it. Alt does nothing while you are typing, and a
+  click acts only once the marks are fully showing.
 - **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
   mail All mail takes: **Auction house**, **The game**, **My characters**
   and **Other players**, all four by default (**Every mail**). What you
@@ -133,9 +135,13 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **One bag:** the square button after Sort shows the list on screen as
   a bag: one tile for each kind of item with its total, gold first. A
   click takes every stack of that item as one collect run and leaves the
-  rest of each mail; Shift-click asks how many, right-click shows its
-  mails. It follows a search, the sort and the filters, and shows another
-  character's box and History too.
+  rest of each mail; Shift-click asks how many (with a chat box open it
+  links the item), right-click shows its mails and the bag is back when
+  you clear the search. A C.O.D. mail has one tile for each item and asks
+  once before anything is paid. It follows a search, the sort and the
+  filters, and shows another character's box and History too. Click or
+  right-click the button for the list; Options > Mail tab > One-bag
+  button takes it away.
 - **All mail can show a slot count** at its right end ("94 slots"), off
   by default: **Show slot count on All mail button** (Options > Mail tab).
 - **Past the 100 mails the game lists at a time**, the list ends with a
@@ -328,7 +334,7 @@ Most mail, Name or Last played.
   it is attached. The small + after "Attachments" does the same for a
   kind: it lists what is in your bags in the game's own words under
   Materials (Cloth, Herb, Metal & Stone), Consumables, and Gems and
-  recipes (Recipes on WoW Forever), each line with the game's icon and
+  recipes (one entry, Recipes, on WoW Forever), each line with the game's icon and
   how many stacks it would add. Click a heading
   for everything under it; a line's or a heading's tooltip lists the
   items first. Bound and quest items are left out of a kind. Either way,
