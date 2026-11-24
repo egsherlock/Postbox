@@ -40,7 +40,20 @@ local SWATCH_X, SWATCH_SIZE, SWATCH_GAP = 7, 10, 4
 -- beside its name; the toggle the chosen one's, PaintArt): the least room
 -- between it and the toggle's left edge, and the room between it and the
 -- value, the list's own.
-local ART = { X = 4, GAP = 6 }
+local ART = { X = 4, GAP = 6, SIZE = DEFAULT_ROW_HEIGHT - 4 }
+
+-- A menu row's square of art (Dropdown.Menu, opts.icon), `x` in from the
+-- row's left edge, the game's icon border trimmed as the addon's item icons
+-- trim it; hidden until a file is set. -> where the row's words start.
+function ART.Menu(row, x)
+  local art = row:CreateTexture(nil, "ARTWORK")
+  art:SetSize(ART.SIZE, ART.SIZE)
+  art:SetPoint("LEFT", row, "LEFT", x, 0)
+  art:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  art:Hide()
+  row._menuArt = art
+  return x + ART.SIZE + ART.GAP
+end
 -- The room kept clear at each end of the toggle for what is drawn there: the
 -- Postbox style's caret (5 wide, centred 9 in from the right edge, so out to
 -- 11.5) and the stock button's end caps (12). Only a value that already ran
@@ -1536,7 +1549,15 @@ local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 -- the pointer lights it and opts.onEnter / onLeave / disabled are asked of
 -- it as of a row; in such a menu it is asked opts.caption too, and put away
 -- with the group under it.
-local ACTION = { H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
+-- Art before the words (the Send tab's kinds wear the game's icons):
+-- opts.icon(item) -> the file (a path or a file ID) that choice's row shows
+-- now, or nil for none; asked with opts.caption, in a menu that has one, of
+-- every choice and every heading that can be picked. Every such row keeps a
+-- square of the size a select's items' art has (ART.Menu) before its words,
+-- so a row without art keeps its words where the others' stand; a row set
+-- aside wears its art faint and gray. The textures are made once, with the
+-- rows; an open sets a file only on a row whose file changed.
+local ACTION ={ H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
 
 function ACTION.Paint(row)
   local themed = ns.Theme
@@ -1635,6 +1656,7 @@ function Dropdown.Menu(owner, items, opts)
   local flipped = type(opts.flipped) == "function" and opts.flipped or nil
   local ascending = type(opts.ascending) == "function" and opts.ascending or nil
   local caption = type(opts.caption) == "function" and opts.caption or nil
+  local icon = caption and type(opts.icon) == "function" and opts.icon or nil
 
   -- A two-way row's words and its turn mark, as the choice stands now. A
   -- mark is turned while out of sight where `still` (the menu opening), so
@@ -1670,6 +1692,11 @@ function Dropdown.Menu(owner, items, opts)
         local off = disabled(row.item.id) and true or false
         row._off = off
         row.Text:SetAlpha(off and 0.4 or 1)
+        local art = row._menuArt
+        if art then
+          art:SetAlpha(off and 0.4 or 1)
+          art:SetDesaturated(off)
+        end
       end
     end
     if not checked then return end
@@ -1786,7 +1813,7 @@ function Dropdown.Menu(owner, items, opts)
         Anchor(head, y)
         head._y = y
         local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
+        text:SetPoint("LEFT", head, "LEFT", (icon and item.pick) and ART.Menu(head, LIST_PADDING) or LIST_PADDING, 0)
         text:SetWordWrap(false)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
@@ -1827,7 +1854,7 @@ function Dropdown.Menu(owner, items, opts)
         bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("LEFT", row, "LEFT", LIST_PADDING + list._lead, 0)
+        text:SetPoint("LEFT", row, "LEFT", icon and ART.Menu(row, LIST_PADDING + list._lead) or (LIST_PADDING + list._lead), 0)
         text:SetWordWrap(false)
         text:SetText(item.name)
         if Theme and Theme.BindFont then Theme.BindFont(text, "small") end
@@ -1897,6 +1924,16 @@ function Dropdown.Menu(owner, items, opts)
           row.Text:SetText("")
         end
         if fit then row:SetShown(words ~= nil) end
+        -- Its art (opts.icon): the file set only where it changed.
+        local art = row._menuArt
+        if art then
+          local file = words and icon(item) or nil
+          if row._menuFile ~= file then
+            row._menuFile = file
+            if file then art:SetTexture(file) end
+          end
+          art:SetShown(file ~= nil)
+        end
       end
       if row:IsShown() then
         if fit and not list._scroll then
@@ -1937,6 +1974,8 @@ function Dropdown.Menu(owner, items, opts)
       end
       -- An action row: its glyph and the gap beside its words too.
       if row._glyph then w = w + ACTION.GLYPH + ACTION.GAP end
+      -- A row with a square of art (opts.icon): the square and its gap.
+      if row._menuArt then w = w + ART.SIZE + ART.GAP end
       if w > widest then widest = w end
     end
     -- And the scroll bar's room where the choices scroll, in place of the

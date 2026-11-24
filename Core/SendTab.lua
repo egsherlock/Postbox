@@ -6650,10 +6650,11 @@ end
 --   Consumables      one line each for its Potion, Elixir, Flask and Food &
 --                    Drink subclasses
 --   Gems and recipes one line for the Gem class, one for the Recipe class
--- Each line carries the kind's name as the client writes it and how many
--- stacks. A pick attaches every stack of that kind -- the sweep
--- Alt+right-click runs for one item (Q.AttachMatching) -- and what does not
--- fit in the slots waits in the queue as that sweep's does. A heading is
+-- Each line carries the game's icon for its kind (Kind.ICONS), the kind's
+-- name as the client writes it and how many stacks. A pick attaches every
+-- stack of that kind -- the sweep Alt+right-click runs for one item
+-- (Q.AttachMatching) -- and what does not fit in the slots waits in the
+-- queue as that sweep's does. A heading is
 -- picked the same way and attaches every stack of every kind under it.
 --
 -- Postbox keeps no list of names: the class and subclass are the item's own
@@ -6661,7 +6662,10 @@ end
 -- item), the name is the one the client gives with them, and the lines are
 -- whatever the bags report -- so a client that files every material under
 -- one subclass gets one true line, and one whose consumables carry none of
--- the four subclasses lists none. The numbers written here are the classes
+-- those kinds lists none. Each item is of one class and one subclass, so
+-- it stands on one line only (Kind.Where). The icons are the one list
+-- Postbox writes (Kind.ICONS); a kind it does not name wears its first
+-- item's own icon. The numbers written here are the classes
 -- and subclasses each heading takes, and the subclass the game calls
 -- "Other", which is listed last among the materials; the rest of the
 -- materials stand A to Z, the consumables and the gems and recipes in the
@@ -6716,15 +6720,54 @@ do
   --   class  every subclass of it, a line each (materials)
   --   subs   class `sub` and these subclasses, a line each in this order
   --   whole  these classes, a line each, in this order
+  -- A line's key is its subclass, or its class for a whole class.
   Kind.GROUPS = {
     { head = "KIND_HEAD_MATERIALS", class = Kind.CLASS, cap = Kind.ROWS },
     { head = "KIND_HEAD_CONSUMABLES", sub = Class("Consumable", 0),
       subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4 }, cap = 4 },
     { head = "KIND_HEAD_GEMS", whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
   }
+  -- The icon before each heading (`head`) and each line (by its key), by its
+  -- file name under Interface\Icons (or a file ID), from the game's own
+  -- art; every one is in both clients' interface files. A line whose key
+  -- has none wears the icon of the first item a look finds on it. Swapping
+  -- the set is a change to this table alone.
+  Kind.ICONS = {
+    { head = "INV_Crate_02",
+      [1] = "Trade_Engineering",           -- Parts
+      [4] = "INV_Misc_Gem_02",             -- Jewelcrafting (retail)
+      [5] = "Trade_Tailoring",             -- Cloth
+      [6] = "Trade_LeatherWorking",        -- Leather
+      [7] = "Trade_Mining",                -- Metal & Stone
+      [8] = "INV_Misc_Food_14",            -- Cooking
+      [9] = "Trade_Herbalism",             -- Herb
+      [10] = "INV_Elemental_Primal_Fire",  -- Elemental
+      [11] = "INV_Misc_Bag_10",            -- Other
+      [12] = "Trade_Engraving",            -- Enchanting
+      [16] = "INV_Inscription_Tradeskill01", -- Inscription (retail)
+    },
+    { head = "INV_Potion_54",
+      [1] = "Trade_Alchemy",               -- Potions
+      [2] = "INV_Potion_32",               -- Elixirs
+      [3] = "INV_Potion_62",               -- Flasks
+      [5] = "INV_Misc_Food_15",            -- Food & Drink
+    },
+    { head = "INV_Misc_Gem_Variety_01",
+      [3] = "INV_Misc_Gem_01",             -- Gem
+      [9] = "INV_Scroll_03",               -- Recipe
+    },
+  }
+  -- The names made paths once, here, so a look builds no string.
+  for g = 1, #Kind.ICONS do
+    local icons = Kind.ICONS[g]
+    for k, file in pairs(icons) do
+      if type(file) == "string" and not file:find("\\", 1, true) then icons[k] = "Interface\\Icons\\" .. file end
+    end
+  end
   for g = 1, #Kind.GROUPS do
     local group = Kind.GROUPS[g]
     group.g, group.lines, group.by, group.items, group.index = g, {}, {}, {}, {}
+    group.icon = Kind.ICONS[g] and Kind.ICONS[g].head or nil
   end
 
   -- Whether this client has what a look needs.
@@ -6788,14 +6831,14 @@ do
 
   -- bag, slot [, want] -> whether the slot holds an item a sweep takes (of
   -- the line or the heading `want`, where one is asked for); then also its
-  -- record, its heading's place, its line's key and the kind's name as the
-  -- item gives it (the subclass's, or the class's for a whole class). The
-  -- test a pick's sweep runs (Q.AttachMatching), and the one a look counts
-  -- by.
+  -- record, its heading's place, its line's key, the kind's name as the
+  -- item gives it (the subclass's, or the class's for a whole class), its
+  -- class and its own icon. The test a pick's sweep runs
+  -- (Q.AttachMatching), and the one a look counts by.
   function Kind.At(bag, slot, want)
     local okID, id = pcall(C_Container.GetContainerItemID, bag, slot)
     if not okID or not id then return false end
-    local ok, _, typeName, subName, _, _, classID, subID = pcall(C_Item.GetItemInfoInstant, id)
+    local ok, _, typeName, subName, _, icon, classID, subID = pcall(C_Item.GetItemInfoInstant, id)
     if not ok then return false end
     local g, k = Kind.Where(classID, subID)
     if not g then return false end
@@ -6811,20 +6854,23 @@ do
     -- client is asking about it, and it is in neither the queue nor a slot.
     local pending = Q.fillState and Q.fillState.pending
     if pending and pending.entry.guid == guid then return false end
-    if g == 3 then subName = typeName end
-    return true, info, g, k, subName, classID
+    local whole = Kind.GROUPS[g].whole
+    if whole and whole[classID] then subName = typeName end
+    return true, info, g, k, subName, classID, icon
   end
 
   -- A line under the heading `group` for its key `k`, from the spare ones:
   -- its tables are kept. `classID`: the item's class, to name the kind by
-  -- where the item gave no name.
-  function Kind.Line(group, k, name, classID)
+  -- where the item gave no name; `icon`: the item's own, worn where
+  -- Kind.ICONS names none for the kind.
+  function Kind.Line(group, k, name, classID, icon)
+    local whole = group.whole and group.whole[classID]
     if type(name) ~= "string" or name == "" then
       -- The item gave no name for its kind: the client's own for it. A
       -- kind with no name at all has no line.
       name = nil
       local ok, known
-      if group.g == 3 then
+      if whole then
         local api = C_Item.GetItemClassInfo
         if type(api) == "function" then ok, known = pcall(api, classID) end
       else
@@ -6842,7 +6888,9 @@ do
       line = { items = {}, index = {} }
     end
     line.g, line.key, line.name, line.text, line.off = group.g, k, name, nil, false
-    line.order = group.subs and group.subs[k] or (group.whole and group.whole[k]) or 0
+    line.order = (not whole and group.subs and group.subs[k]) or whole or 0
+    local icons = Kind.ICONS[group.g]
+    line.icon = (icons and icons[k]) or icon
     Kind.Clear(line)
     group.lines[#group.lines + 1] = line
     group.by[k] = line
@@ -6931,11 +6979,11 @@ do
       for bag = 0, Q.LAST_BAG do
         local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
         for slot = 1, (ok and tonumber(count)) or 0 do
-          local takes, info, g, k, name, classID = Kind.At(bag, slot)
+          local takes, info, g, k, name, classID, icon = Kind.At(bag, slot)
           if takes then
             local group = G[g]
             local line = group.by[k]
-            if not line and not keep then line = Kind.Line(group, k, name, classID) end
+            if not line and not keep then line = Kind.Line(group, k, name, classID, icon) end
             if line then
               Kind.Count(line, info, limit)
               Kind.Count(group, info, limit)
@@ -6980,6 +7028,15 @@ do
     if not group then return nil end
     if line == nil then return #group.lines > 0 and L[group.head] or nil end
     return line and line.text or nil
+  end
+
+  -- The icon its row wears (Dropdown.Menu's opts.icon): a heading's, or the
+  -- line's standing there now.
+  function Kind.Icon(item)
+    local group, line = Kind.Of(item.id)
+    if not group then return nil end
+    if line == nil then return group.icon end
+    return line and line.icon or nil
   end
 
   function Kind.Off(id)
@@ -7073,6 +7130,7 @@ do
     Kind.opts = Kind.opts or {
       keepOpen = true,
       caption = Kind.Caption,
+      icon = Kind.Icon,
       disabled = Kind.Off,
       onPick = Kind.Pick,
       onEnter = Kind.RowTip,
