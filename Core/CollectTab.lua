@@ -8994,7 +8994,7 @@ do
     CHIP_W = 39, CHIP_ARROW = 12.5, CHIP_X = 27.5, CHIP_XS = 9,
     LINE_H = 2, GLOW_H = 10, GLOW_A = 0.16, LINE_LEVEL = 9, RIM = 3,
     lit = nil, c1 = nil, c2 = nil,
-    held = false, latched = false, goal = 0, p = 0,
+    held = false, latched = false, goal = 0, p = 0, chord = false,
     downAt = nil, tapAt = nil, ended = false, used = false,
     panel = nil, watch = nil, key = nil, watching = false, moving = false,
     -- A one-line row's columns that may stand under the faded x.
@@ -9091,13 +9091,16 @@ do
         M.watching = true
         -- A press made before the list came up shows the marks, and is no
         -- tap.
-        M.held = M.AltDown(false) and not M.Typing()
+        local alt, ctrl = M.AltDown(false), M.Ctrl()
+        M.held = alt and not ctrl and not M.Typing()
+        M.chord = alt and ctrl
         M.downAt, M.tapAt, M.ended, M.used = nil, nil, M.held, false
       end
     elseif M.watching then
       M.watch:UnregisterEvent("MODIFIER_STATE_CHANGED")
       M.watching = false
       M.held, M.latched, M.downAt, M.tapAt, M.ended, M.used = false, false, nil, nil, false, false
+      M.chord = false
     end
     M.Aim(ok and (M.held or M.latched), not ok)
   end
@@ -9119,14 +9122,22 @@ do
   -- no marks, counts toward no double-tap and keeps nothing on (AltGr
   -- reports as Alt); like any press it still ends a kept-on mode. The
   -- marks come in once the box lets go with Alt still down (M.Check).
+  -- A press that begins with Ctrl down is judged the same way, with or
+  -- without a box: AltGr reports as Ctrl+Alt and types letters, @ and €
+  -- on many layouts, and Ctrl+Alt is a keybind; that press brings no
+  -- marks until Alt is let go (M.chord). Only the press is judged: Ctrl
+  -- going down while Alt is already held leaves the marks as they are,
+  -- and a release with Ctrl down is no tap.
   function M.OnEvent(_, _, key, down)
     if key ~= "LALT" and key ~= "RALT" then return end
     local panel = M.panel
     if not M.Eligible(panel) then return M.Sync(panel) end
     local now = GetTime()
     local alt = M.AltDown(down == 1)
-    if alt and not M.held and M.Typing() then
+    if not alt then M.chord = false end
+    if alt and not M.held and (M.Ctrl() or M.Typing()) then
       M.latched, M.downAt, M.tapAt = false, nil, nil
+      if M.Ctrl() then M.chord = true end
     elseif alt and not M.held then
       M.held, M.used = true, false
       if M.latched then
@@ -9137,10 +9148,14 @@ do
         M.downAt, M.ended = now, false
       end
     elseif not alt and M.held then
-      -- Let go while typing: no tap.
-      M.Release(not M.Typing() and now or nil)
+      -- Let go while typing, or with Ctrl down: no tap.
+      M.Release(not M.Typing() and not M.Ctrl() and now or nil)
     end
     M.Aim(M.held or M.latched)
+  end
+
+  function M.Ctrl()
+    return type(IsControlKeyDown) == "function" and IsControlKeyDown() and true or false
   end
 
   -- Whether a text box has the keyboard (the Search box, the Send tab's
@@ -9170,7 +9185,7 @@ do
         M.Release(nil)
         M.Aim(M.latched)
       end
-    elseif M.watching and M.AltDown(false) and not M.Typing() and M.Eligible(M.panel) then
+    elseif M.watching and not M.chord and M.AltDown(false) and not M.Typing() and M.Eligible(M.panel) then
       M.held, M.downAt, M.ended, M.used = true, nil, true, false
       M.Aim(true)
     end
