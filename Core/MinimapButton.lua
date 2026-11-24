@@ -2031,6 +2031,10 @@ local TIP = {
   -- mails at a time.": units further from that line than the game spaces
   -- its lines (negative: closer). 0: as the game spaces them.
   UNLISTED_GAP = 0,
+  -- The room above "Last seen", in units, between it and the box's facts
+  -- (Theme.TipRoom): set apart as how old those facts are, still well under
+  -- the blank line before the gestures. The game's own spacing is 2.
+  SEEN_ROOM = 8,
   seen = {},           -- the one-field snapshot MailMemory.AgeText reads
   mode = "any",        -- Warn about, read as each showing begins (TIP.WarningText)
 }
@@ -2273,6 +2277,7 @@ ShowTooltip = function(button, hostMode)
     TIP.Warning(myWarning)
     TIP.seen.seenAt = state.seenAt
     TIP.Fact(L["MINIMAP_TIP_SEEN"], Memory.AgeText(TIP.seen))
+    ns.Theme.TipRoom(TIP.SEEN_ROOM)
   else
     -- No snapshot (memory off, or this character has never opened a
     -- mailbox with Postbox installed): say only what the client knows.

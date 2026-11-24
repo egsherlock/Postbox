@@ -4088,22 +4088,31 @@ local function HintFont()
   return font
 end
 
--- A footnote set further from (or closer to) the line above it than the
--- game spaces its lines (Theme.TipNote's `gap`): one line a tooltip, its
--- anchor as the game set it kept here, and the room it added at the
--- tooltip's foot, so it is put back with the hint fonts. `fs` false: none.
-local tipGap = { fs = false, point = false, rel = false, relPoint = false, x = 0, y = 0, pad = 0 }
+-- Lines set further from (or closer to) the line above them than the game
+-- spaces its lines (Theme.TipNote's `gap`, Theme.TipRoom): up to MAX lines
+-- a tooltip, each one's anchor as the game set it kept here in a slot made
+-- once, and the room they added at the tooltip's foot, so all are put back
+-- with the hint fonts. `n`: the slots in use.
+local tipGap = { n = 0, MAX = 4, pad = 0 }
+for i = 1, tipGap.MAX do
+  tipGap[i] = { fs = false, point = false, rel = false, relPoint = false, x = 0, y = 0 }
+end
 Theme._tipGap = tipGap
 
 local function RestoreGap()
-  local fs = tipGap.fs
-  if not fs then return end
-  tipGap.fs = false
-  fs:SetPoint(tipGap.point, tipGap.rel, tipGap.relPoint, tipGap.x, tipGap.y)
+  for i = tipGap.n, 1, -1 do
+    local slot = tipGap[i]
+    local fs = slot.fs
+    if fs then
+      fs:SetPoint(slot.point, slot.rel, slot.relPoint, slot.x, slot.y)
+      slot.fs, slot.rel = false, false
+    end
+  end
+  tipGap.n = 0
   local pad = tipGap.pad
   tipGap.pad = 0
   -- The game clears the padding as the tooltip hides; a tooltip begun
-  -- again while shown still carries the room this line added.
+  -- again while shown still carries the room these lines added.
   if pad > 0 and type(GameTooltip.GetPadding) == "function" then
     local r, b, l, t = GameTooltip:GetPadding()
     if type(b) == "number" and b >= pad then GameTooltip:SetPadding(r or 0, b - pad, l or 0, t or 0) end
@@ -4192,24 +4201,39 @@ end
 
 -- The tooltip's last line set `gap` units further from the line above it
 -- than the game sets it (negative: closer), and the tooltip that much
--- taller where it is further. Asked of a footnote alone; nothing for 0.
-local function GapLastLine(gap)
-  gap = tonumber(gap) or 0
-  if gap == 0 or tipGap.fs then return end
+-- taller where it is further; or, with `room`, set `room` units under the
+-- line above it, where it stands under that line as the game puts its
+-- lines (its top on the line's bottom). Nothing for no change, for a line
+-- already moved, or past MAX lines.
+local function GapLastLine(gap, room)
+  local slots = tipGap.n
+  if slots >= tipGap.MAX then return end
   local n = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines() or 0
   local fs = n > 1 and TipLineString(n) or nil
   if not (fs and type(fs.GetPoint) == "function") then return end
+  for i = 1, slots do
+    if tipGap[i].fs == fs then return end
+  end
   local point, rel, relPoint, x, y = fs:GetPoint(1)
   if not point then return end
-  tipGap.fs, tipGap.point, tipGap.rel, tipGap.relPoint = fs, point, rel, relPoint
-  tipGap.x, tipGap.y = tonumber(x) or 0, tonumber(y) or 0
-  fs:SetPoint(point, rel, relPoint, tipGap.x, tipGap.y - gap)
+  x, y = tonumber(x) or 0, tonumber(y) or 0
+  if room then
+    if not (point == "TOPLEFT" and relPoint == "BOTTOMLEFT" and rel == TipLineString(n - 1)) then return end
+    gap = room + y
+  end
+  gap = tonumber(gap) or 0
+  if gap == 0 then return end
+  slots = slots + 1
+  tipGap.n = slots
+  local slot = tipGap[slots]
+  slot.fs, slot.point, slot.rel, slot.relPoint, slot.x, slot.y = fs, point, rel, relPoint, x, y
+  fs:SetPoint(point, rel, relPoint, x, y - gap)
   -- The game sizes a tooltip by its lines, not by where they stand: the
   -- room a line is moved down by is added at the foot.
   if gap > 0 and type(GameTooltip.GetPadding) == "function" and type(GameTooltip.SetPadding) == "function" then
     local r, b, l, t = GameTooltip:GetPadding()
     GameTooltip:SetPadding(r or 0, (tonumber(b) or 0) + gap, l or 0, t or 0)
-    tipGap.pad = gap
+    tipGap.pad = tipGap.pad + gap
   end
   WatchTip()
 end
@@ -4313,6 +4337,14 @@ function Theme.TipNote(text, gap)
   if not text or text == "" then return end
   AddHintLine(text)
   if gap and gap ~= 0 then GapLastLine(gap) end
+end
+
+-- The line just added set `room` units under the line above it, the
+-- tooltip as much taller as that is more than the game's own spacing; put
+-- back when the tooltip hides or the next begins, as a footnote's gap is.
+function Theme.TipRoom(room)
+  room = tonumber(room)
+  if room then GapLastLine(nil, room) end
 end
 
 -------------------------------------------------------------
