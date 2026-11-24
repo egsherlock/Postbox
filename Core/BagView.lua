@@ -72,7 +72,7 @@ BV.COIN = "Interface\\Icons\\INV_Misc_Coin_02"
 BV.UNKNOWN = "Interface\\Icons\\INV_Misc_QuestionMark"
 -- The switch's mark: TEMPORARY, the Slots column's glyph, until the real
 -- one is drawn.
-BV.GLYPH = "slot"
+BV.GLYPH = "pouch"
 
 BV.tiles, BV.heads = {}, {}
 -- The mails a tile's run is started with, copied from its kind: the list
