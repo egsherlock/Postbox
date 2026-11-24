@@ -2557,8 +2557,14 @@ function RV.ItemsTooltip(owner, index, items)
   RV.MoneyFacts(tonumber(money) or 0, tonumber(cod) or 0)
   RV.TipState(Mail().StuckReason(index))
   -- The icon clicks through to its row, so the open and then the row's
-  -- other gestures, as the one-item icon has them (HINT_ROW_*).
-  T.TipHint(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"])
+  -- other gestures, as the one-item icon has them (HINT_ROW_*); while the
+  -- marks show, the row's one click (RV.Marks.Hint).
+  local row = owner.__pbTipRow
+  if row and RV.Marks.goal == 1 then
+    RV.Marks.Hint(row, index)
+  else
+    T.TipHint(L()[PreviewOnClick() and "HINT_ICON_TAKE_CLICK" or "HINT_ICON_TAKE_RIGHT"])
+  end
   GameTooltip:Show()
 end
 
@@ -4590,12 +4596,13 @@ do
     RV.TipWhy(row.tipKind)
 
     -- The gestures beyond the plain click, as the active mapping has them;
-    -- a finished mail has none (every button opens it). While Alt is held
-    -- over the marks a click on a row does nothing, so none (kept on by a
-    -- double-tap, the row's clicks are today's and so are its hints); with
-    -- no marks up, on a mail that can go back, holding Alt shows its Return
-    -- (RV.Marks).
-    if not row.mailDone and not RV.Marks.Holding() then
+    -- a finished mail has none (every button opens it). While the marks
+    -- show, held or kept on, the one click the row has then, or why it has
+    -- none (RV.Marks.Hint); with no marks up, on a mail that can go back,
+    -- holding Alt shows its Return (RV.Marks).
+    if RV.Marks.goal == 1 then
+      RV.Marks.Hint(row, index)
+    elseif not row.mailDone and not RV.Marks.Holding() then
       T.TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
       if RV.Marks.goal ~= 1 and RV.Offers(index, cod > 0, money > 0 or (tonumber(itemCount) or 0) > 0, wasRead) then
         T.TipNote(RawKey("HINT_ROW_HOLD_ALT"))
@@ -7373,10 +7380,10 @@ local function ActivateRow(row, button)
   -- under it (Core/Arrange.lua lays a cover of its own over the list), and
   -- nothing that reaches a row may collect or open a mail.
   if RV.Arranging(panel) then return end
-  -- While Alt is held over Return and Delete on the rows, only a mark acts:
-  -- a near miss on the row or its icon collects nothing and opens nothing.
-  -- Kept on by a double-tap, the row's clicks are today's (RV.Marks).
-  if RV.Marks.Blocks() then return end
+  -- While Return and Delete show on the rows, held or kept on, a click on
+  -- the row or its icon is its mark's: it returns, a right-click deletes
+  -- finished mail, and nothing collects or opens (RV.Marks.Click).
+  if RV.Marks.Click(row, button, index) then return end
 
   -- A modified left-click is a selection gesture, under either mapping and
   -- on either button's verb: shift extends a range from the last row picked,
@@ -7501,6 +7508,7 @@ local function BuildRow(panel)
     -- hover paint is re-asserted here; without it the row visibly unhighlights
     -- while the cursor is still on it.
     Th().StyleMailRow(owner, owner._rowIndex, true)
+    RV.Marks.Light(owner)
     local index = LiveIndex(owner)
     -- A sample of Test mail: the same hover from its own items (RV.SampleIcon).
     if not index and owner.fanSource and owner.fanSource == RV.SampleFan then
@@ -7522,7 +7530,9 @@ local function BuildRow(panel)
     -- is part of the row, and clicks through to it).
     if ShowAttachmentTooltip(self, index, owner.iconSlot) then
       RV.TipState(Mail().StuckReason(index))
-      if not owner.mailDone then
+      if RV.Marks.goal == 1 then
+        RV.Marks.Hint(owner, index)
+      elseif not owner.mailDone then
         Th().TipHint(PreviewOnClick() and RawKey("HINT_ROW_COLLECT") or RawKey("HINT_ROW_PREVIEW"))
       end
       GameTooltip:Show()
@@ -7531,6 +7541,7 @@ local function BuildRow(panel)
   row.IconHit:SetScript("OnLeave", function(self)
     local owner = self:GetParent()
     Th().StyleMailRow(owner, owner._rowIndex, false)
+    RV.Marks.Light(owner)
     GameTooltip:Hide()
     RV.FanLeave(owner)
   end)
@@ -7601,6 +7612,7 @@ local function BuildRow(panel)
     if owner._mkKind == "faded" then return RV.Marks.FadedEnter(self, owner) end
     local T2 = Th()
     T2.StyleMailRow(owner, owner._rowIndex, true)
+    RV.Marks.Light(owner)
     T2.SetColor(self.Glyph, "negative", T2.ROW)
     -- The house tooltip: the title, then what the click does, which the
     -- glyph alone cannot say.
@@ -7614,10 +7626,18 @@ local function BuildRow(panel)
     local T2 = Th()
     T2.StyleMailRow(owner, owner._rowIndex, false)
     T2.SetColor(self.Glyph, owner._mkKind == "faded" and "textDisabled" or "textSecondary", T2.ROW)
+    RV.Marks.Light(owner)
     GameTooltip:Hide()
   end)
-  row.Delete:SetScript("OnClick", function(self)
+  -- A right-click on it is the row's while Return and Delete show (it
+  -- deletes finished mail, RV.Marks.Click), and nothing on any other day.
+  row.Delete:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  row.Delete:SetScript("OnClick", function(self, button)
     local parent = self:GetParent()
+    if button == "RightButton" then
+      if RV.Marks.goal == 1 then ActivateRow(parent, button) end
+      return
+    end
     -- The faded x does nothing (RV.Marks).
     if parent._mkKind == "faded" then return end
     -- Nor delete one, while the columns are being arranged.
@@ -7676,10 +7696,12 @@ local function BuildRow(panel)
     -- here, before the tooltip says what a click does (RV.Marks).
     RV.Marks.Check()
     Th().StyleMailRow(self, self._rowIndex, true)
+    RV.Marks.Light(self)
     RV.RowTip(self)
   end)
   row:SetScript("OnLeave", function(self)
     Th().StyleMailRow(self, self._rowIndex, false)
+    RV.Marks.Light(self)
     GameTooltip:Hide()
   end)
   -- The Return arrow Alt shows in the read dot's place (RV.Marks).
@@ -8896,13 +8918,21 @@ end
 -- stands, so it moves with it; with the dot's column hidden it stands over
 -- the icon, which gives way while the marks show (or at the row's lead with
 -- no icon either); on a stuck mail it takes the warning triangle's place,
--- which comes back when the marks go. While Alt is HELD, a click on a row
--- or its icon collects nothing and opens nothing, nor selects, and the fan
--- does not open: only a mark acts (ActivateRow, Fan.Allowed; f50 R01's
--- near miss with Alt down). KEPT ON by a double-tap, a row's clicks are
--- what they are today (f43 C01): only a click on a mark returns or
--- deletes. The arrow takes the pointer from the row's left edge to just
--- past the dot where the dot leads the row.
+-- which comes back when the marks go. The arrow takes the pointer from the
+-- row's left edge to just past the dot where the dot leads the row.
+--
+-- While the marks show, HELD or KEPT ON alike (his idea, f57 A01), the whole
+-- row is its mark: a click anywhere on it or its icon returns a mail that
+-- can go back, a right-click deletes finished mail, the other button there
+-- does nothing, and a row that can do neither does nothing and its tooltip
+-- says why. A left click never deletes; nothing collects or opens, the fan
+-- does not open, and "Left-click opens a mail" does not swap the two.
+-- Shift-click and Ctrl-click do nothing while Alt is held and select while
+-- kept on, as before. The row under the pointer says what its click will
+-- do before it is made (f57 B01): a soft light in the action's tone spreads
+-- from its mark -- the accent from the arrow, the x's red from the x -- the
+-- arrow takes the accent, and the tooltip ends "Click: return" or
+-- "Right-click: delete" (M.Click, M.Light, M.Hint).
 --
 -- Built inside the house rules: the game's MODIFIER_STATE_CHANGED is
 -- registered only while the inbox's list is on screen at a mailbox, and
@@ -8926,6 +8956,11 @@ do
     IN = 0.15, OUT = 0.09, TAP = 0.3, FADED = 0.5,
     -- The arrow's art, in units: on one-line rows and on two-line rows.
     SIZE = 9, SIZE_LARGE = 12,
+    -- The light on the row under the pointer (f57 B01 "tone"): its alpha at
+    -- the mark's edge of the row and at the bend, and where the bend and
+    -- its end stand, as shares of the row's width from that edge.
+    LIGHT = 0.42, BEND = 0.18, BEND_AT = 0.24, LIGHT_TO = 0.58,
+    lit = nil, c1 = nil, c2 = nil,
     held = false, latched = false, goal = 0, p = 0,
     downAt = nil, tapAt = nil, ended = false, used = false,
     panel = nil, watch = nil, key = nil, watching = false, moving = false,
@@ -9097,14 +9132,6 @@ do
     return M.goal == 1 and M.held
   end
 
-  -- Whether a click on a row is held back: Alt is held over the marks
-  -- (read again, so a lost release lets go first). Kept on, it is not.
-  function M.Blocks()
-    if not M.Holding() then return false end
-    M.Check()
-    return M.Holding()
-  end
-
   -- The marks toward on (true) or off; `instant` with no fade (the list
   -- has gone).
   function M.Aim(on, instant)
@@ -9122,6 +9149,8 @@ do
     if goal == M.goal then return end
     M.goal = goal
     if goal == 1 then M.Rows(M.panel) end
+    -- The row under the pointer says its click as it now is.
+    M.Relight()
     if not M.moving then
       M.moving = true
       local w = M.Watcher()
@@ -9160,6 +9189,11 @@ do
       local row = rows[i]
       if row._mkKind then M.Apply(row, p) end
     end
+    local lit = M.lit
+    if lit then
+      lit._mkLitA:SetAlpha(p)
+      lit._mkLitB:SetAlpha(p)
+    end
   end
 
   -- What each row bound now wears, from its mail as the inbox now has it,
@@ -9178,9 +9212,12 @@ do
         M.Clear(row)
       end
     end
+    -- The lit row bound again: lit for the mail it holds now, or not.
+    if M.lit then M.Light(M.lit) end
   end
 
   function M.ClearAll()
+    if M.lit then M.Unlight(M.lit) end
     local panel = M.panel
     local rows = panel and panel._rows
     if not rows then return end
@@ -9353,7 +9390,7 @@ do
     local b = row.Return
     local g = b.Glyph
     M.Art(row)
-    T.SetColor(g, b.hover and "textPrimary" or "textSecondary", T.ROW)
+    T.SetColor(g, M.lit == row and "accent" or (b.hover and "textPrimary" or "textSecondary"), T.ROW)
     local dot, icon = row.Indicator, row.Icon
     local at
     if dot:IsShown() then at = dot elseif icon:IsShown() then at = icon end
@@ -9405,6 +9442,7 @@ do
     self.hover = true
     T.StyleMailRow(row, row._rowIndex, true)
     T.SetColor(self.Glyph, "textPrimary", T.ROW)
+    M.Light(row)
     local index = LiveIndex(row)
     if not index then return end
     local _, _, sender = GetInboxHeaderInfo(index)
@@ -9421,14 +9459,18 @@ do
     self.hover = nil
     T.StyleMailRow(row, row._rowIndex, false)
     T.SetColor(self.Glyph, "textSecondary", T.ROW)
+    M.Light(row)
     GameTooltip:Hide()
+  end
+
+  function M.ReturnClick(self)
+    return M.ReturnRow(self:GetParent())
   end
 
   -- Return, only while the marks show, on the mail this row is bound to as
   -- the inbox now stands (RV.Acting), and only while the reading view
-  -- would offer it there too.
-  function M.ReturnClick(self)
-    local row = self:GetParent()
+  -- would offer it there too: the arrow's click and the row's (M.Click).
+  function M.ReturnRow(row)
     local panel = row.panel
     if not panel or M.goal ~= 1 then return end
     M.Check()
@@ -9444,10 +9486,167 @@ do
     RV.ReturnOne(panel, index, row.fingerprint, Mail().Stamp(), Mail().FirstItem(index))
   end
 
+  -- row, button, index (RV.Acting's) -> true where the marks own a click
+  -- on the row or its icon (ActivateRow): while they show, held or kept on.
+  -- A click returns what wears the arrow (the arrow's own return), a
+  -- right-click deletes finished mail (the x's own delete, DeleteOneMail),
+  -- the other button and any row that can do neither do nothing, and
+  -- "Left-click opens a mail" does not swap them. Shift- and Ctrl-click on
+  -- mail not finished go on to select while kept on; held, nothing. A click
+  -- with Alt held uses the marks, so its press is no tap.
+  function M.Click(row, button, index)
+    if M.goal ~= 1 then return false end
+    M.Check()
+    if M.goal ~= 1 then return false end
+    M.Used()
+    if IsShiftKeyDown() or IsControlKeyDown() then
+      return M.held or button ~= "LeftButton" or row.mailDone == true
+    end
+    if button == "LeftButton" then
+      if row._mkKind == "back" and not row.mailDone then M.ReturnRow(row) end
+    elseif button == "RightButton" and row.mailDone then
+      DeleteOneMail(row.panel, index, row.fingerprint)
+    end
+    return true
+  end
+
+  -- row -> what its click does while the marks show: "back" (a click
+  -- returns it) or "gone" (finished mail: a right-click deletes it); nil
+  -- where it does neither, or the marks are off.
+  function M.Act(row)
+    if M.goal ~= 1 or not (row.mailIndex and row.fingerprint) then return nil end
+    if row.mailDone then return "gone" end
+    if row._mkKind == "back" then return "back" end
+    return nil
+  end
+
+  -- The row's light, as the pointer and the marks stand: on the row under
+  -- the pointer (row._hovered, StyleMailRow's) while its click acts, else
+  -- off. At most one row is lit (M.lit). Two textures per row, over its
+  -- stripe and under its words, made the first time it is lit and kept;
+  -- the light runs from the mark's edge of the stripe (the left for the
+  -- arrow, the right for the x) at LIGHT, to BEND at BEND_AT of its width,
+  -- to nothing at LIGHT_TO. The arrow and the x take the tone too.
+  function M.Light(row)
+    local act = row._hovered and M.Act(row) or nil
+    local lit = M.lit
+    if lit and (lit ~= row or not act) then M.Unlight(lit) end
+    if not act then return end
+    local ground = row._bg
+    if not ground then return end
+    local T = Th()
+    local a, b = row._mkLitA, row._mkLitB
+    if not a then
+      a = row:CreateTexture(nil, "BACKGROUND", nil, 2)
+      b = row:CreateTexture(nil, "BACKGROUND", nil, 2)
+      a:SetColorTexture(1, 1, 1, 1)
+      b:SetColorTexture(1, 1, 1, 1)
+      row._mkLitA, row._mkLitB = a, b
+      if M.c1 == nil then
+        M.c1 = false
+        if type(CreateColor) == "function" and type(a.SetGradient) == "function" then
+          local c1, c2 = CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 0)
+          if pcall(a.SetGradient, a, "HORIZONTAL", c1, c2) then M.c1, M.c2 = c1, c2 end
+        end
+      end
+    end
+    local r, g, bl
+    if act == "back" then
+      r, g, bl = T.GetAccentTone("mark")
+      -- On a ground a look laid under its rows, the accent as its ink
+      -- (Theme.SetRowInks), as the selection's bar takes it.
+      local rows = T._rowInks
+      local ink = rows and rows.Ink("accent")
+      if ink then r, g, bl = ink[1], ink[2], ink[3] end
+    else
+      r, g, bl = T.Ink("negative", T.ROW)
+    end
+    local w = ground:GetWidth() or 0
+    local near, bend = M.LIGHT, M.BEND
+    local side = act == "back" and "LEFT" or "RIGHT"
+    local away = act == "back" and "RIGHT" or "LEFT"
+    a:ClearAllPoints()
+    b:ClearAllPoints()
+    a:SetPoint("TOP" .. side, ground, "TOP" .. side, 0, 0)
+    a:SetPoint("BOTTOM" .. side, ground, "BOTTOM" .. side, 0, 0)
+    b:SetPoint("TOP" .. side, a, "TOP" .. away, 0, 0)
+    b:SetPoint("BOTTOM" .. side, a, "BOTTOM" .. away, 0, 0)
+    a:SetWidth(max(w * M.BEND_AT, 1))
+    b:SetWidth(max(w * (M.LIGHT_TO - M.BEND_AT), 1))
+    local c1, c2 = M.c1, M.c2
+    if c1 then
+      -- HORIZONTAL: the first colour is the left's.
+      if act == "back" then
+        c1:SetRGBA(r, g, bl, near); c2:SetRGBA(r, g, bl, bend)
+        a:SetGradient("HORIZONTAL", c1, c2)
+        c1:SetRGBA(r, g, bl, bend); c2:SetRGBA(r, g, bl, 0)
+        b:SetGradient("HORIZONTAL", c1, c2)
+      else
+        c1:SetRGBA(r, g, bl, bend); c2:SetRGBA(r, g, bl, near)
+        a:SetGradient("HORIZONTAL", c1, c2)
+        c1:SetRGBA(r, g, bl, 0); c2:SetRGBA(r, g, bl, bend)
+        b:SetGradient("HORIZONTAL", c1, c2)
+      end
+    else
+      -- A client with no gradient: each part flat at its mean.
+      a:SetColorTexture(r, g, bl, (near + bend) / 2)
+      b:SetColorTexture(r, g, bl, bend / 2)
+    end
+    a:SetAlpha(M.p)
+    b:SetAlpha(M.p)
+    a:Show()
+    b:Show()
+    M.lit = row
+    if act == "back" then
+      if row.Return then T.SetColor(row.Return.Glyph, "accent", T.ROW) end
+    elseif row.Delete then
+      T.SetColor(row.Delete.Glyph, "negative", T.ROW)
+    end
+  end
+
+  -- The light off, and the mark back in its own ink.
+  function M.Unlight(row)
+    if M.lit == row then M.lit = nil end
+    local a = row._mkLitA
+    if not a then return end
+    a:Hide()
+    row._mkLitB:Hide()
+    local T = Th()
+    local b = row.Return
+    if b and row._mkKind == "back" then T.SetColor(b.Glyph, b.hover and "textPrimary" or "textSecondary", T.ROW) end
+    if row.mailDone and row.Delete then T.SetColor(row.Delete.Glyph, "textSecondary", T.ROW) end
+  end
+
+  -- The marks came or went: the row under the pointer, lit or not, and
+  -- its tooltip built again (Theme.TipFollow), so both say its click as
+  -- it now is.
+  function M.Relight()
+    local panel = M.panel
+    if panel and panel.MailListChild then Th().TipFollow(panel.MailListChild) end
+    if M.lit then M.Light(M.lit) end
+  end
+
+  -- The row tooltip's last line while the marks show: the one click the
+  -- row has (HINT_MARKS_RETURN, HINT_MARKS_DELETE), or why it has none --
+  -- the faded x's words (RV.FadedReason), or, for an unread letter with
+  -- nothing in it, which wears no mark, MARKS_NONE_UNREAD.
+  function M.Hint(row, index)
+    local T = Th()
+    if row.mailDone then return T.TipHint(RawKey("HINT_MARKS_DELETE")) end
+    local kind = row._mkKind
+    if kind == "back" then return T.TipHint(RawKey("HINT_MARKS_RETURN")) end
+    if kind == "faded" then return T.TipHint(RawKey(RV.FadedReason(row.tipKind))) end
+    local _, _, _, _, money, _, _, itemCount, wasRead = GetInboxHeaderInfo(index)
+    if not wasRead and (tonumber(money) or 0) == 0 and (tonumber(itemCount) or 0) == 0 then
+      T.TipHint(RawKey("MARKS_NONE_UNREAD"))
+    end
+  end
+
   -- The faded x's tooltip: Delete in gray, and why not.
   function M.FadedEnter(self, row)
     local T = Th()
     T.StyleMailRow(row, row._rowIndex, true)
+    M.Light(row)
     T.TipBegin(self)
     local r, g, b = T.Ink("textDisabled")
     T.TipTitle(DeleteLabel(), r, g, b)
@@ -18899,9 +19098,9 @@ do
     local panel = row.panel
     if not panel or panel._preview or Run.active then return false end
     if RV.Arranging(panel) then return false end
-    -- Nor while Alt is held over the marks: only a mark acts then. Kept on
-    -- by a double-tap, the fan is as it is today.
-    if RV.Marks.Holding() then return false end
+    -- Nor while the marks show, held or kept on: the icon's click is its
+    -- row's mark's then (RV.Marks.Click).
+    if RV.Marks.goal == 1 then return false end
     local detail = panel.Detail
     if detail and detail:IsShown() then return false end
     return true
