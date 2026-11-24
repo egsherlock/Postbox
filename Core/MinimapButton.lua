@@ -328,10 +328,10 @@ end
 --   lit     the game's unread-mail flag: the icon at full voice (its glow and
 --           pulse). Every mode shows the icon at least while this is true.
 --   shown   whether the icon is on the map at all.
---   mine    mail waiting in this character's box, as Mail Memory counts it
---           (what still holds something or is unread, and what is known to
---           have arrived since); `all` the same over every character the
---           player has not hidden, this one included.
+--   mine    the mail in this character's box, as Mail Memory counts it
+--           (what still holds something or is unread, the read mail kept,
+--           and what is known to have arrived since); `all` the same over
+--           every character the player has not hidden, this one included.
 --   count   the number the icon wears: `mine`, `all` or none (0).
 --   alert   the expiry dot is drawn: mail on some character is close to
 --           being lost -- the list's own `warn`, the rule Mail Memory's chat
@@ -613,10 +613,11 @@ local function Evaluate()
     for i = 1, #list do
       local st = list[i]
       if not st.hidden then
-        -- The tally's count (MailMemory's Status): the mail waiting in its
-        -- record, the mail the server held past what the visit listed, and
-        -- the auctions noted since. The one number the tooltip, the
-        -- character list and Mail Memory read too.
+        -- The tally's count (MailMemory's Status): the whole box -- the
+        -- mail waiting in its record and the read mail kept there, the mail
+        -- the server held past what the visit listed, and the auctions
+        -- noted since. The one number the character list and Mail Memory
+        -- say too, and the tooltip's lines add up to.
         local n = tonumber(st.count) or 0
         if st.me then
           if here then n = here end
@@ -2234,7 +2235,8 @@ ShowTooltip = function(button, hostMode)
 
   if state then
     -- The number the icon wears (MailMemory's tally), less the stuck mail
-    -- said apart below: the mail in the record still waiting, by sender
+    -- and the read mail kept, each said apart below, so the lines add up to
+    -- it: the mail in the record still waiting, by sender
     -- (the auctions noted since in the auction house's count), then the
     -- mail the game has not listed yet (past the 100 it lists at a time),
     -- with a footnote under it that says why. With "+" where more came

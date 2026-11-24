@@ -97,9 +97,10 @@ end
 
 local live = nil
 local captureQueued = false
--- What the last look of this visit counted, mail waiting and mail unlisted
--- (CaptureNow tells the minimap icon when it moves); nil between visits.
-local liveCounted = nil
+-- What the last look of this visit counted: the whole box (every mail
+-- listed and the mail unlisted), and of it the mail still waiting
+-- (CaptureNow tells the minimap icon when either moves); nil between visits.
+local liveCounted, liveWaiting = nil, nil
 
 -- The search's folded text, kept per mail table (Matches, section 3d). Weak
 -- keys, so a snapshot dropped takes its entries with it -- and never a field
@@ -346,10 +347,13 @@ local function CaptureNow()
     live = { seenAt = now, total = totalItems, mails = mails }
   end
   -- The minimap icon counts this look while the box is open (MM.LiveCount):
-  -- told when what it would count has moved, and only then.
-  local counted = waiting + math.max(0, totalItems - count)
-  if counted ~= liveCounted then
-    liveCounted = counted
+  -- told when what it would count has moved, and only then: the whole box
+  -- (the tally's `count`: every mail listed, read mail kept included, and
+  -- the mail the server holds past them), or the mail of it still waiting,
+  -- which its tooltip and its warnings read.
+  local counted = count + math.max(0, totalItems - count)
+  if counted ~= liveCounted or waiting ~= liveWaiting then
+    liveCounted, liveWaiting = counted, waiting
     local Icon = ns.MinimapButton
     if Icon and Icon.MemoryChanged then Icon.MemoryChanged() end
   end
@@ -426,7 +430,7 @@ local function PersistOnClose()
   if not live then return end
   local snapshot = live
   live = nil
-  liveCounted = nil
+  liveCounted, liveWaiting = nil, nil
 
   -- The arrival baseline, taken at the boundary the badge measures from:
   -- what the client's unread indicators said the moment the box closed.
@@ -797,10 +801,13 @@ local function Uncounted(watch, seenAt, now)
 end
 
 -- realm, name, now -> what there is to say about that character's mail: the
--- one tally every count is read from. The minimap icon, its tooltip, the
--- character list and the options' summary say `count` (or its parts); Mail
--- Memory's top and another box's plate on the Mail tab say `box`, the list
--- they head; the two are the same number while no read mail is kept.
+-- one tally every count is read from. Every place says one number for a
+-- box, read mail kept in it included: the minimap icon, the character
+-- list, Mail Memory's top and another box's plate on the Mail tab say
+-- `count` (`box` is the same number), the options' summary its parts that
+-- hold mail it can list; the minimap tooltip says it in its parts, the mail
+-- to collect (`collect`, less the stuck) apart from the read mail kept
+-- (`finished`), so its lines add up to the icon's number.
 --   waiting    mails in its snapshot still waiting (Holds)
 --   stuck      of those, the ones the server refused
 --   finished   mails in its snapshot still in date, read and holding nothing
@@ -808,8 +815,9 @@ end
 --   pending    the auctions noted since the visit, one each (2g), and `sent`
 --   sent       the mail Postbox sent it from another character since
 --              (MM.SentSince; never on the character being played)
---   count      the mail waiting: waiting + unlisted + pending
---   box        the whole box: count + finished
+--   collect    the mail to collect: waiting + unlisted + pending
+--   count      the whole box: collect + finished
+--   box        the same as `count` (the name its list-heading readers use)
 --   uncounted  mail came since that nothing named (Uncounted): the count
 --              is `count` and more (MM.CountText)
 --   more       what a window says with the count: `uncounted`, or for the
@@ -840,7 +848,7 @@ local function Status(realm, name, now, look, st)
       soon = nil, soonest = nil, held = nil, pending = 0, sent = 0, uncounted = false, unseenDays = nil, warn = false,
       gone = nil, goneSoonest = nil, goneText = nil,
       me = nil, hidden = nil, label = nil, text = nil,
-      stuck = 0, finished = 0, unlisted = 0, count = 0, box = 0, more = false }
+      stuck = 0, finished = 0, unlisted = 0, collect = 0, count = 0, box = 0, more = false }
   end
   st.seenAt = snap and snap.seenAt or nil
   local mails = snap and snap.mails or {}
@@ -896,8 +904,9 @@ local function Status(realm, name, now, look, st)
     st.sent = MM.SentSince(realm, name, st.seenAt, now)
     st.pending = st.pending + st.sent
   end
-  st.count = st.waiting + st.unlisted + st.pending
-  st.box = st.count + st.finished
+  st.collect = st.waiting + st.unlisted + st.pending
+  st.count = st.collect + st.finished
+  st.box = st.count
   if watch then
     st.uncounted = Uncounted(watch, st.seenAt, now)
     local since = watch.newAt
@@ -929,8 +938,8 @@ local function WarningText(st, now)
 end
 
 -- A character's count as every list says it. `n` is what is counted (the
--- tally's `count`: the snapshot's mail waiting, the mail unlisted and the
--- auctions noted since); `uncounted`, that
+-- tally's `count`: the snapshot's mail waiting and read mail kept, the
+-- mail unlisted and the auctions noted since); `uncounted`, that
 -- more came which nothing named (Status). Then it is "N+", or "new" where
 -- nothing was counted: never a bare 0 beside mail known to be there.
 -- CountText is the bare number (the minimap tooltip, the Mail tab's
@@ -1322,10 +1331,11 @@ function MM.Dashboard()
   for i = 1, #all do
     local st = all[i]
     if st.seenAt then dash.recorded = true end
-    -- What the box held: its mail waiting, and the mail the server held past
-    -- what the visit listed (the tally's `unlisted`), which has no gold or
-    -- date to add.
-    local held = st.waiting + (st.unlisted or 0)
+    -- What the box held: its mail waiting; the read mail kept in it (the
+    -- tally's `finished`, counted as the icon counts it, holding nothing to
+    -- add); and the mail the server held past what the visit listed (the
+    -- tally's `unlisted`), which has no gold or date to add.
+    local held = st.waiting + (st.finished or 0) + (st.unlisted or 0)
     if not st.hidden and held > 0 then
       local mails = (SnapshotFor(st.realm, st.name) or {}).mails or {}
       local gold, soonest, fate, amber = 0, nil, nil, false
@@ -5665,7 +5675,7 @@ do
 end
 
 -- realm, name -> what the picker says of that character: its count of mail
--- waiting (with what is known to be on the way), whether it warns, the
+-- (the whole box, with what is known to be on the way), whether it warns, the
 -- warning's words, and whether more came than the count holds (Status's
 -- `uncounted`; MM.CountText says them together).
 function MM.CountFor(realm, name)
@@ -8279,7 +8289,7 @@ function MM.MailboxSummary(most)
   -- since. It settles a look a missed close left behind, so the record read
   -- next is the one it counted.
   local t = MM.Tally()
-  local count, stuck, unlisted, noted, more = t.count, t.stuck, t.unlisted, t.pending, t.more
+  local count, stuck, unlisted, noted, more = t.collect, t.stuck, t.unlisted, t.pending, t.more
   local finished = t.finished
   local snap = live or StoredSnapshot()
   if not snap then return nil end
@@ -8289,10 +8299,11 @@ function MM.MailboxSummary(most)
   -- this" are different problems with different answers, and reading a
   -- sender under the first heading and then a count under a separate
   -- refusal line made one mail look like two. So `waiting` is the tally's
-  -- count less the refused ones, which `stuck` says: the mail in the record
-  -- still waiting, by sender (`groups`); the mail the server held past what
-  -- the visit listed (`unlisted`); and the auctions noted since, which are
-  -- the auction house's and are counted in its group.
+  -- mail to collect (`collect`) less the refused ones, which `stuck`
+  -- says: the mail in the record still waiting, by sender (`groups`); the
+  -- mail the server held past what the visit listed (`unlisted`); and the
+  -- auctions noted since, which are the auction house's and are counted in
+  -- its group. The read mail kept is `finished`, its own line.
   local mails = snap.mails or {}
 
   local function GroupsFor(wantStuck)
