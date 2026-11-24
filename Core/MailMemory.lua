@@ -2734,6 +2734,9 @@ do
     end
     return cost, itemID
   end
+  -- For one auction's own deposit, kept on its note (A.Posted): what its
+  -- sale's mail brings back.
+  MM.DepositOf = DepositOf
 
   -- Deposits waiting for their auction. A post's deposit is worked out at
   -- the hook and held here; it is added to the record (MM.NoteDeposit) only
@@ -2858,27 +2861,27 @@ do
   -- Each also tells 2g what was posted and what is asked for it (A.Posted),
   -- for the auction's row when it sells, runs out or is canceled: an item's
   -- bid and buyout, a commodity's price each.
-  local function Asked(commodity, location, quantity, bid, buyout)
+  local function Asked(commodity, location, quantity, bid, buyout, duration)
     local A = MM.Auctions
-    if A and A.Posted then pcall(A.Posted, commodity, location, quantity, bid, buyout) end
+    if A and A.Posted then pcall(A.Posted, commodity, location, quantity, bid, buyout, duration) end
   end
   local function ItemPosted(location, duration, quantity, bid, buyout)
     pcall(Posted, location)
     pcall(PostMade, false, location, duration, quantity)
-    Asked(false, location, quantity, bid, buyout)
+    Asked(false, location, quantity, bid, buyout, duration)
   end
   local function CommodityPosted(location, duration, quantity, unitPrice)
     pcall(Posted, location)
     pcall(PostMade, true, location, duration, quantity)
-    Asked(true, location, quantity, unitPrice)
+    Asked(true, location, quantity, unitPrice, nil, duration)
   end
   local function ItemConfirmed(location, duration, quantity, bid, buyout)
     pcall(PostConfirmed, false, location, duration, quantity)
-    Asked(false, location, quantity, bid, buyout)
+    Asked(false, location, quantity, bid, buyout, duration)
   end
   local function CommodityConfirmed(location, duration, quantity, unitPrice)
     pcall(PostConfirmed, true, location, duration, quantity)
-    Asked(true, location, quantity, unitPrice)
+    Asked(true, location, quantity, unitPrice, nil, duration)
   end
 
   -- What is bought and canceled, heard the same way for 2g (MM.Auctions):
@@ -3126,7 +3129,10 @@ end
 --   n     how many, where more than one and known
 --   m     copper: what a won auction cost, or what a sold one asked (its
 --         buyout: the mail holds that less the house's cut, plus the
---         deposit returned, which nothing says before the mail does)
+--         deposit returned)
+--   d, x  a sold one's deposit (copper) and the house's cut (per cent),
+--         where its posting said them (A.Rate): its row then says the gold
+--         its mail will hold (A.Net)
 --   a     the auction's id, where the game gave one
 --   s     which signals have said it (SRC, added up)
 --
@@ -3157,7 +3163,8 @@ end
 -- of the visit takes their place.
 --
 -- Beside them, `up`: this character's auctions as they were posted, by
--- auction id (the item, how many, the price asked), so a sale, an expiry or
+-- auction id (the item, how many, the price asked; for an item's, its own
+-- deposit `d` and, on Forever, its house `h`), so a sale, an expiry or
 -- a cancel can say what the game's signal does not. At most UP_MAX, each
 -- dropped when its auction ends or UP_KEEP after it was posted.
 -------------------------------------------------------------
@@ -3252,8 +3259,12 @@ do
   end
 
   -- What a signal knows, onto an entry that lacks it.
-  local function Fill(e, src, auctionID, itemID, name, qty, money, link)
+  local function Fill(e, src, auctionID, itemID, name, qty, money, link, deposit, rate)
     local grew = false
+    if deposit and rate and not e.x then
+      e.d, e.x = deposit, rate
+      grew = true
+    end
     if not Has(e.s, src) then e.s = (tonumber(e.s) or 0) + src end
     if auctionID and not e.a then e.a = auctionID end
     if itemID and not e.i then e.i = itemID end
@@ -3277,7 +3288,7 @@ do
   -- entry it is noted in, a new one or the one another signal already made
   -- for that auction (above), and whether it is new. Nil while Mail Memory
   -- is off.
-  local function Note(kind, src, auctionID, itemID, name, qty, money, link)
+  local function Note(kind, src, auctionID, itemID, name, qty, money, link, deposit, rate)
     if not MemoryEnabled() then return nil end
     local realm, who = Me()
     local watch = WatchFor(realm, who, true)
@@ -3310,11 +3321,11 @@ do
     end
     if found then
       -- Said already: what this signal adds is shown, and nothing counted.
-      if Fill(found, src, auctionID, itemID, name, qty, money, link) and MM.Refresh then MM.Refresh() end
+      if Fill(found, src, auctionID, itemID, name, qty, money, link, deposit, rate) and MM.Refresh then MM.Refresh() end
       return found, false
     end
     local entry = { k = kind, t = now, s = 0 }
-    Fill(entry, src, auctionID, itemID, name, qty, money, link)
+    Fill(entry, src, auctionID, itemID, name, qty, money, link, deposit, rate)
     -- The item's id, and its own icon where one was noted, where this
     -- account put it up for auction (2e): its row's icon (PendingIcon) then
     -- needs no asking by name.
@@ -3487,22 +3498,64 @@ do
   -- made: parallel arrays, reused. `left`: the auctions a post still has to
   -- make (an item posted five times is five auctions of one).
   local POSTS, POST_AGE = 8, 30
-  local posts = { n = 0, i = {}, q = {}, m = {}, u = {}, left = {}, t = {} }
+  -- `d`, `h`: an item's own deposit and house (A.Posted), or false.
+  local posts = { n = 0, i = {}, q = {}, m = {}, u = {}, left = {}, t = {}, d = {}, h = {} }
 
   local function PostDrop(k)
     local p = posts
     for j = k, p.n - 1 do
       p.i[j], p.q[j], p.m[j], p.u[j], p.left[j], p.t[j] = p.i[j + 1], p.q[j + 1], p.m[j + 1], p.u[j + 1], p.left[j + 1], p.t[j + 1]
+      p.d[j], p.h[j] = p.d[j + 1], p.h[j + 1]
     end
     p.n = p.n - 1
+  end
+
+  -- The auction house's cut of a sale, in per cent: 5 on Retail, at every
+  -- house. On Forever, 5 at the Alliance and Horde houses and 15 at the
+  -- neutral Blackwater houses (Booty Bay, Gadgetzan, Everlook), told by the
+  -- auctioneer's faction as the post is made (A.House): `house` "f" or "n".
+  -- Nil where it cannot be told.
+  A.CUT, A.CUT_NEUTRAL = 5, 15
+  function A.Rate(house)
+    if not ns.IsForever then return A.CUT end
+    if house == "f" then return A.CUT end
+    if house == "n" then return A.CUT_NEUTRAL end
+    return nil
+  end
+
+  -- Forever: the house the auction house open now is, by its auctioneer
+  -- (the "npc" unit while the window is open): "f" for one of the Alliance
+  -- or the Horde, "n" for one of neither (the Blackwater houses' goblins),
+  -- false where the game cannot say. Retail: false, never asked.
+  function A.House()
+    if not ns.IsForever or type(UnitExists) ~= "function" or type(UnitFactionGroup) ~= "function" then return false end
+    local secret = type(issecretvalue) == "function" and issecretvalue or nil
+    local ok, here = pcall(UnitExists, "npc")
+    if not ok or (secret and secret(here)) or not here then return false end
+    local fine, faction = pcall(UnitFactionGroup, "npc")
+    if not fine or (secret and secret(faction)) then return false end
+    if faction == "Alliance" or faction == "Horde" then return "f" end
+    if faction == nil or faction == "Neutral" then return "n" end
+    return false
+  end
+
+  -- price, deposit, rate -> the gold a sale's mail holds: the price less the
+  -- house's cut, rounded down to the copper, plus the deposit back; and that
+  -- cut. As the game sums it (Blizzard's MailFrame: bid + deposit -
+  -- consignment); the cut's rounding measured on Forever's sales.
+  function A.Net(price, deposit, rate)
+    local cut = math.floor(price * rate / 100)
+    return price - cut + deposit, cut
   end
 
   -- PostItem / PostCommodity and their confirms (2e's hooks): the item, how
   -- many an auction and what is asked for it. A commodity is one auction of
   -- the whole quantity at a price each; an item is `quantity` auctions of
   -- one. An item's asking price is kept only where its sale can go for
-  -- nothing else: a buyout, and no lower bid to win it by.
-  function A.Posted(commodity, location, quantity, bid, buyout)
+  -- nothing else: a buyout, and no lower bid to win it by. With it, the
+  -- deposit of one of its auctions, the game's own answer (the sale's mail
+  -- brings back that auction's), and on Forever which house it is.
+  function A.Posted(commodity, location, quantity, bid, buyout, duration)
     local api = C_Item
     if type(api) ~= "table" or type(location) ~= "table" or type(api.GetItemID) ~= "function" then return end
     local ok, itemID = pcall(api.GetItemID, location)
@@ -3519,11 +3572,19 @@ do
       each, left = 1, quantity
       asked = (buyout and buyout > 0 and (not bid or bid <= 0 or bid >= buyout)) and buyout or false
     end
+    local deposit, house = false, false
+    if asked and not commodity then
+      local cost = MM.DepositOf and MM.DepositOf(false, location, duration, 1)
+      deposit = Num(cost) or false
+      house = A.House()
+    end
     local p, now = posts, Now()
     -- The same post again (its confirm): it waits from now.
     for k = p.n, 1, -1 do
       if p.i[k] == itemID and p.q[k] == each and p.m[k] == asked and p.u[k] == unit and p.left[k] == left then
         p.t[k] = now
+        if deposit then p.d[k] = deposit end
+        if house then p.h[k] = house end
         return
       end
     end
@@ -3531,6 +3592,7 @@ do
     local k = p.n + 1
     p.n = k
     p.i[k], p.q[k], p.m[k], p.u[k], p.left[k], p.t[k] = itemID, each, asked, unit, left, now
+    p.d[k], p.h[k] = deposit, house
   end
 
   function A.PostsClosed() posts.n = 0 end
@@ -3584,6 +3646,8 @@ do
     if p.q[at] > 1 then note.n = p.q[at] end
     if p.m[at] then note.m = p.m[at] end
     if p.u[at] then note.u = p.u[at] end
+    if p.m[at] and p.d[at] then note.d = p.d[at] end
+    if p.h[at] then note.h = p.h[at] end
     local name = NameOfID(p.i[at])
     if name then note.item = name end
     up[auctionID] = note
@@ -3598,17 +3662,22 @@ do
   end
 
   -- The auction house's notice that an auction sold. An item's auction is
-  -- over and its mail is its asking price (above); a commodity's may sell
-  -- again, part by part, and nothing says how many went.
+  -- over and its mail is its asking price less the house's cut, plus its
+  -- deposit back (above; noted with the price where the posting said both);
+  -- a commodity's may sell again, part by part, and nothing says how many
+  -- went.
   function A.Sold(name, auctionID)
     auctionID, name = Num(auctionID), Text(name)
     local note, up = UpOf(auctionID)
-    local asked
+    local asked, deposit, rate
     if note and not note.u then
       asked = tonumber(note.m)
+      deposit = tonumber(note.d)
+      rate = deposit and A.Rate(note.h) or nil
       up[auctionID] = nil
     end
-    return Note("sold", SRC.notice, auctionID, note and tonumber(note.i) or nil, name or (note and Text(note.item)), nil, asked)
+    return Note("sold", SRC.notice, auctionID, note and tonumber(note.i) or nil, name or (note and Text(note.item)), nil, asked,
+      nil, deposit, rate)
   end
 
   -- An auction ran out (`kind` "expired": its event, AUCTION_HOUSE_AUCTIONS_EXPIRED,
@@ -4433,6 +4502,16 @@ function MM.RowTip(row, owner)
     end
   end
 
+  -- A sale noted before its mail, whose row says the gold the mail will
+  -- hold (Arrivals.Row): what makes it up, in the reading view's words for
+  -- a sale's mail (CollectTab's RV.InvoiceFigures), none of them when zero.
+  if mail.pending and mail.net then
+    local fmt = ns.Helpers.FormatMoney
+    T.TipFact(L["LABEL_SALE"], fmt(mail.asked))
+    if mail.deposit > 0 then T.TipFact(L["LABEL_DEPOSIT"], fmt(mail.deposit)) end
+    if mail.cut > 0 then T.TipFact(L["LABEL_AH_COMMISSION"], fmt(mail.cut)) end
+  end
+
   -- Time left, where the row does not show it; past its date, "expired".
   local expiry = row.expiryTip
   if expiry and not row.ColTime:IsShown() then
@@ -4790,10 +4869,12 @@ local function RowTexts(mail, now, fs)
   if mail.pending then
     local T = ns.Theme
     -- An auction noted as it happened (3b, Arrivals.Row) says what its mail
-    -- will: what a won one cost or a sold one asked, in the gold's column,
-    -- and the slots it takes, each where the switches leave it on the row.
+    -- will: what a won one cost, or the gold a sold one's mail will hold
+    -- (where its posting said the deposit and the house; else the price it
+    -- asked), in the gold's column, and the slots it takes, each where the
+    -- switches leave it on the row.
     if mail.auction and R then
-      local money, moneyKind = R.MoneyText(false, tonumber(mail.asked) or 0, 0, tonumber(mail.paid), true, nil,
+      local money, moneyKind = R.MoneyText(false, tonumber(mail.net or mail.asked) or 0, 0, tonumber(mail.paid), true, nil,
         R.RowCoins and R.RowCoins(nil, fs) or nil, T.ROW)
       if money and R.MoneyShown(moneyKind) then texts.money = money end
       if (mail.items or 0) > 0 and R.Shows("slots") then
@@ -5354,7 +5435,7 @@ function Arrivals.Row(p, gen)
   if not row then
     row = { pending = true, auction = true, sender = "", subject = "", read = false, stuck = false,
       kind = false, icon = false, count = false, items = 0, money = 0, cod = 0, paid = false, asked = false,
-      link = false, id = false, at = false }
+      net = false, deposit = false, cut = false, link = false, id = false, at = false }
     Arrivals.rowOf[p] = row
   end
   -- When the notice came: what Mail Memory's wash reads (MM.Wash).
@@ -5377,6 +5458,16 @@ function Arrivals.Row(p, gen)
   if sum and sum <= 0 then sum = nil end
   row.paid = (p.k == "bought") and sum or false
   row.asked = (p.k == "sold") and sum or false
+  -- A sale whose deposit and house were noted with its price: the gold its
+  -- mail will hold (A.Net), which the row says; the price, the deposit and
+  -- the cut are its tooltip's (MM.RowTip). Otherwise the price asked.
+  local deposit, rate = tonumber(p.d), tonumber(p.x)
+  if row.asked and deposit and rate and A and A.Net then
+    row.net, row.cut = A.Net(row.asked, deposit, rate)
+    row.deposit = deposit
+  else
+    row.net, row.cut, row.deposit = false, false, false
+  end
   return row
 end
 
