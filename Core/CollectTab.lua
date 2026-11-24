@@ -4735,6 +4735,17 @@ end
 
 local SetViewMode  -- forward declaration; the segments call it
 
+-- Out of History, staying on the character being viewed: that character's
+-- Inbox, as the lit History button's click has it. The lit click and a
+-- right-click on that button both come here; anywhere but History it does
+-- nothing. History opens again on the half that was left (`_hside` is
+-- kept).
+function RV.LeaveHistory(panel)
+  if panel.viewMode ~= VIEW_HISTORY then return false end
+  SetViewMode(panel, VIEW_COLLECT)
+  return true
+end
+
 local function BuildViewToggle(panel)
   local T = Th()
   local container = CreateFrame("Frame", nil, panel)
@@ -4797,27 +4808,45 @@ local function BuildViewToggle(panel)
   else
     hist:SetText(L()["VIEW_HISTORY"])
   end
-  hist:SetScript("OnClick", function(self)
+  -- A right-click leaves History too, while it shows (RV.LeaveHistory);
+  -- otherwise it does nothing.
+  hist:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  hist:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      if RV.LeaveHistory(panel) and self._tipUp then self.ShowTip(self) end
+      return
+    end
     -- Lit, the clock is the way back: the Inbox of whoever's History it
     -- is, as that cell's own click is.
-    if panel.viewMode == VIEW_HISTORY then
-      SetViewMode(panel, VIEW_COLLECT)
+    if RV.LeaveHistory(panel) then
+      if self._tipUp then self.ShowTip(self) end
       return
     end
     -- From another character's box, that character's History.
     if not AV.Other(panel) then AV.Leave(panel) end
     SetViewMode(panel, self.segId)
+    if self._tipUp then self.ShowTip(self) end
   end)
-  hist:HookScript("OnEnter", function(self)
+  -- Its tooltip; while History shows, with its right-click. Shown again
+  -- after a click under a pointer that has not moved, so the hint follows.
+  hist.ShowTip = function(self)
     local UI = ns.MailboxUI
     local days = UI and type(UI.GetHistoryDays) == "function" and UI.GetHistoryDays() or 7
     local T2 = Th()
     T2.TipBegin(self)
     T2.TipTitle(L()["VIEW_HISTORY"])
     T2.TipLine(ns.Plural("HISTORY_TIP", days))
+    if panel.viewMode == VIEW_HISTORY then T2.TipHint(L()["HISTORY_LEAVE_HINT"]) end
     GameTooltip:Show()
+  end
+  hist:HookScript("OnEnter", function(self)
+    self._tipUp = true
+    self.ShowTip(self)
   end)
-  hist:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  hist:HookScript("OnLeave", function(self)
+    self._tipUp = nil
+    GameTooltip:Hide()
+  end)
   container.history = hist
   -- History's two halves, Received and Sent, right of the clock while
   -- History is on screen (RV.LayoutSides).
