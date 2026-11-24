@@ -1795,6 +1795,36 @@ function RV.HideQuestions()
   StaticPopup_Hide(POPUP_BAGSPACE)
   StaticPopup_Hide(POPUP_DELETE_ALL)
   StaticPopup_Hide(POPUP_DELETE_ONE)
+  StaticPopup_Hide(RV.POPUP_RETURN)
+end
+
+-- The one bag's question before its mails go back (BagView 7, s33
+-- bagalt): Return / Cancel, the words the bag wrote. `onConfirm` on
+-- Return; `onHide` whenever the box goes (answered, Escape, taken down),
+-- so the bag knows no question stands. Held on RV: no chunk local here.
+RV.POPUP_RETURN = "POSTBOX_RETURN_MAILS"
+function RV.ConfirmReturn(message, onConfirm, onHide)
+  local key = RV.POPUP_RETURN
+  if not EnsureDialog(key, L()["BTN_RETURN"], L()["COD_CONFIRM_CANCEL"]) then
+    -- No question box: nothing is sent (a missing question is never a yes).
+    ns.Print(message)
+    if onHide then onHide() end
+    return false
+  end
+  local dialog = StaticPopupDialogs[key]
+  if not dialog.OnHide then
+    dialog.OnHide = function(_, data)
+      if type(data) == "table" and type(data.onHide) == "function" then data.onHide() end
+    end
+  end
+  StaticPopup_Show(key, message, nil, { onConfirm = onConfirm, onHide = onHide })
+  return true
+end
+
+-- Whether that question is up now (the game's own answer, where it has one).
+function RV.ReturnAsked()
+  if type(StaticPopup_Visible) ~= "function" then return nil end
+  return StaticPopup_Visible(RV.POPUP_RETURN) and true or false
 end
 do
   local HideQuestions = RV.HideQuestions
@@ -9171,7 +9201,8 @@ end
 -- "Right-click: delete" (M.Click, M.Light, M.Hint).
 --
 -- Built inside the house rules: the game's MODIFIER_STATE_CHANGED is
--- registered only while the inbox's list is on screen at a mailbox, and
+-- registered only while the inbox's list (or the one bag in its place,
+-- BagView 7) is on screen at a mailbox, and
 -- dropped the moment it is not (M.Sync, from every list pass, the reading
 -- view and the tab's hiding). A double-tap is two numbers compared in the
 -- event itself -- when the last short press ended (tapAt) and when this one
@@ -9301,7 +9332,10 @@ do
     if not M.Wanted() then return false end
     if not panel:IsVisible() then return false end
     local area = panel.MailListArea
-    if not (area and area:IsShown()) then return false end
+    -- The list's own container, or the one bag drawn in its place (s33
+    -- bagalt: a tile's click asks, then returns its mails; BagView 7).
+    local BV = ns.BagView
+    if not ((area and area:IsShown()) or (BV and BV.Alt and BV.Alt.Shows(panel))) then return false end
     local detail = panel.Detail
     if detail and detail:IsShown() then return false end
     local view = panel.viewMode
@@ -9503,6 +9537,9 @@ do
     local key, line = M.key, panel._mkLine
     if key and key:IsShown() then key:SetAlpha(p) end
     if line and line:IsShown() then line:SetAlpha(p) end
+    -- The one bag's tiles, where it is up (BagView 7).
+    local BV = ns.BagView
+    if BV and BV.Alt then BV.Alt.PaintAll(p) end
   end
 
   -- What each row bound now wears, from its mail as the inbox now has it,
@@ -9523,10 +9560,15 @@ do
     end
     -- The lit row bound again: lit for the mail it holds now, or not.
     if M.lit then M.Light(M.lit) end
+    -- The one bag's tiles read again too, where it is up (BagView 7).
+    local BV = ns.BagView
+    if not used and BV and BV.Alt then BV.Alt.Kinds() end
   end
 
   function M.ClearAll()
     if M.lit then M.Unlight(M.lit) end
+    local BV = ns.BagView
+    if BV and BV.Alt then BV.Alt.ClearAll() end
     local panel = M.panel
     local rows = panel and panel._rows
     if not rows then return end
@@ -10069,6 +10111,9 @@ do
   function M.Relight()
     local panel = M.panel
     if panel and panel.MailListChild then Th().TipFollow(panel.MailListChild) end
+    -- A tile's tooltip in the one bag, the same (BagView 7).
+    local BV = ns.BagView
+    if BV and BV.child then Th().TipFollow(BV.child) end
     if M.lit then M.Light(M.lit) end
   end
 
@@ -10208,7 +10253,19 @@ do
     end
     local area = panel and panel.MailListArea
     if not area then return end
+    -- Along the top of whichever shows: the list, or the one bag in its
+    -- place (BagView 7), the line moved over as the two swap.
+    local BV = ns.BagView
+    if BV and BV.Alt and BV.Alt.Shows(panel) then area = BV.area end
     local T = Th()
+    if line and line:GetParent() ~= area then
+      line:SetParent(area)
+      line:SetFrameLevel(area:GetFrameLevel() + M.LINE_LEVEL)
+      local inset = area.__pbBlizzBevel and M.RIM or 1
+      line:ClearAllPoints()
+      line:SetPoint("TOPLEFT", area, "TOPLEFT", inset, -inset)
+      line:SetPoint("TOPRIGHT", area, "TOPRIGHT", -inset, -inset)
+    end
     if not line then
       line = CreateFrame("Frame", nil, area)
       line:SetFrameLevel(area:GetFrameLevel() + M.LINE_LEVEL)
@@ -10260,7 +10317,10 @@ do
     T.TipTitle(L()["MARKS_KEY_TITLE"])
     if self.state == "lit" then
       T.TipLine(L()["MARKS_KEY_TIP"])
-      T.TipLine(L()["MARKS_KEY_KEPT_DOES"])
+      -- The one bag up, what a click on its tiles does (BagView 7).
+      local BV = ns.BagView
+      local bag = BV and BV.Alt and BV.Alt.Shows(M.panel)
+      T.TipLine(L()[bag and "MARKS_KEY_KEPT_BAG" or "MARKS_KEY_KEPT_DOES"])
       T.TipHint(L()["MARKS_KEY_HINT"])
     else
       T.TipHint(L()["HINT_MARKS_KEEP"])
@@ -10296,6 +10356,9 @@ do
     if panel then M.Sync(panel) end
     -- A row's tooltip up now says Alt's words, or none, as the switch is.
     M.Relight()
+    -- Off, a one bag's question to return mail goes, unanswered (BagView 7).
+    local BV = ns.BagView
+    if not M.Wanted() and BV and BV.Alt then BV.Alt.Hide() end
   end
 end
 
@@ -15988,7 +16051,7 @@ CT.Bag = {
   ProbeAtlas = ProbeAtlas, PinScrollBar = PinScrollBar, ConfirmCOD = ConfirmCOD,
   ItemRefusedMessage = ItemRefusedMessage, StatusMailboxClosed = StatusMailboxClosed, StuckLine = StuckLine,
   RefreshIdleSummary = RefreshIdleSummary, MailboxOpen = MailboxOpen, ExpiryState = ExpiryState,
-  ClearSelection = ClearSelection,
+  ClearSelection = ClearSelection, StatusActivity = StatusActivity, StatusOutcome = StatusOutcome,
 }
 
 -------------------------------------------------------------

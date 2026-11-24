@@ -488,7 +488,10 @@ function BV.Build(panel)
   elseif P.AV.Active(panel) then
     src = "away"
   end
-  local frozen = src == "inbox" and m.src == "inbox" and m.sn > 0 and ns.CollectTab.IsRunning()
+  -- Held in place while a run goes, and while a tile's mails go back
+  -- (section 7: the return sweep).
+  local frozen = src == "inbox" and m.src == "inbox" and m.sn > 0
+    and (ns.CollectTab.IsRunning() or BV.Alt.running)
   m.frozen = frozen
   if frozen then
     local main = m.sects[1]
@@ -659,6 +662,8 @@ function BV.Tile(i)
   tile:SetScript("OnEnter", BV.TileEnter)
   tile:SetScript("OnLeave", BV.TileLeave)
   tile:SetScript("OnClick", BV.TileClick)
+  -- What was under the pointer at the press, for a return's click (7).
+  tile:SetScript("OnMouseDown", BV.Alt.Down)
   BV.tiles[i] = tile
   return tile
 end
@@ -912,6 +917,8 @@ function BV.Bind()
         RV.PlaceMark(tile.Mark, tile.MarkShadow, tile.Icon, size)
         RV.IconRule.EnsureCount(tile.Count, tile.Icon, size)
         BV.Paint(tile, kind)
+        -- Its Return mark while the Alt marks show, or put away (7).
+        if tile.AltMark or BV.Alt.Live() then BV.Alt.PaintTile(tile) end
         tile:ClearAllPoints()
         tile:SetPoint("TOPLEFT", child, "TOPLEFT", kind.x, -y)
         tile:Show()
@@ -1053,6 +1060,8 @@ function BV.Refresh(panel)
   local area = BV.area
   if not BV.Active(panel) then
     if BV.Many.box then BV.Many.Close() end
+    -- A question to return a tile's mails goes with the bag, unanswered.
+    if BV.Alt.open then BV.Alt.Hide() end
     if area then BV.LendClear(panel, false) end
     if area and area:IsShown() then
       area:Hide()
@@ -1079,10 +1088,11 @@ function BV.Refresh(panel)
     model.sn = 0
     local RV = Parts().RV
     RV.FanClose(true)
-    -- Alt's marks belong to the list's rows: with the list out of sight
-    -- they end now, held or kept on, and stay off while the bag is up
-    -- (RV.Marks is eligible only while the list's own container shows).
-    -- Nothing a tile does returns or deletes mail.
+    -- Alt's marks go on in the bag on this character's own Inbox at a
+    -- mailbox, held or kept on (RV.Marks is eligible while the list or
+    -- the bag in its place shows): a tile's click then asks, and returns
+    -- the mails it named (section 7). Anywhere the marks are not eligible
+    -- (another box, History) they end here.
     if RV.Marks and RV.Marks.Sync then RV.Marks.Sync(panel) end
   end
   if not BV.Build(panel) then BV.Layout() end
@@ -1495,11 +1505,16 @@ function BV.TileEnter(tile)
   if not kind or kind.look == 3 then return end
   local T, L0, H = Th(), L(), ns.Helpers
   local src = model.src
+  -- While the Alt marks show in the bag (section 7), what a click returns.
+  local alt = BV.Alt.Live() and src == "inbox" and kind.sect.look ~= 2
+  if alt then BV.Alt.Ink(tile, true) end
   T.TipBegin(tile)
   if kind.gold then
     T.TipTitle(L0["LABEL_GOLD"] .. H.FormatMoney(kind.n))
     local mails = BV.MailsOf(kind)
     if mails > 1 then T.TipLine(ns.Plural("COUNT_MAILS", mails)) end
+    -- The gold tile does nothing while the marks show: no hint.
+    if alt then return GameTooltip:Show() end
   else
     BV.TipItem(kind)
     if kind.cod then
@@ -1507,9 +1522,13 @@ function BV.TileEnter(tile)
       if (tonumber(cod) or 0) > 0 and BV.Current(kind) then
         T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(tonumber(cod))))
       end
-    else
+    elseif not alt then
       T.TipLine(L0("BAG_IN_MAILS", tostring(kind.n), ns.Plural("COUNT_MAILS", BV.MailsOf(kind))))
     end
+  end
+  if alt then
+    BV.Alt.TipBody(kind)
+    return GameTooltip:Show()
   end
   if not kind.cod and (src ~= "inbox" or kind.sect.look == 2 or BV.Current()) then
     local most = kind.mails
@@ -1523,7 +1542,8 @@ function BV.TileEnter(tile)
   GameTooltip:Show()
 end
 
-function BV.TileLeave()
+function BV.TileLeave(tile)
+  if tile and tile.AltMark then BV.Alt.Ink(tile, false) end
   GameTooltip:Hide()
 end
 
@@ -1932,6 +1952,9 @@ function BV.Closed()
   local panel = BV.panel
   if panel then panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = nil, nil, nil end
   BV.want = nil
+  -- A question to return a tile's mails goes with the visit (CollectTab's
+  -- RV.HideQuestions takes the box down); an answer after it sends nothing.
+  BV.Alt.Hide()
 end
 
 -- The letters' line clicked: the list in the bag's place for this visit,
@@ -2049,6 +2072,8 @@ end
 -- can be taken, while the bag is drawn from the inbox as it stands; a
 -- C.O.D. tile asks first. Anywhere else a click does nothing.
 function BV.TileClick(tile, button)
+  -- While the Alt marks show in the bag, the click is theirs (section 7).
+  if BV.Alt.Owns(tile, button) then return end
   local kind = tile.kind
   local panel = BV.panel
   if not (kind and panel) or kind.n <= 0 then return end
@@ -2403,4 +2428,673 @@ function BV.NoTakeCheck()
   local on = NT.on
   if not on then return end
   if on[NT.field] ~= NT.what or not on:IsVisible() or not NT.note:IsShown() then BV.NoTakeEnd() end
+end
+
+-------------------------------------------------------------
+-- 7. Return and Delete with Alt, in the bag (s33 bagalt)
+--
+-- His picks: f70 M01 "all" (a click on a tile returns), M02 "plain" (the
+-- row's Return arrow in the tile's corner), f74 T01 "senders" (the
+-- tooltip: a line per sender, what else goes under it), S01 "build" (one
+-- question, then every mail it named, one at a time, each checked again).
+-- f74 Q01 (when the question is asked) is still his to pick: the safest
+-- card is built, every return from a tile asks first (Alt.Asks, the one
+-- place that decides it).
+--
+-- Only on this character's own Inbox at a mailbox, where the marks are
+-- eligible (CollectTab's M.Eligible: the list, or the bag in its place),
+-- with Options > Mail tab > Return and Delete with Alt on. Every guard of
+-- the rows' marks holds here as there: no marks while a text box has the
+-- keyboard or when the Alt press begins with Ctrl down (M.OnEvent); a
+-- click in the first 150 ms does nothing at all (M.p < 1); a return's
+-- click within 0.4 s of the last does nothing (M.Calm); a click acts only
+-- on the tile pressed (Alt.Pressed). And, as nowhere else: one question
+-- at a time, nothing while a run or any command is out, nothing in combat.
+--
+-- While the marks show:
+--   click         a tile with mail that can go back (Mail.Returnable, the
+--                 rows' own rule): the question, naming every sender (eight
+--                 at most; the rest stays), how many mails each, what else
+--                 those mails hold, the auction mail that stays; Return
+--                 sends exactly the mails it named (Mail.ReturnMails, which
+--                 looks at each again right before it goes and stops at
+--                 the first that does not match). A C.O.D. mail's tile:
+--                 that one mail, "Nothing is paid" (the game's return pays
+--                 nothing). The gold tile, a gray tile (mail the game has
+--                 not listed), a tile with nothing to return: nothing.
+--   right-click   its mails in the list, as without the marks (BV.ShowMails);
+--                 nothing is deleted from the bag: a tile is never finished
+--                 mail (finished mail holds nothing).
+--   Shift / Ctrl  Alt held: nothing. Kept on: the game's item rules (a
+--                 link, a try-on), never "how many".
+-- Anywhere else (another box, History, the every-character search) the
+-- marks are not eligible and a click is what it always was.
+--
+-- What the tooltip says and what the question says are each drawn by ONE
+-- function from the facts (Alt.Tip, Alt.AskText), and the facts are
+-- gathered by one more (Alt.Facts), so their look can change without
+-- touching what is returned. Built when the tooltip opens or the click is
+-- made, never per bag pass, into tables that are kept. The marks on the
+-- tiles: one plate and one arrow a tile, made the first time it wears
+-- one; scripts shared; nothing per frame but the fade's alpha.
+-------------------------------------------------------------
+local Alt = {
+  -- How many senders one question names: past them, their mail stays.
+  CAP = 8,
+  -- The mark: a plate this square in the tile's top right, inside its
+  -- edge, black at PLATE_A, the rows' Return arrow centered on it in a
+  -- fixed light ink (INK, white under the pointer), legible on the plate
+  -- under every palette.
+  PLATE = 13, PLATE_A = 0.72, INK = 0.82,
+  -- Whether a C.O.D. mail's tile offers its mail back, as a row's arrow
+  -- does (Mail.ReturnRule); its question says nothing is paid.
+  COD = true,
+  -- The question: a count told apart from an older one's answer, whether
+  -- one stands, the panel it was asked on; a sweep under way.
+  serial = 0, open = false, panel = nil, running = false,
+  -- Kept: the tooltip's facts, the question's, what the question names
+  -- for the service (Mail.ReturnWant), the words being joined.
+  tip = nil, ask = nil, want = {}, lines = {}, parts = {},
+}
+BV.Alt = Alt
+
+function Alt.M()
+  local P = Parts()
+  return P and P.RV.Marks or nil
+end
+
+-- panel -> whether the bag is what shows in the panel's list place.
+function Alt.Shows(panel)
+  local area = BV.area
+  return panel ~= nil and BV.panel == panel and area ~= nil and area:IsShown() and true or false
+end
+
+-- Whether the marks show over the bag now, on the inbox's own tiles.
+function Alt.Live()
+  local M = Alt.M()
+  return M ~= nil and M.goal == 1 and model.src == "inbox" and Alt.Shows(BV.panel)
+end
+
+-- A facts table, made once for each of its two uses.
+function Alt.NewFacts()
+  return { g = {}, pool = {}, gn = 0, total = 0, back = 0, auction = 0, qn = 0, cod = 0, shown = 0, capped = 0 }
+end
+
+-- F, sender -> that sender's group, made (from the pool) where it has none.
+function Alt.Group(F, sender)
+  local g
+  for i = 1, F.gn do
+    g = F.g[i]
+    if g.name == sender then return g end
+  end
+  local i = F.gn + 1
+  F.gn = i
+  g = F.pool[i]
+  if not g then
+    g = { idx = {}, cnt = {}, oid = {}, oname = {}, ocnt = {} }
+    F.pool[i] = g
+  end
+  g.name, g.n, g.mails, g.on, g.gold, g.letter = sender, 0, 0, 0, 0, false
+  F.g[i] = g
+  return g
+end
+
+-- Another item in the group's mails, added to what they also hold.
+function Alt.Other(g, key, name, count)
+  for j = 1, g.on do
+    if g.oid[j] == key then
+      g.ocnt[j] = g.ocnt[j] + count
+      if not g.oname[j] then g.oname[j] = name end
+      return
+    end
+  end
+  local j = g.on + 1
+  g.on = j
+  g.oid[j], g.oname[j], g.ocnt[j] = key, name, count
+end
+
+-- Most of the item first, then by name.
+function Alt.Order(a, b)
+  if a.n ~= b.n then return a.n > b.n end
+  return a.name < b.name
+end
+
+-- A group's mails, most of the item first; its other items, most first.
+function Alt.SortGroup(g)
+  local idx, cnt = g.idx, g.cnt
+  for j = 2, g.mails do
+    local i, c = idx[j], cnt[j]
+    local k = j - 1
+    while k >= 1 and cnt[k] < c do
+      idx[k + 1], cnt[k + 1] = idx[k], cnt[k]
+      k = k - 1
+    end
+    idx[k + 1], cnt[k + 1] = i, c
+  end
+  local oid, oname, ocnt = g.oid, g.oname, g.ocnt
+  for j = 2, g.on do
+    local a, b, c = oid[j], oname[j], ocnt[j]
+    local k = j - 1
+    while k >= 1 and ocnt[k] < c do
+      oid[k + 1], oname[k + 1], ocnt[k + 1] = oid[k], oname[k], ocnt[k]
+      k = k - 1
+    end
+    oid[k + 1], oname[k + 1], ocnt[k + 1] = a, b, c
+  end
+end
+
+-- kind, F [, want] -> F: what a click on the tile would return, read from
+-- the inbox as it stands (the bag current, BV.Current): each of its mails
+-- that can go back (Mail.Returnable), grouped by sender, the sender with
+-- most of the item first, each sender's mails most first; what else those
+-- mails hold (other items, gold, a letter of their own: nothing opened,
+-- nothing marked read); the C.O.D. owed; the auction mail that stays.
+-- Past CAP senders the rest are counted, not named, and stay. With `want`
+-- (Mail.ReturnWant's, at the click), every mail named is noted for the
+-- service in the order it will go: nothing else can be sent back.
+-- THE place that decides what a tile returns.
+function Alt.Facts(kind, F, want)
+  local M = Mail()
+  local slots = M.MAX_ATTACHMENTS or 16
+  local unknown = L()["SENDER_UNKNOWN"]
+  F.gn, F.total, F.back, F.auction, F.qn, F.cod = 0, 0, 0, 0, 0, 0
+  F.name = BV.NameOf(kind) or RETRIEVING_ITEM_INFO or "?"
+  local id = kind.id
+  for i = 1, kind.mails do
+    local index = kind.ref[i]
+    if type(index) == "number" then
+      F.total = F.total + 1
+      if M.Returnable(index) then
+        F.back = F.back + 1
+        local _, _, sender, _, money, cod = GetInboxHeaderInfo(index)
+        if type(sender) ~= "string" or sender == "" then sender = unknown end
+        local g = Alt.Group(F, sender)
+        local m = g.mails + 1
+        local count = kind.cnt[i] or 0
+        g.mails, g.n = m, g.n + count
+        g.idx[m], g.cnt[m] = index, count
+        g.gold = g.gold + (tonumber(money) or 0)
+        F.cod = F.cod + (tonumber(cod) or 0)
+        if M.HasOwnText(index) then g.letter = true end
+        for slot = 1, slots do
+          local name, sid, tex, n = GetInboxItem(index, slot)
+          if name or sid or tex then
+            local mine
+            if id ~= nil then mine = sid == id else mine = (name ~= nil and name == kind.name) or (name == nil and tex == kind.tex) end
+            if not mine then Alt.Other(g, sid or name or tex, name, tonumber(n) or 1) end
+          end
+        end
+      elseif M.SenderKind(index) == "ah" then
+        F.auction = F.auction + 1
+      end
+    end
+  end
+  local list = F.g
+  for i = #list, F.gn + 1, -1 do list[i] = nil end
+  if F.gn > 1 then table.sort(list, Alt.Order) end
+  F.shown = F.gn > Alt.CAP and Alt.CAP or F.gn
+  F.capped = F.gn - F.shown
+  for i = 1, F.gn do
+    local g = list[i]
+    Alt.SortGroup(g)
+    if i <= F.shown then
+      F.qn = F.qn + g.mails
+      if want then
+        for j = 1, g.mails do M.ReturnNote(g.idx[j], want) end
+      end
+    end
+  end
+  -- One mail holding nothing but this item, no gold, no letter, no
+  -- C.O.D.: the one case the tile shows everything that would leave.
+  local g1 = list[1]
+  F.only = F.qn == 1 and g1 ~= nil and g1.on == 0 and g1.gold == 0 and not g1.letter and F.cod == 0
+  return F
+end
+
+-- Q01 (his to pick, f74): whether a return from a tile asks first.
+-- Built as "always". His other card, "only when more goes", is this line:
+--   return not F.only
+function Alt.Asks(F)
+  return true
+end
+
+-- An item's name where its stack gave none.
+function Alt.ItemName(key)
+  local H = ns.Helpers
+  if type(key) == "number" and H and type(H.SearchItemName) == "function" then
+    local name = H.SearchItemName(key)
+    if type(name) == "string" and name ~= "" then return name end
+  end
+  return RETRIEVING_ITEM_INFO or "?"
+end
+
+-- g -> what the group's mails hold besides the tile's item, in words
+-- ("20 Storm Dust, 250g and a letter"), or nil: the first two other items
+-- by name, how many more, the gold as the rows write it, a letter of
+-- their own.
+function Alt.Also(g)
+  local L0 = L()
+  local parts, n = Alt.parts, 0
+  for j = 1, (g.on < 2 and g.on or 2) do
+    n = n + 1
+    parts[n] = L0("BAGALT_ITEM_COUNT", g.ocnt[j], g.oname[j] or Alt.ItemName(g.oid[j]))
+  end
+  if g.on > 2 then
+    n = n + 1
+    parts[n] = ns.Plural("BAGALT_ALSO_MORE", g.on - 2)
+  end
+  if g.gold > 0 then
+    n = n + 1
+    parts[n] = ns.Core.Formatting.FormatMoneyCompact(g.gold, true)
+  end
+  if g.letter then
+    n = n + 1
+    parts[n] = L0["BAGALT_ALSO_LETTER"]
+  end
+  if n == 0 then return nil end
+  if n == 1 then return parts[1] end
+  return L0("BAGALT_AND", table.concat(parts, L0["BAGALT_LIST_SEP"], 1, n - 1), parts[n])
+end
+
+-- THE TOOLTIP'S LOOK (f74 T01 "senders"), from the facts alone, after the
+-- item's own lines: the count, a line per sender with what else under it
+-- in the warning tone, "+N more" past the cap, the auction mail that
+-- stays in gray; a C.O.D. mail's sender and that nothing is paid; where
+-- nothing can go back, why (the rows' faded x's words). Then the hints.
+function Alt.Tip(F, kind)
+  local T, L0 = Th(), L()
+  if F.back == 0 then
+    local auction = F.auction > 0 and F.auction == F.total
+    T.TipLine(L0[auction and "MARKS_FADED_AUCTION" or "MARKS_FADED_OTHER"])
+  elseif kind.cod then
+    local g = F.g[1]
+    T.TipLine(L0("BAGALT_COD_TO", g.name))
+    local also = Alt.Also(g)
+    if also then GameTooltip:AddLine(T.TipTone("warning", L0("BAGALT_ALSO", also)), 1, 1, 1, true) end
+    T.TipLine(T.TipTone("muted", L0["BAGALT_NOTHING_PAID"]))
+  else
+    if F.total > 1 or F.back < F.total then
+      T.TipLine(L0("BAGALT_CAN_RETURN", F.back, ns.Plural("COUNT_MAILS", F.total)))
+    end
+    for i = 1, F.shown do
+      local g = F.g[i]
+      GameTooltip:AddDoubleLine(g.name, L0("BAGALT_SENDER_COUNT", g.n, ns.Plural("COUNT_MAILS", g.mails)),
+        0.82, 0.82, 0.82, 1, 1, 1)
+      local also = Alt.Also(g)
+      if also then GameTooltip:AddLine(T.TipTone("warning", L0("BAGALT_ALSO", also)), 1, 1, 1, true) end
+    end
+    if F.capped > 0 then T.TipLine(T.TipTone("muted", ns.Plural("TIP_MORE", F.capped))) end
+    if F.auction > 0 then T.TipLine(T.TipTone("muted", ns.Plural("BAGALT_AUCTION_STAYS", F.auction))) end
+  end
+  if F.qn == 1 then
+    T.TipHint(L0["HINT_MARKS_RETURN"])
+  elseif F.qn > 1 then
+    T.TipHint(ns.Plural("BAGALT_HINT_RETURN", F.qn))
+  end
+  T.TipHint(L0["BAG_HINT_MAILS"])
+end
+
+-- The tooltip's body while the marks show (BV.TileEnter): the facts read
+-- now, then drawn. A bag not current says only where its mails are.
+function Alt.TipBody(kind)
+  if not BV.Current(kind) or (kind.cod and not Alt.COD) then
+    Th().TipHint(L()["BAG_HINT_MAILS"])
+    return
+  end
+  local F = Alt.tip
+  if not F then
+    F = Alt.NewFacts()
+    Alt.tip = F
+  end
+  Alt.Facts(kind, F, nil)
+  Alt.Tip(F, kind)
+end
+
+-- THE QUESTION'S LOOK (f74 Q01's box), from the facts alone: what goes
+-- and to whom; a line per sender, most of the item first, what else
+-- under it in the warning tone; the C.O.D. and that nothing is paid; the
+-- senders past the cap whose mail stays; the auction mail that stays;
+-- last, in gray, that a returned mail cannot be taken back.
+function Alt.AskText(F)
+  local T, L0, H = Th(), L(), ns.Helpers
+  local lines, n = Alt.lines, 0
+  local g1 = F.g[1]
+  local first
+  if F.qn == 1 then
+    first = L0("BAGALT_ASK_THIS", g1.name)
+  elseif F.shown == 1 then
+    first = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), g1.name)
+  else
+    first = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), ns.Plural("BAGALT_SENDERS", F.shown))
+  end
+  n = n + 1
+  lines[n] = first
+  n = n + 1
+  lines[n] = ""
+  for i = 1, F.shown do
+    local g = F.g[i]
+    n = n + 1
+    if F.qn == 1 then
+      lines[n] = L0("BAGALT_ITEM_COUNT", g.n, F.name)
+    else
+      lines[n] = L0("BAGALT_ASK_LINE", g.name, g.n, F.name, ns.Plural("COUNT_MAILS", g.mails))
+    end
+    local also = Alt.Also(g)
+    if also then
+      n = n + 1
+      lines[n] = T.TipTone("warning", L0("BAGALT_ALSO", also))
+    end
+  end
+  if F.cod > 0 then
+    n = n + 1
+    lines[n] = L0("BAGALT_ASK_COD", H.FormatMoney(F.cod))
+  end
+  if F.capped > 0 then
+    n = n + 1
+    lines[n] = ns.Plural("BAGALT_ASK_CAPPED", F.capped)
+  end
+  if F.auction > 0 then
+    n = n + 1
+    lines[n] = T.TipTone("muted", ns.Plural("BAGALT_AUCTION_STAYS", F.auction))
+  end
+  n = n + 1
+  lines[n] = ""
+  n = n + 1
+  lines[n] = T.TipTone("muted", L0["BAGALT_ASK_FINAL"])
+  for k = #lines, n + 1, -1 do lines[k] = nil end
+  return table.concat(lines, "\n", 1, n)
+end
+
+-- kind -> whether any of the tile's mails can go back (its mark), read
+-- once for each build of the bag and each inbox mark.
+function Alt.Has(kind)
+  local gen = Mail().InboxGen()
+  if kind.altAt == model.build and kind.altGen == gen then return kind.alt end
+  kind.altAt, kind.altGen = model.build, gen
+  local has = false
+  if not kind.gold and kind.n > 0 and kind.sect.look ~= 2 and kind.look ~= 3
+      and (Alt.COD or not kind.cod) and BV.Current(kind) then
+    local M = Mail()
+    for i = 1, kind.mails do
+      local index = kind.ref[i]
+      if type(index) == "number" and M.Returnable(index) then
+        has = true
+        break
+      end
+    end
+  end
+  kind.alt = has
+  return has
+end
+
+-- The tile's mark, made the first time it wears one and kept.
+function Alt.Mark(tile)
+  local mark = tile.AltMark
+  if mark then return mark end
+  local T, M = Th(), Alt.M()
+  mark = CreateFrame("Frame", nil, tile)
+  mark:SetSize(Alt.PLATE, Alt.PLATE)
+  mark:SetPoint("TOPRIGHT", tile, "TOPRIGHT", -1, -1)
+  mark:SetFrameLevel(tile:GetFrameLevel() + 4)
+  mark:EnableMouse(false)
+  local plate = mark:CreateTexture(nil, "BACKGROUND")
+  plate:SetAllPoints()
+  plate:SetColorTexture(0, 0, 0, Alt.PLATE_A)
+  local glyph = T.Glyph and T.Glyph(mark, "expiry-back", M and M.SIZE or 9, "ARTWORK")
+  if glyph then
+    glyph:SetPoint("CENTER", mark, "CENTER", 0, 0)
+    glyph:SetVertexColor(Alt.INK, Alt.INK, Alt.INK, 1)
+  end
+  mark.Plate, mark.Glyph = plate, glyph
+  mark:Hide()
+  tile.AltMark = mark
+  return mark
+end
+
+-- The arrow's ink: white under the pointer.
+function Alt.Ink(tile, hover)
+  local mark = tile.AltMark
+  local glyph = mark and mark.Glyph
+  if not glyph then return end
+  local v = hover and 1 or Alt.INK
+  glyph:SetVertexColor(v, v, v, 1)
+end
+
+-- The tile's mark as the marks stand (their fade's place, M.p): shown on a
+-- tile with mail that can go back, in the warning triangle's place where
+-- the tile wears one; put away otherwise.
+function Alt.PaintTile(tile)
+  local M = Alt.M()
+  local p = M and M.p or 0
+  local kind = tile.kind
+  local mark = tile.AltMark
+  if not (p > 0 and kind and model.src == "inbox" and Alt.Shows(BV.panel) and Alt.Has(kind)) then
+    if mark and mark:IsShown() then mark:Hide() end
+    if tile.altDim then
+      tile.altDim = nil
+      tile.Warn:SetAlpha(1)
+    end
+    return
+  end
+  mark = Alt.Mark(tile)
+  mark:SetAlpha(p)
+  if not mark:IsShown() then mark:Show() end
+  if tile.Warn:IsShown() then
+    tile.altDim = true
+    tile.Warn:SetAlpha(1 - p)
+  elseif tile.altDim then
+    tile.altDim = nil
+    tile.Warn:SetAlpha(1)
+  end
+end
+
+-- Every tile in view at the fade's place (CollectTab's M.PaintAll).
+function Alt.PaintAll()
+  if not (BV.area and BV.area:IsShown()) then return end
+  local tiles = BV.tiles
+  for i = 1, #tiles do
+    local tile = tiles[i]
+    if tile.kind and (tile.AltMark or tile:IsShown()) then Alt.PaintTile(tile) end
+  end
+end
+
+-- The marks came in (CollectTab's M.Rows): the tiles read again; the "how
+-- many" box, a take, closes.
+function Alt.Kinds()
+  if not Alt.Shows(BV.panel) then return end
+  if BV.Many.open then BV.Many.Close() end
+  Alt.PaintAll()
+end
+
+-- The marks gone (CollectTab's M.ClearAll): every tile's mark put away.
+function Alt.ClearAll()
+  local tiles = BV.tiles
+  for i = 1, #tiles do
+    local tile = tiles[i]
+    local mark = tile.AltMark
+    if mark and mark:IsShown() then mark:Hide() end
+    if tile.altDim then
+      tile.altDim = nil
+      tile.Warn:SetAlpha(1)
+    end
+  end
+end
+
+-- A press on a tile: what it shows then, for the click that ends it.
+function Alt.Down(tile)
+  tile.altKind, tile.altBuild = tile.kind, model.build
+end
+
+-- tile -> whether it shows what it showed at the press that ends in this
+-- click; the press is used up either way.
+function Alt.Pressed(tile)
+  local kind, build = tile.altKind, tile.altBuild
+  tile.altKind, tile.altBuild = nil, nil
+  return kind ~= nil and kind == tile.kind and build == model.build
+end
+
+-- tile, button -> true where the marks own the click (BV.TileClick asks
+-- first, as ActivateRow asks M.Click): what each button does is in this
+-- section's head. A click while the marks are still coming in does
+-- nothing at all.
+function Alt.Owns(tile, button)
+  local same = Alt.Pressed(tile)
+  local M = Alt.M()
+  if not (M and model.src == "inbox" and Alt.Shows(BV.panel)) then return false end
+  -- Alt read again, as a row's click reads it (M.Click): one still down
+  -- that no hold took (a text box had the keyboard) brings the marks in
+  -- now, and this click, before they are fully in, does nothing.
+  M.Check()
+  if M.goal ~= 1 then return false end
+  M.Used()
+  if M.p < 1 then return true end
+  local kind = tile.kind
+  local shifted = (type(IsShiftKeyDown) == "function" and IsShiftKeyDown()) or (type(IsControlKeyDown) == "function" and IsControlKeyDown())
+  if button == "RightButton" then
+    if not shifted and kind and kind.n > 0 then BV.ShowMails(BV.panel, kind) end
+    return true
+  end
+  if button ~= "LeftButton" then return true end
+  if shifted then
+    if not M.held and kind and kind.n > 0 and not kind.gold then
+      local link = BV.LinkOf(kind)
+      if link and type(HandleModifiedItemClick) == "function" then HandleModifiedItemClick(link) end
+    end
+    return true
+  end
+  if not same or M.Calm() then return true end
+  Alt.Start(kind)
+  return true
+end
+
+-- panel -> whether a return may be asked or sent now: at a mailbox, the
+-- bag up on the inbox, nothing running or out on the channel, not
+-- arranging, not in combat.
+function Alt.Base(panel)
+  local P = Parts()
+  if not (panel and P and panel:IsVisible() and P.MailboxOpen()) then return false end
+  if model.src ~= "inbox" or not BV.Active(panel) or not Alt.Shows(panel) then return false end
+  if ns.CollectTab.IsRunning() or Mail().IsBusy() or Alt.running then return false end
+  if P.RV.Arranging(panel) then return false end
+  if type(InCombatLockdown) == "function" and InCombatLockdown() then return false end
+  return true
+end
+
+-- A tile's return clicked: the facts read at the click, every mail named
+-- noted for the service with a stamp of the inbox, then the question.
+function Alt.Start(kind)
+  local panel = BV.panel
+  if Alt.open then
+    -- One question at a time; the game's own word where it has one, so a
+    -- box that went without telling cannot hold the next one back.
+    if Parts().RV.ReturnAsked() ~= false then return end
+    Alt.open = false
+  end
+  if not Alt.Base(panel) then return end
+  if not kind or kind.n <= 0 or kind.gold or kind.sect.look == 2 or kind.look == 3 then return end
+  if kind.cod and not Alt.COD then return end
+  if not BV.Current(kind) then return ns.CollectTab.RequestRefresh(panel) end
+  local want = Mail().ReturnWant(Alt.want)
+  local F = Alt.ask
+  if not F then
+    F = Alt.NewFacts()
+    Alt.ask = F
+  end
+  Alt.Facts(kind, F, want)
+  if F.qn == 0 then return end
+  GameTooltip:Hide()
+  if Alt.Asks(F) then return Alt.Ask(F) end
+  Alt.Send()
+end
+
+function Alt.Ask(F)
+  local text = Alt.AskText(F)
+  Alt.serial = Alt.serial + 1
+  local serial = Alt.serial
+  Alt.open, Alt.panel = true, BV.panel
+  local shown = Parts().RV.ConfirmReturn(text,
+    function() Alt.Accept(serial) end,
+    function() Alt.Hidden(serial) end)
+  if not shown then Alt.open = false end
+end
+
+-- The box went (answered, Escape, taken down).
+function Alt.Hidden(serial)
+  if serial == Alt.serial then Alt.open = false end
+end
+
+-- The question taken down, unanswered, and any answer to it sent nothing:
+-- the mailbox closing, combat, the bag going, the Options switch off.
+function Alt.Hide()
+  Alt.serial = Alt.serial + 1
+  if not Alt.open then return end
+  Alt.open = false
+  local P = Parts()
+  if P and type(StaticPopup_Hide) == "function" then StaticPopup_Hide(P.RV.POPUP_RETURN) end
+end
+
+-- Return answered: only the question standing now, and only while
+-- everything it was asked under still holds. The mails go as it named
+-- them; the service looks at each again before it goes.
+function Alt.Accept(serial)
+  if serial ~= Alt.serial then return end
+  Alt.serial = Alt.serial + 1
+  Alt.open = false
+  local M = Alt.M()
+  if not (M and M.Wanted()) then return end
+  if not Alt.Base(Alt.panel) then return end
+  Alt.Send()
+end
+
+function Alt.Send()
+  local P, M = Parts(), Alt.M()
+  local want = Alt.want
+  Alt.running, Alt.panel = true, BV.panel
+  if M then M.actAt = GetTime() end
+  want.onStep = Alt.Step
+  P.StatusActivity(L()("STATUS_REMAINING", want.n))
+  Mail().ReturnMails(want, Alt.Done)
+end
+
+-- One mail gone: how many are left, in the title bar.
+function Alt.Step(returned, n)
+  Parts().StatusActivity(L()("STATUS_REMAINING", (n or 0) - (returned or 0)))
+end
+
+-- The sweep's end: the title bar says how it ended (all back; stopped,
+-- how far and why; the mailbox closed), chat keeps the receipt of what
+-- went, and the bag is drawn again once. A further return waits CALM.
+function Alt.Done(returned, status, n)
+  local P, M, L0 = Parts(), Alt.M(), L()
+  Alt.running = false
+  Alt.want.onStep = nil
+  if M then M.actAt = GetTime() end
+  returned, n = tonumber(returned) or 0, tonumber(n) or 0
+  if status == "done" then
+    P.StatusOutcome(L0("STATUS_RETURNED_N", returned))
+  elseif status == "closed" then
+    P.StatusMailboxClosed()
+  elseif status == "changed" or status == "refused" then
+    P.StatusOutcome(L0(status == "refused" and "STATUS_RETURN_REFUSED" or "STATUS_RETURN_CHANGED", returned, n), "warning")
+  else
+    P.StatusActivity(nil)
+    if status == "timeout" then ns.Print(L0["MSG_MAIL_TIMEOUT"]) end
+  end
+  if returned > 0 then
+    if returned >= n then
+      ns.Print(L0("MSG_RETURNED", ns.Plural("COUNT_MAILS", returned)))
+    else
+      ns.Print(L0("MSG_RETURNED_PART", returned, ns.Plural("COUNT_MAILS", n)))
+    end
+  end
+  local panel = Alt.panel or BV.panel
+  if panel then ns.CollectTab.RequestRefresh(panel) end
+end
+
+do
+  local bus = ns.Events
+  if bus and type(bus.Register) == "function" then
+    -- Combat: the question goes, unanswered.
+    bus.Register("PLAYER_REGEN_DISABLED", Alt.Hide)
+  end
 end
