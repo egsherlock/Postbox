@@ -20,12 +20,25 @@
 - **Send tab: attach every stack of one kind.** The small + after
   Attachments lists what is in your bags in the game's own words, under
   three headings: Materials (Cloth, Herb, Metal & Stone and the rest),
-  Consumables (potions, elixirs, flasks, food and drink), and Gems and
-  recipes. Each line says how many stacks it would add. Pick a line and
-  they are all attached; click a heading for everything under it. What is
-  past twelve waits in the queue and goes as the next mail. A line's or a
-  heading's tooltip lists the items first, and bound and quest items are
-  left out.
+  Consumables (potions, elixirs, flasks, food and drink, item
+  enhancements), and Gems and recipes (Recipes on WoW Forever, which has
+  no gem kind). Each line wears the game's icon for its kind and says how
+  many stacks it would add. Pick a line and they are all attached; click
+  a heading for everything under it. What is past twelve waits in the
+  queue and goes as the next mail. A line's or a heading's tooltip lists
+  the items first, and bound and quest items are left out.
+- **Mail tab: one bag.** The square button after Sort shows the list on
+  screen as a bag instead: one tile for each kind of item with its total
+  across the mail shown, gold first, C.O.D. mail and mail the game has
+  not listed yet under their own lines. A click on a tile takes every
+  stack of that item as one collect run, with every rule of a run (your
+  bags are checked first, Keep bag slots free is kept, C.O.D. asks
+  first), and only that item leaves a mail that holds other things.
+  Shift-click asks how many when the item is in several mails; right-click
+  shows the mails that hold it; Ctrl-click tries it on. It follows a
+  search, the sort and the filters, and it works on another character's
+  box and in History, where it shows what is there and takes nothing.
+  Click the button again for the list.
 - **Send tab: pin a subject, as you pin a recipient.** The Subject box
   has the same small pin. A pinned box keeps its words on that character
   after every send and at every mailbox, until you unpin it, and its
@@ -46,17 +59,22 @@
   mail count.
 - **Mail tab: send back or delete a mail from its row.** Hold Alt and a
   return arrow shows in place of the read dot on every mail that can go
-  back, and finished mail keeps its x; click the arrow to send that mail
-  back. Auction mail that still holds something shows a faded x saying it
-  can only be taken. Double-tap Alt to keep the marks on; one tap ends it.
+  back, and finished mail keeps its x. While the marks show, a click
+  anywhere on a row sends that mail back and a right-click deletes
+  finished mail; the row under the pointer lights to say which, and a
+  row that can do neither says why. Auction mail that still holds
+  something shows a faded x: it can only be taken. Double-tap Alt to keep
+  the marks on: a small chip in the title bar and a thin line along the
+  top of the list say so, and a tap of Alt or a click on the chip ends it.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
   on the icon.
-- **Mail tab, with TradeSkillMaster:** the first time TSM's own mail
-  window opens beside Postbox's, one line under the Mail tab's top row
-  says how to keep just one: click "WOW UI" on TSM's window, once. Shown
-  once, never again, and nothing at all without TSM.
+- **With TradeSkillMaster:** at your first mailbox with TSM loaded, a
+  small notice says once that TSM has a mail window of its own and how to
+  keep just one (click "WOW UI" on TSM's window, once), that Postbox has
+  not been tested with TSM, and where to report a problem. Never shown
+  again, and nothing at all without TSM.
 - **Options > Window > Window style offers ElvUI beside EllesmereUI.**
   With both loaded the list reads EllesmereUI, ElvUI, Blizzard, Postbox,
   so an ElvUI player running a piece of EllesmereUI can dress Postbox in
@@ -64,8 +82,14 @@
 
 ### Improved
 
-- **Mail tab: the Inbox button says how many bag slots** the listed mail
-  needs, as "Inbox (14) · 8 slots", where it fits.
+- **Mail tab: the All mail button can say how many items it would
+  take**, as "94 slots" at its right end, following a search and a
+  selection. Off unless you turn it on: Show slot count on All mail
+  button (Options > Mail tab), or Show slot count on the All mail card
+  while arranging.
+- **Mail tab, the progress line: a softer finish.** When a run has taken
+  everything the line's glow is gentler and it trails away instead of
+  stopping.
 - **Mail tab: "Kept free: 6 slots" in the title bar when Keep bag slots
   free stops a run**, in the title bar's own gray after what was
   collected. Point at the words for how many mails wait and where the
@@ -78,11 +102,15 @@
 - **Bag room counts special bags for what they can take** (All mail's
   tooltip, the check before a run, Keep bag slots free). An herb bag, a
   quiver or a profession bag is room only for the items that fit it:
-  All mail's tooltip says "8 of these items fit in your special bags",
+  All mail's tooltip names the bag, "8 of these items fit in Herb Pouch",
   and warns only when the rest will not fit your ordinary bags. A bag
   nothing in the mail can go in, such as a soul bag on WoW Forever, is
   never counted or named. A run that reaches the slots it keeps free
   goes on taking what fits a special bag or the reagent bag.
+- **Collecting when not everything fits takes what fits anywhere.** The
+  question before a run counts every mail that fits, skipping one that
+  does not, and the run takes exactly those ("Only 12 of 13 fit"), where
+  it used to stop at the first mail without room.
 - **Mail tab, an opened mail: Delete is grayed where the game will not
   delete the mail** for what it still holds, and pointing at it says why,
   as the faded x on its row does. If the game turns a delete down
@@ -138,6 +166,8 @@
   named in chat and stays in your bags.
 - Mail Memory: Last seen at the window's foot and in the minimap icon's
   tooltip give the same age.
+- Send tab, the game's own bags: Postbox marks unmailable items itself,
+  without asking the game to redraw its bags.
 
 ## 2.0.0
 

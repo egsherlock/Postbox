@@ -91,8 +91,10 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **Hold Alt** to send back or delete from the list: a return arrow takes
   the read dot's place on every mail that can go back, finished mail keeps
   its x, and auction mail still holding something shows a faded x (it can
-  only be taken). While Alt is held only those marks act. Double-tap Alt
-  to keep them on (a lit Alt key says so); one tap ends it. A run of three mails
+  only be taken). While the marks show, a click anywhere on a row sends
+  that mail back and a right-click deletes finished mail; the row lights
+  to say which. Double-tap Alt to keep them on (a small chip in the title
+  bar and a line along the top of the list say so); one tap ends it. A run of three mails
   or more draws a thin line under the title bar as it goes; if it stops
   early, the line fades where it stopped, holding a moment first in the
   color of the words beside it when they say why.
@@ -126,7 +128,16 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   many mails are left. Nothing is collected behind your back. Special bags
   (an herb bag, a quiver, a profession bag, the reagent bag) count only
   for the items that fit them, and a run that has reached the slots it
-  keeps free goes on taking what fits one of those.
+  keeps free goes on taking what fits one of those. When not everything
+  fits, the run takes every mail that does, skipping one that does not.
+- **One bag:** the square button after Sort shows the list on screen as
+  a bag: one tile for each kind of item with its total, gold first. A
+  click takes every stack of that item as one collect run and leaves the
+  rest of each mail; Shift-click asks how many, right-click shows its
+  mails. It follows a search, the sort and the filters, and shows another
+  character's box and History too.
+- **All mail can show a slot count** at its right end ("94 slots"), off
+  by default: **Show slot count on All mail button** (Options > Mail tab).
 - **Past the 100 mails the game lists at a time**, the list ends with a
   line such as `45 more mails · not listed by the game yet`, and under it
   the mail Postbox already knows of, as gray rows you can read and search
@@ -277,7 +288,7 @@ Most mail, Name or Last played.
   line in chat at login (**Chat line at login**) and as the minimap icon's
   marker (**Minimap marker**: with the icon, always, or off); the minimap
   tooltip names them too.
-- **Mail waiting in your mailboxes,** a card across the top of the options'
+- **Mail in your mailboxes,** a card across the top of the options'
   General tab, lists each character's box as it was last seen (mail, gold,
   the soonest to expire with its arrow or bin, and how long ago), with a
   total for all of them. Mail about to go back or be deleted comes first,
@@ -305,8 +316,8 @@ Most mail, Name or Last played.
   banker. The Subject box has the same pin. A pinned box keeps its words
   after every send and at every mailbox, and a mail you were still writing
   comes back as you left it. Click a pin again to unpin; your other
-  characters are left alone. **Recipient pin** (Options > Send tab) turns
-  the pins off.
+  characters are left alone. **Recipient and Subject pins** (Options >
+  Send tab) turns the pins off.
 - **A guidance line** says whether the mail arrives instantly or in about an
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
@@ -317,7 +328,8 @@ Most mail, Name or Last played.
   it is attached. The small + after "Attachments" does the same for a
   kind: it lists what is in your bags in the game's own words under
   Materials (Cloth, Herb, Metal & Stone), Consumables, and Gems and
-  recipes, each line with how many stacks it would add. Click a heading
+  recipes (Recipes on WoW Forever), each line with the game's icon and
+  how many stacks it would add. Click a heading
   for everything under it; a line's or a heading's tooltip lists the
   items first. Bound and quest items are left out of a kind. Either way,
   what is past twelve waits in the queue and goes as the next mail, and a
