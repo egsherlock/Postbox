@@ -4000,7 +4000,8 @@ do
       if n > 0 and item and (tonumber(o.u) or 0) > cutoff then
         -- The mails of its kind the last visit left listed (`r`, A.OverStamp)
         -- answered then: listed or taken again now, they answer for nothing.
-        local again = tonumber(o.r) or 0
+        -- (Taken off `seen` already where A.Settle counted it: A.Unrepeat.)
+        local again = filled and 0 or (tonumber(o.r) or 0)
         local mine, any = seen[o.k], seen.auction
         local c = ((mine and mine[item]) or 0) + ((any and any[item]) or 0) - again
         if c > n then c = n end
@@ -4035,9 +4036,16 @@ do
   -- answered for notes at this visit, and stay in the box, so the next
   -- visit, listing them again, cannot have them answer twice
   -- (A.SettleOver).
+  -- s33 relist: the same for the notes kept one by one (`unlisted`, and those
+  -- still in `pending`, a sale on its way among them): `relist`, beside them,
+  -- [outcome][item] = how many mails of that kind the last look listed, only
+  -- for the kinds a note still stands for. Nil where none.
   function A.OverStamp(watch, snapshot)
     local over = type(watch.over) == "table" and watch.over or nil
-    if not over then return end
+    local known = type(watch.unlisted) == "table" and watch.unlisted or nil
+    local pending = type(watch.pending) == "table" and watch.pending or nil
+    watch.relist = nil
+    if not (over or known or pending) then return end
     -- Counted once a mail, into two of the visit's sets (both emptied as
     -- the settle ends): mails in `answered`, items in `listedQ`.
     Empty(answered)
@@ -4051,12 +4059,58 @@ do
         Count(listedQ, mail.kind, item, A.QtyOf(mail.subject))
       end
     end
-    for i = 1, #over do
+    for i = 1, over and #over or 0 do
       local o = over[i]
       local item = A.Name(o)
       local byN, byQ = answered[o.k], listedQ[o.k]
       o.r = item and byN and byN[item] or nil
       o.rq = item and byQ and byQ[item] or nil
+    end
+    local relist
+    for pass = 1, 2 do
+      local list = (pass == 1) and known or pending
+      for i = 1, list and #list or 0 do
+        local e = list[i]
+        local item = A.Name(e)
+        local byN = item and answered[e.k]
+        local n = byN and byN[item]
+        if n and n > 0 then
+          relist = relist or {}
+          relist[e.k] = relist[e.k] or {}
+          relist[e.k][item] = n
+        end
+      end
+    end
+    watch.relist = relist
+  end
+
+  -- watch -> the visit's listed and taken mails (`seen`) less those the last
+  -- visit left listed of each kind a note stands for (`relist`, a tally's
+  -- `r`): those answered for notes then, and a second visit listing them
+  -- again (or taking them) cannot have them answer twice. Run once `seen`
+  -- is counted, before any note is answered (A.Settle).
+  function A.Unrepeat(watch)
+    local relist = type(watch.relist) == "table" and watch.relist or nil
+    if relist then
+      for kind, byKind in pairs(relist) do
+        local m = seen[kind]
+        if m and type(byKind) == "table" then
+          for item, n in pairs(byKind) do
+            if m[item] then m[item] = math.max(0, m[item] - (tonumber(n) or 0)) end
+          end
+        end
+      end
+    end
+    local over = type(watch.over) == "table" and watch.over or nil
+    for i = 1, over and #over or 0 do
+      local o = over[i]
+      local item = A.Name(o)
+      local m = item and seen[o.k]
+      if m and m[item] then
+        local done = relist and relist[o.k] and tonumber(relist[o.k][item]) or 0
+        local more = (tonumber(o.r) or 0) - done
+        if more > 0 then m[item] = math.max(0, m[item] - more) end
+      end
     end
   end
 
@@ -4109,6 +4163,8 @@ do
         end
       end
     end
+    -- s33 relist: what the last visit left listed answers for nothing again.
+    A.Unrepeat(watch)
     local kept, cutoff = nil, now - MAIL_LIFE
     if room > 0 and known then
       for i = 1, #known do
@@ -6216,7 +6272,9 @@ do
     if known then
       for i = 1, #known do cands[#cands + 1] = NoteRow(known[i], now, gen) end
     end
-    local pending = LivePending(watch, now)
+    -- Only what is mail by now: a sale on its way (MM.OnItsWay) is no mail of
+    -- the box, so it neither shows here nor answers for a listed one.
+    local pending = LivePending(watch, now, true)
     for i = 1, #pending do cands[#cands + 1] = NoteRow(pending[i], now, gen) end
     local snapshot = StoredSnapshot()
     local seen = snapshot and type(snapshot.mails) == "table" and snapshot.mails or nil
