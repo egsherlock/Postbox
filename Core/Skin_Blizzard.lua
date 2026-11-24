@@ -1722,7 +1722,7 @@ end
 -- The options' summary table
 -------------------------------------------------------------
 
--- Options > General's "Mail waiting in your mailboxes" (OptionsPanel's Dash:
+-- Options > General's "Mail in your mailboxes" (OptionsPanel's Dash:
 -- the card's parts in `card.__pbDash`) as the game's own lists are drawn:
 -- the Auction House list's stripes under the lines (auctionhouse-rowstripe-1
 -- and -2, 16 x 18 on both clients, one line each, tiled across) in place of

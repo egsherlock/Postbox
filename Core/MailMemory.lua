@@ -1259,8 +1259,8 @@ function MM.Warnings(mode)
   return out
 end
 
--- The options' summary (OptionsPanel, the General tab's "Mail waiting in
--- your mailboxes"): each character's box as it was last seen, added up. Only
+-- The options' summary (OptionsPanel, the General tab's "Mail in your
+-- mailboxes"): each character's box as it was last seen, added up. Only
 -- what MM.Characters already reads, and one more walk of each box with mail
 -- for what it does not keep: the gold waiting, and the soonest mail with its
 -- fate. Read by the panel only while its General tab is shown, and made

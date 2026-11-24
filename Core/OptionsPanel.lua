@@ -6275,7 +6275,7 @@ do
 end
 
 -------------------------------------------------------------
--- The summary (Dash): "Mail waiting in your mailboxes"
+-- The summary (Dash): "Mail in your mailboxes"
 --
 -- General's card, across the top of the body over its settings and its
 -- inspector, a step lighter than the panel, under a strip a further step
