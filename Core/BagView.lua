@@ -135,16 +135,20 @@ end
 -- back, once the box is emptied (its x, Escape, the words deleted, the
 -- mailbox closing), the view changes (History, Done, another character) or
 -- the bag's own button is clicked. Never saved. A comparison and a find, no
--- garbage.
+-- garbage. The letters' line's click (BV.ShowLetters) sets no search, so
+-- its look (`_bagPeekAll`) holds whatever the box says, and ends by the
+-- rest of the same rule: the view or the box changing, the mailbox
+-- closing, the bag's button.
 function BV.Peek(panel)
   local view = panel._bagPeek
   if view == nil then return false end
-  local box = panel.SearchBox
-  local text = box and box:GetText()
-  if view == panel.viewMode and panel._alt == panel._bagPeekAlt and type(text) == "string" and text:find("%S") then
-    return true
+  if view == panel.viewMode and panel._alt == panel._bagPeekAlt then
+    if panel._bagPeekAll then return true end
+    local box = panel.SearchBox
+    local text = box and box:GetText()
+    if type(text) == "string" and text:find("%S") then return true end
   end
-  panel._bagPeek, panel._bagPeekAlt = nil, nil
+  panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = nil, nil, nil
   return false
 end
 
@@ -181,6 +185,8 @@ local function Sect(head, look)
   s.n, s.head, s.look, s.rem, s.realm, s.name, s.shown, s.y = 0, head, look or 0, false, nil, nil, false, 0
   -- The words in one ink belong to the line that set them (TallyRemembered).
   s.plain = nil
+  -- The line for the letters with nothing attached (BV.TallyLetters).
+  s.letters = false
   return s
 end
 
@@ -309,19 +315,25 @@ end
 -- and the filters have shaped it): the gold and every stack of the mail
 -- still to collect, a kind an item id. Mail a sweep leaves -- stuck, or
 -- waiting for bag room -- is counted and not `free`. Held in place
--- (`frozen`), only the first section's counts are read again.
+-- (`frozen`), only the first section's counts are read again. Answers how
+-- many unread letters with nothing attached the list holds (no tile, so
+-- BV.TallyLetters gives them a line).
 function BV.TallyInbox(panel, frozen)
   local P, M = Parts(), Mail()
   local filtered, done = panel._filtered, panel._filteredDone
   local main = model.sects[1]
   local slots = M.MAX_ATTACHMENTS or 16
   local divider = P.DIVIDER
+  local letters = 0
   for i = 1, #filtered do
     local index = filtered[i]
     if index ~= divider and not done[i] then
-      local _, _, sender, _, money, cod, _, itemCount = GetInboxHeaderInfo(index)
+      local _, _, sender, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
       money, cod, itemCount = tonumber(money) or 0, tonumber(cod) or 0, tonumber(itemCount) or 0
       local held = itemCount > 0 and M.HeldBack(index, itemCount) or nil
+      -- Not finished, so unread: a read letter with nothing in it is the
+      -- list's Done, and the bag leaves it out as it leaves all of those.
+      if money <= 0 and cod <= 0 and itemCount <= 0 and not wasRead then letters = letters + 1 end
       if cod > 0 then
         if not frozen and itemCount > 0 then TallyCOD(P, index, sender, cod, itemCount, slots, held) end
       else
@@ -347,6 +359,19 @@ function BV.TallyInbox(panel, frozen)
       end
     end
   end
+  return letters
+end
+
+-- n -> the letters' line: unread letters with nothing attached have no
+-- tile, so where the list holds any they are said once, a line of their
+-- own after the listed mail's tiles (before the mail not listed yet), a
+-- section with no tiles as the remembered mail's line is. Its words are
+-- made again only when the count changes.
+function BV.TallyLetters(n)
+  if (n or 0) <= 0 then return end
+  if BV.lettersN ~= n then BV.lettersN, BV.lettersText = n, ns.Plural("BAG_LETTERS", n) end
+  local s = Sect(BV.lettersText, 0)
+  s.letters = true
 end
 
 -- Under the list's own line, the mail the game has not listed yet that
@@ -491,8 +516,11 @@ function BV.Build(panel)
   if src == "inbox" then m.gen = panel._bindGen else m.gen = Mail().InboxGen() end
   if not frozen then m.wholeGen = m.gen end
   if src == "inbox" then
-    BV.TallyInbox(panel, frozen)
-    if not frozen then BV.TallyRemembered(panel) end
+    local letters = BV.TallyInbox(panel, frozen)
+    if not frozen then
+      BV.TallyLetters(letters)
+      BV.TallyRemembered(panel)
+    end
   elseif src == "away" then
     BV.TallyAway(panel)
   else
@@ -537,7 +565,7 @@ function BV.Layout()
       for i = at, 2, -1 do list[i] = list[i - 1] end
       list[1] = gold
     end
-    s.shown = s.head ~= nil and (s.n > 0 or s.rem)
+    s.shown = s.head ~= nil and (s.n > 0 or s.rem or s.letters)
     if s.shown then
       s.y = y
       y = y + BV.HEAD
@@ -712,11 +740,91 @@ function BV.RemHead()
   return head
 end
 
+-- The letters' line (BV.TallyLetters): a frame of its own, as the
+-- remembered mail's is, since it alone hears a click (BV.HeadPointer).
+function BV.LettersHead()
+  local head = BV.lettersHead
+  if not head then
+    head = BV.NewHead()
+    BV.lettersHead = head
+  end
+  return head
+end
+
+-- head, text -> the letters' line drawn. Its look, all of it, is here, so
+-- it can be dressed apart from the other lines without touching what is
+-- counted: today a section's line like any other (BV.HeadLook).
+function BV.LettersLook(head, text)
+  BV.HeadLook(head, text, nil)
+end
+
+-- head, text, plain -> a section's line drawn: on the look's ground for a
+-- line of words where it has one (the Blizzard look's gold-edged note,
+-- Theme.LineGround, on its page): the words in the ground's one ink
+-- (`plain`, where the words carry inks of their own), a C.O.D. line's
+-- price still in its own, and the hairline the ground's. Asked for every
+-- line at every bind, so a line follows Row texture to None and back.
+function BV.HeadLook(head, text, plain)
+  local T = Th()
+  local grounded = T.LineGround and T.LineGround(head) or false
+  if head.grounded ~= grounded then
+    if not grounded and head.grounded ~= nil then T.ApplyTextRole(head.Text, "value") end
+    head.grounded = grounded
+    head.Rule:SetShown(not grounded)
+  end
+  if grounded and plain then text = plain end
+  local width = BV.child:GetWidth() or 0
+  if head.pbText ~= text or head.pbWidth ~= width then
+    head.pbText, head.pbWidth = text, width
+    T.FitText(head.Text, width - 2 * T.Metrics.inset, text, nil)
+  end
+end
+
+-- head, s -> whether the line hears a click, and what it does: the
+-- letters' line shows the list (BV.ShowLetters). Every other line takes no
+-- pointer. A line that hears one passes every press on, so the window is
+-- dragged by it as by the ground under it, and only a press that did not
+-- move is its click.
+function BV.HeadPointer(head, s)
+  local go = nil
+  if s.letters then go = "letters" end
+  head.go = go
+  local on = go ~= nil
+  if head.pbMouse ~= on then
+    head.pbMouse = on
+    head:EnableMouse(on)
+    if not on and GameTooltip:IsOwned(head) then GameTooltip:Hide() end
+  end
+end
+
+function BV.HeadDown(head, button)
+  if button ~= "LeftButton" then return end
+  BV.downHead = head
+  BV.downX, BV.downY = GetCursorPosition()
+end
+
+function BV.HeadUp(head, button)
+  local down = BV.downHead
+  BV.downHead = nil
+  if button ~= "LeftButton" or down ~= head or not head.go then return end
+  local x, y = GetCursorPosition()
+  if math.abs((x or 0) - (BV.downX or 0)) > 4 or math.abs((y or 0) - (BV.downY or 0)) > 4 then return end
+  local P, panel = Parts(), BV.panel
+  if not (P and panel) or P.RV.Modified() then return end
+  if head.go == "letters" then BV.ShowLetters(panel) end
+end
+
 function BV.NewHead()
   local T = Th()
   local head = CreateFrame("Frame", nil, BV.child)
   head:SetHeight(BV.HEAD)
   head:EnableMouse(false)
+  head.pbMouse = false
+  -- Heard only while BV.HeadPointer gives it the pointer; a press passes
+  -- on to what is under it.
+  if head.SetPropagateMouseClicks then head:SetPropagateMouseClicks(true) end
+  head:SetScript("OnMouseDown", BV.HeadDown)
+  head:SetScript("OnMouseUp", BV.HeadUp)
   head.Rule = head:CreateTexture(nil, "ARTWORK")
   head.Rule:SetHeight(1)
   head.Rule:SetPoint("TOPLEFT", head, "TOPLEFT", 0, 0)
@@ -738,13 +846,15 @@ function BV.Bind()
   local size = Th().Metrics.slotSize
   local offset = scroll:GetVerticalScroll() or 0
   local top, bottom = offset - size, offset + (scroll:GetHeight() or 0)
-  local used, lines, remUp = 0, 0, false
+  local used, lines, remUp, letUp = 0, 0, false, false
   for si = 1, m.sn do
     local s = m.sects[si]
     if s.shown and s.y >= offset - BV.HEAD and s.y <= bottom then
-      local head, text = nil, s.head
+      local head = nil
       if s.rem then
         head, remUp = BV.RemHead(), true
+      elseif s.letters then
+        head, letUp = BV.LettersHead(), true
       else
         lines = lines + 1
         head = BV.Head(lines)
@@ -752,26 +862,12 @@ function BV.Bind()
       head:ClearAllPoints()
       head:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -s.y)
       head:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -s.y)
-      do
-        -- On the look's ground for a line of words where it has one (the
-        -- Blizzard look's gold-edged note, Theme.LineGround, on its page):
-        -- the words in the ground's one ink, a C.O.D. line's price still in
-        -- its own, and the hairline the ground's. Asked for every line at
-        -- every bind, so a line follows Row texture to None and back.
-        local T = Th()
-        local grounded = T.LineGround and T.LineGround(head) or false
-        if head.grounded ~= grounded then
-          if not grounded and head.grounded ~= nil then T.ApplyTextRole(head.Text, "value") end
-          head.grounded = grounded
-          head.Rule:SetShown(not grounded)
-        end
-        if grounded and s.plain then text = s.plain end
+      if s.letters then
+        BV.LettersLook(head, s.head)
+      else
+        BV.HeadLook(head, s.head, s.plain)
       end
-      local width = child:GetWidth() or 0
-      if head.pbText ~= text or head.pbWidth ~= width then
-        head.pbText, head.pbWidth = text, width
-        Th().FitText(head.Text, width - 2 * Th().Metrics.inset, text, nil)
-      end
+      if not s.rem then BV.HeadPointer(head, s) end
       head:Show()
     end
     local list = s.list
@@ -800,6 +896,7 @@ function BV.Bind()
   end
   for i = lines + 1, #heads do heads[i]:Hide() end
   if BV.remHead and not remUp then BV.remHead:Hide() end
+  if BV.lettersHead and not letUp then BV.lettersHead:Hide() end
   Th().TipFollow(child)
   -- A tile that was answered (BV.NoTake) and is bound to something else.
   if BV.NT.on then BV.NoTakeCheck() end
@@ -1068,13 +1165,15 @@ function BV.SwitchClick(cell, button)
   if GameTooltip:IsOwned(cell) then BV.SwitchTip(cell) end
 end
 
--- A tile's mails let go: the search emptied, the bag drawn again.
+-- A tile's mails let go: the search emptied, the bag drawn again. The
+-- letters' look set no search, and leaves the box as the player left it.
 function BV.Back(panel)
-  panel._bagPeek, panel._bagPeekAlt = nil, nil
+  local all = panel._bagPeekAll
+  panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = nil, nil, nil
   local box = panel.SearchBox
   -- The box's own change lists the mail again; where a text set from code
   -- told nobody, the list is drawn here.
-  if box and (box:GetText() or "") ~= "" then box:SetText("") end
+  if not all and box and (box:GetText() or "") ~= "" then box:SetText("") end
   if not (BV.area and BV.area:IsShown()) then ns.CollectTab.RefreshMailList(panel) end
 end
 
@@ -1134,7 +1233,7 @@ function BV.PlaceSwitch(panel)
     panel.BagSwitch, panel._bagCell = nil, cell
     search.endExtra = nil
     -- What belonged to the bag ends with it.
-    panel._bagPeek, panel._bagPeekAlt = nil, nil
+    panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = nil, nil, nil
     if BV.Many.open then BV.Many.Close() end
   end
   sort:ClearAllPoints()
@@ -1738,7 +1837,7 @@ function BV.ShowMails(panel, kind)
   if not (name and name ~= "") then return BV.WaitName(kind) end
   BV.want = nil
   GameTooltip:Hide()
-  panel._bagPeek, panel._bagPeekAlt = panel.viewMode, panel._alt
+  panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = panel.viewMode, panel._alt, nil
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
   if (box:GetText() or "") == name then
     ns.CollectTab.RefreshMailList(panel)
@@ -1777,8 +1876,21 @@ end
 -- visit (the search is emptied too, CollectTab's CT.ClearSearch).
 function BV.Closed()
   local panel = BV.panel
-  if panel then panel._bagPeek, panel._bagPeekAlt = nil, nil end
+  if panel then panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = nil, nil, nil end
   BV.want = nil
+end
+
+-- The letters' line clicked: the list in the bag's place for this visit,
+-- from its top, as a tile's right-click shows it but with no search set
+-- (BV.Peek, `_bagPeekAll`); the saved choice stays the bag, and the bag's
+-- button, unlit, brings it back.
+function BV.ShowLetters(panel)
+  if not panel then return end
+  BV.want = nil
+  if GameTooltip:IsShown() then GameTooltip:Hide() end
+  panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = panel.viewMode, panel._alt, true
+  if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
+  ns.CollectTab.RefreshMailList(panel)
 end
 do
   local H = ns.Helpers
