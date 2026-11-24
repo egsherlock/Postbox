@@ -6623,44 +6623,56 @@ end
 -- 18b. Attach by kind
 --
 -- A small key at the end of the Attachments caption, a "+" on a lit plate
--- (Kind.Build), opens a menu of the
--- kinds of materials in the bags, as the game itself classes them: one line
--- for each subclass of its Trade Goods class that has something to take,
--- the kind's name as the client writes it and how many stacks. A pick
--- attaches every stack of that kind -- the sweep Alt+right-click runs for
--- one item (Q.AttachMatching) -- and what does not fit in the slots waits
--- in the queue as that sweep's does.
+-- (Kind.Build), opens a menu of the kinds of things in the bags, as the game
+-- itself classes them, under three headings:
+--   Materials        one line for each subclass of the game's Trade Goods
+--                    class that has something to take
+--   Consumables      one line each for its Potion, Elixir, Flask and Food &
+--                    Drink subclasses
+--   Gems and recipes one line for the Gem class, one for the Recipe class
+-- Each line carries the kind's name as the client writes it and how many
+-- stacks. A pick attaches every stack of that kind -- the sweep
+-- Alt+right-click runs for one item (Q.AttachMatching) -- and what does not
+-- fit in the slots waits in the queue as that sweep's does. A heading is
+-- picked the same way and attaches every stack of every kind under it.
 --
--- Postbox keeps no list of kinds and no names. The class and subclass are
--- the item's own (C_Item.GetItemInfoInstant: no server query, so it answers
--- for every item), the name is the one the client gives with them, and the
--- lines are whatever the bags report -- so a client that files every
--- material under one subclass gets one true line. The one number written
--- here is the subclass the game calls "Other", which is listed last; the
--- rest stand A to Z, so a line keeps its place as the counts change.
+-- Postbox keeps no list of names: the class and subclass are the item's own
+-- (C_Item.GetItemInfoInstant: no server query, so it answers for every
+-- item), the name is the one the client gives with them, and the lines are
+-- whatever the bags report -- so a client that files every material under
+-- one subclass gets one true line, and one whose consumables carry none of
+-- the four subclasses lists none. The numbers written here are the classes
+-- and subclasses each heading takes, and the subclass the game calls
+-- "Other", which is listed last among the materials; the rest of the
+-- materials stand A to Z, the consumables and the gems and recipes in the
+-- game's own order, so a line keeps its place as the counts change. A
+-- heading with nothing under it is not shown.
 --
 -- A stack counts only where a pick would really take it: not locked (at a
 -- mailbox that is attached), not queued, not bound in any way, not a quest
 -- item. Bound is stricter than the padlock's verdict, which lets an
 -- account-bound item through for a mail to an alt: a sweep cannot know who
 -- the mail is for, and no tooltip is read to find out. Each line's tooltip
--- lists the items it would add, so what a kind holds is seen before the
--- click.
+-- lists the items it would add, and each heading's the items of every line
+-- under it, so what a pick holds is seen before the click.
 --
 -- Nothing runs until the pointer is on the key. Resting on it or clicking
 -- it looks through the bags once: an item ID and its class for every filled
--- slot, the slot's own record only for a material. The click reuses the
--- look the pointer just made while nothing has changed since. The lines,
--- their items and the menu's rows are kept and filled again, never made
--- again. With nothing to take the key is dim and says so; a change to the
--- bags, the slots or the queue forgets that, and the next look decides
--- again.
+-- slot, the slot's own record only for an item the menu lists. The click
+-- reuses the look the pointer just made while nothing has changed since.
+-- The lines, their items and the menu's rows are kept and filled again,
+-- never made again. With nothing to take the key is dim and says so; a
+-- change to the bags, the slots or the queue forgets that, and the next
+-- look decides again.
 -------------------------------------------------------------
 do
+  local function Class(name, fallback)
+    local E = type(Enum) == "table" and Enum.ItemClass
+    return (type(E) == "table" and tonumber(E[name])) or fallback
+  end
   ST.Kind = {
     -- The game's class for materials, and its "Other" subclass.
-    CLASS = (type(Enum) == "table" and type(Enum.ItemClass) == "table"
-      and tonumber(Enum.ItemClass.Tradegoods)) or 7,
+    CLASS = Class("Tradegoods", 7),
     OTHER = 11,
     -- The key, a "+" on a lit plate (Kind.Build): the plate as tall as the
     -- caption's line and WIDER than that, GAP after the caption's last
@@ -6670,11 +6682,30 @@ do
     REST = 0.8, LIT = 1,
     -- A line's tooltip lists this many items before "and N more".
     TIP_ITEMS = 12,
-    -- The menu's rows, made for this many lines at least (Kind.Menu).
+    -- The menu's rows for materials, made for this many lines at least and
+    -- this many more each time the bags hold more (Kind.Menu).
     ROWS = 8,
-    lines = {}, spare = {}, bySub = {},
+    -- A heading's menu id is its place times this; its lines' follow it.
+    STEP = 100,
+    spare = {},
   }
   local Kind = ST.Kind
+  -- The three headings, in the menu's order: what each takes, its rows in
+  -- the menu (`cap`), and what a look found under it -- its lines, and the
+  -- heading itself counted as a line is (what a pick of it takes: Kind.Add).
+  --   class  every subclass of it, a line each (materials)
+  --   subs   class `sub` and these subclasses, a line each in this order
+  --   whole  these classes, a line each, in this order
+  Kind.GROUPS = {
+    { head = "KIND_HEAD_MATERIALS", class = Kind.CLASS, cap = Kind.ROWS },
+    { head = "KIND_HEAD_CONSUMABLES", sub = Class("Consumable", 0),
+      subs = { [1] = 1, [2] = 2, [3] = 3, [5] = 4 }, cap = 4 },
+    { head = "KIND_HEAD_GEMS", whole = { [Class("Gem", 3)] = 1, [Class("Recipe", 9)] = 2 }, cap = 2 },
+  }
+  for g = 1, #Kind.GROUPS do
+    local group = Kind.GROUPS[g]
+    group.g, group.lines, group.by, group.items, group.index = g, {}, {}, {}, {}
+  end
 
   -- Whether this client has what a look needs.
   function Kind.Ready()
@@ -6701,7 +6732,7 @@ do
 
   -- bag, slot -> the GUID of the item there, as Q.GuidAt gives it, read
   -- through one location kept and pointed again (a look asks it of every
-  -- material in the bags).
+  -- item the menu lists in the bags).
   function Kind.Guid(bag, slot)
     local location = Kind.location
     if location == nil then
@@ -6724,15 +6755,31 @@ do
     return (ok and type(guid) == "string") and guid or nil
   end
 
-  -- bag, slot [, sub] -> whether the slot holds a material a sweep takes
-  -- (of the kind `sub`, where one is asked for); then also its record, its
-  -- kind and the kind's name. The test a pick's sweep runs
-  -- (Q.AttachMatching), and the one a look counts by.
-  function Kind.At(bag, slot, sub)
+  -- classID, subID -> the heading an item stands under and its line's key
+  -- there (the subclass, or the class for a whole class), or nil.
+  function Kind.Where(classID, subID)
+    if subID == nil then return nil end
+    local G = Kind.GROUPS
+    if classID == G[1].class then return 1, subID end
+    if classID == G[2].sub and G[2].subs[subID] then return 2, subID end
+    if G[3].whole[classID] then return 3, classID end
+    return nil
+  end
+
+  -- bag, slot [, want] -> whether the slot holds an item a sweep takes (of
+  -- the line or the heading `want`, where one is asked for); then also its
+  -- record, its heading's place, its line's key and the kind's name as the
+  -- item gives it (the subclass's, or the class's for a whole class). The
+  -- test a pick's sweep runs (Q.AttachMatching), and the one a look counts
+  -- by.
+  function Kind.At(bag, slot, want)
     local okID, id = pcall(C_Container.GetContainerItemID, bag, slot)
     if not okID or not id then return false end
-    local ok, _, _, subName, _, _, classID, subID = pcall(C_Item.GetItemInfoInstant, id)
-    if not ok or classID ~= Kind.CLASS or subID == nil or (sub ~= nil and subID ~= sub) then return false end
+    local ok, _, typeName, subName, _, _, classID, subID = pcall(C_Item.GetItemInfoInstant, id)
+    if not ok then return false end
+    local g, k = Kind.Where(classID, subID)
+    if not g then return false end
+    if want and (want.g ~= g or (want.key ~= nil and want.key ~= k)) then return false end
     local info = Q.ContainerInfo(bag, slot)
     if not info or info.isLocked or info.isBound then return false end
     if Kind.IsQuest(bag, slot) then return false end
@@ -6744,20 +6791,27 @@ do
     -- client is asking about it, and it is in neither the queue nor a slot.
     local pending = Q.fillState and Q.fillState.pending
     if pending and pending.entry.guid == guid then return false end
-    return true, info, subID, subName
+    if g == 3 then subName = typeName end
+    return true, info, g, k, subName, classID
   end
 
-  -- A line for the kind `sub`, from the spare ones: its tables are kept.
-  function Kind.Line(sub, name)
+  -- A line under the heading `group` for its key `k`, from the spare ones:
+  -- its tables are kept. `classID`: the item's class, to name the kind by
+  -- where the item gave no name.
+  function Kind.Line(group, k, name, classID)
     if type(name) ~= "string" or name == "" then
-      -- The item gave no name for its kind: the client's own for the pair.
-      -- A kind with no name at all has no line.
+      -- The item gave no name for its kind: the client's own for it. A
+      -- kind with no name at all has no line.
       name = nil
-      local api = C_Item.GetItemSubClassInfo
-      if type(api) == "function" then
-        local ok, known = pcall(api, Kind.CLASS, sub)
-        if ok and type(known) == "string" and known ~= "" then name = known end
+      local ok, known
+      if group.g == 3 then
+        local api = C_Item.GetItemClassInfo
+        if type(api) == "function" then ok, known = pcall(api, classID) end
+      else
+        local api = C_Item.GetItemSubClassInfo
+        if type(api) == "function" then ok, known = pcall(api, classID, k) end
       end
+      if ok and type(known) == "string" and known ~= "" then name = known end
       if not name then return nil end
     end
     local spare = Kind.spare
@@ -6767,21 +6821,23 @@ do
     else
       line = { items = {}, index = {} }
     end
-    line.sub, line.name, line.text, line.off = sub, name, nil, false
+    line.g, line.key, line.name, line.text, line.off = group.g, k, name, nil, false
+    line.order = group.subs and group.subs[k] or (group.whole and group.whole[k]) or 0
     Kind.Clear(line)
-    Kind.lines[#Kind.lines + 1] = line
-    Kind.bySub[sub] = line
+    group.lines[#group.lines + 1] = line
+    group.by[k] = line
     return line
   end
 
-  -- The line counts nothing: its item records stay, for the next count.
+  -- The line (or heading) counts nothing: its item records stay, for the
+  -- next count.
   function Kind.Clear(line)
     line.stacks, line.n, line.cut = 0, 0, false
     for id in pairs(line.index) do line.index[id] = nil end
   end
 
-  -- One more stack on the line: the item it is a stack of, its stacks and
-  -- how many of it they hold.
+  -- One more stack on the line (or heading): the item it is a stack of, its
+  -- stacks and how many of it they hold.
   function Kind.Add(line, info)
     line.stacks = line.stacks + 1
     local id = info.itemID or info.hyperlink or "?"
@@ -6801,12 +6857,17 @@ do
     item.count = item.count + (tonumber(info.stackCount) or 1)
   end
 
-  -- "Other" last, the rest by the client's names.
+  -- Materials: "Other" last, the rest by the client's names.
   function Kind.Before(a, b)
-    local oa, ob = a.sub == Kind.OTHER, b.sub == Kind.OTHER
+    local oa, ob = a.key == Kind.OTHER, b.key == Kind.OTHER
     if oa ~= ob then return ob end
     if a.name ~= b.name then return a.name < b.name end
-    return a.sub < b.sub
+    return a.key < b.key
+  end
+
+  -- The other headings: the game's own order.
+  function Kind.InOrder(a, b)
+    return a.order < b.order
   end
 
   -- The free slots a sweep stops at under a C.O.D.; nil without one.
@@ -6814,21 +6875,35 @@ do
     return IsCODArmed(panel) and max(0, K.SEND_SLOT_COUNT - AttachmentCount()) or nil
   end
 
+  -- One stack found by a look on the line (or heading) `line`: under a
+  -- C.O.D. a pick stops at the free slots, and the line counts what it would
+  -- take, in the bag order the sweep takes it.
+  function Kind.Count(line, info, limit)
+    if limit and line.stacks >= limit then line.cut = true else Kind.Add(line, info) end
+  end
+
   -- One look through the bags: the lines, each with what a pick of it would
-  -- add. -> how many lines. `keep`: the lines stand as they are (the menu is
-  -- open on them) and are counted again in place; one with nothing left to
-  -- take keeps its words and is set aside (`off`).
+  -- add, and each heading with what a pick of it would add. -> how many
+  -- lines. `keep`: the lines stand as they are (the menu is open on them)
+  -- and are counted again in place; one with nothing left to take keeps its
+  -- words and is set aside (`off`), and a heading with nothing left under it
+  -- too.
   function Kind.Look(panel, keep)
-    local lines, bySub = Kind.lines, Kind.bySub
-    if keep then
-      for i = 1, #lines do Kind.Clear(lines[i]) end
-    else
-      local spare = Kind.spare
-      for i = #lines, 1, -1 do
-        spare[#spare + 1] = lines[i]
-        lines[i] = nil
+    local G = Kind.GROUPS
+    for g = 1, #G do
+      local group = G[g]
+      local lines = group.lines
+      Kind.Clear(group)
+      if keep then
+        for i = 1, #lines do Kind.Clear(lines[i]) end
+      else
+        local spare = Kind.spare
+        for i = #lines, 1, -1 do
+          spare[#spare + 1] = lines[i]
+          lines[i] = nil
+        end
+        for k in pairs(group.by) do group.by[k] = nil end
       end
-      for sub in pairs(bySub) do bySub[sub] = nil end
     end
     local limit = Kind.Limit(panel)
     Kind.limit, Kind.fresh = limit, not keep
@@ -6836,50 +6911,74 @@ do
       for bag = 0, Q.LAST_BAG do
         local ok, count = pcall(C_Container.GetContainerNumSlots, bag)
         for slot = 1, (ok and tonumber(count)) or 0 do
-          local takes, info, sub, name = Kind.At(bag, slot)
+          local takes, info, g, k, name, classID = Kind.At(bag, slot)
           if takes then
-            local line = bySub[sub]
-            if not line and not keep then line = Kind.Line(sub, name) end
+            local group = G[g]
+            local line = group.by[k]
+            if not line and not keep then line = Kind.Line(group, k, name, classID) end
             if line then
-              -- Under a C.O.D. a pick stops at the free slots, and the line
-              -- counts what it would take.
-              if limit and line.stacks >= limit then line.cut = true else Kind.Add(line, info) end
+              Kind.Count(line, info, limit)
+              Kind.Count(group, info, limit)
             end
           end
         end
       end
     end
-    for i = 1, #lines do
-      local line = lines[i]
-      line.off = line.stacks == 0
-      if not line.off then
-        line.text = line.name .. Theme.Colorize("textSecondary", " \194\183 " .. ns.Plural("COUNT_STACKS", line.stacks))
+    local n = 0
+    for g = 1, #G do
+      local group = G[g]
+      local lines = group.lines
+      for i = 1, #lines do
+        local line = lines[i]
+        line.off = line.stacks == 0
+        if not line.off then
+          line.text = line.name .. Theme.Colorize("textSecondary", " \194\183 " .. ns.Plural("COUNT_STACKS", line.stacks))
+        end
       end
+      group.off = group.stacks == 0
+      if not keep then table.sort(lines, g == 1 and Kind.Before or Kind.InOrder) end
+      n = n + #lines
     end
-    if not keep then table.sort(lines, Kind.Before) end
-    return #lines
+    return n
+  end
+
+  -- A menu id -> the heading it is in, and the line there (nil for the
+  -- heading itself).
+  function Kind.Of(id)
+    local g = floor(id / Kind.STEP)
+    local group = Kind.GROUPS[g]
+    if not group then return nil end
+    local i = id - g * Kind.STEP
+    if i == 0 then return group, nil end
+    return group, group.lines[i] or false
   end
 
   -- The menu's hooks (Dropdown.Menu): a row is a place, the line standing
-  -- there now is what it shows.
+  -- there now is what it shows; a heading shows while it has lines.
   function Kind.Caption(item)
-    local line = Kind.lines[item.id]
+    local group, line = Kind.Of(item.id)
+    if not group then return nil end
+    if line == nil then return #group.lines > 0 and L[group.head] or nil end
     return line and line.text or nil
   end
 
   function Kind.Off(id)
-    local line = Kind.lines[id]
+    local group, line = Kind.Of(id)
+    if not group then return true end
+    if line == nil then return group.off end
     return not line or line.off
   end
 
   -- A line's tooltip: every item a pick would add, how many of it and in how
-  -- many stacks, in the order they would be attached.
+  -- many stacks, in the order they would be attached. A heading's: the same
+  -- for every line under it, together.
   function Kind.RowTip(row, item)
-    local line = Kind.lines[item.id]
-    if not line or line.off then return end
+    local group, line = Kind.Of(item.id)
+    if line == nil then line = group end
+    if not line or line.stacks == 0 then return end
     local muted = Theme.TIP_MUTED
     Theme.TipBegin(row, "ANCHOR_RIGHT")
-    Theme.TipTitle(line.name)
+    Theme.TipTitle(line == group and L[group.head] or line.name)
     local shown = min(line.n, Kind.TIP_ITEMS)
     for i = 1, shown do
       local it = line.items[i]
@@ -6890,7 +6989,7 @@ do
     if line.n > shown then
       GameTooltip:AddLine(L("MEMORY_WAITING_MORE", line.n - shown), muted, muted, muted)
     end
-    -- More of the kind than the free slots: why the count stops there.
+    -- More than the free slots: why the count stops there.
     if line.cut then Theme.TipLine(Theme.TipTone("muted", L["ERR_COD_QUEUE"])) end
     GameTooltip:Show()
   end
@@ -6899,20 +6998,22 @@ do
     GameTooltip:Hide()
   end
 
-  -- A line picked: every stack of its kind, through the sweep's loop and
-  -- the queue's own rules, into the free slots and the queue behind them.
-  -- The lines are then counted again where they stand.
+  -- A line picked: every stack of its kind; a heading: every stack of every
+  -- kind under it; through the sweep's loop and the queue's own rules, into
+  -- the free slots and the queue behind them. The lines are then counted
+  -- again where they stand.
   function Kind.Pick(id)
     local key = Kind.key
     local panel = key and key.panel
-    local line = Kind.lines[id]
-    if not (panel and line) or line.off or Kind.Busy(panel) then return end
+    local group, line = Kind.Of(id)
+    if line == nil then line = group end
+    if not (panel and line) or line.stacks == 0 or Kind.Busy(panel) then return end
     GameTooltip:Hide()
-    local added = Q.AttachMatching(panel, Kind.At, line.sub)
+    local added = Q.AttachMatching(panel, Kind.At, line)
     if added > 0 then
       Q.stats.kind = (Q.stats.kind or 0) + 1
       TopUpFromQueue(panel)
-      ns.Print(ns.Plural("MSG_ATTACH_KIND", added, line.name))
+      ns.Print(ns.Plural("MSG_ATTACH_KIND", added, line == group and L[group.head] or line.name))
     end
     Kind.Look(panel, true)
     if Kind.menu then Kind.menu:Repaint() end
@@ -6922,19 +7023,32 @@ do
     if Kind.key then Kind.Ink(Kind.key) end
   end
 
-  -- The menu, with a row for each of `need` lines. Its rows are places the
-  -- lines are written into at each open, so one menu serves every look; it
-  -- is made again, larger, only when the bags hold more kinds than it has
-  -- rows (eight more each time: twice at most, for all the kinds the game
-  -- has).
-  function Kind.Menu(key, need)
+  -- The menu: each heading, then a row for each of its lines. Its rows are
+  -- places the lines are written into at each open, so one menu serves
+  -- every look; it is made again, larger, only when the bags hold more
+  -- materials than it has rows for (eight more each time: twice at most,
+  -- for all the kinds the game has).
+  function Kind.Menu(key)
     local menu = Kind.menu
-    if menu and need <= #Kind.items then return menu end
+    local G = Kind.GROUPS
+    local grow = false
+    for g = 1, #G do
+      local group = G[g]
+      if #group.lines > group.cap then
+        group.cap = #group.lines + (g == 1 and Kind.ROWS or 0)
+        grow = true
+      end
+    end
+    if menu and not grow then return menu end
     local D = ns.Core and ns.Core.UI and ns.Core.UI.Dropdown
     if not (D and type(D.Menu) == "function") then return nil end
     if menu then menu:Close() end
     local items = {}
-    for i = 1, max(need, (Kind.items and #Kind.items or 0) + Kind.ROWS) do items[i] = { id = i, name = "" } end
+    for g = 1, #G do
+      local base = g * Kind.STEP
+      items[#items + 1] = { id = base, name = "", heading = true, pick = true }
+      for i = 1, G[g].cap do items[#items + 1] = { id = base + i, name = "" } end
+    end
     Kind.items = items
     Kind.opts = Kind.opts or {
       keepOpen = true,
@@ -7045,8 +7159,9 @@ do
   -- The look the pointer or the click asks for: the one just made while
   -- nothing has moved since, else a new one. -> how many lines.
   function Kind.Fresh(panel)
-    if Kind.fresh and Kind.limit == Kind.Limit(panel) then return #Kind.lines end
-    return Kind.Look(panel)
+    if Kind.fresh and Kind.limit == Kind.Limit(panel) then return Kind.count end
+    Kind.count = Kind.Look(panel)
+    return Kind.count
   end
 
   function Kind.Enter(key)

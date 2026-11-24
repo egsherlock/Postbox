@@ -1528,10 +1528,14 @@ local FLIP = { SIZE = 5, X = 8, ROOM = 12 }
 -- shows now, asked of every choice each time the menu opens, before it is
 -- measured; nil puts the row away for this open, and the menu ends under
 -- the last row left showing (a row keeps its place, so the rows put away
--- are the last ones). :Repaint() asks for the words again and leaves the
--- rows that show as they are, so nothing moves under the pointer. The rows
--- are made once, on the first open: a list that changes makes no frames.
--- Not for a menu that scrolls.
+-- are the last ones; rows put away between others close up). :Repaint()
+-- asks for the words again and leaves the rows that show as they are, so
+-- nothing moves under the pointer. The rows are made once, on the first
+-- open: a list that changes makes no frames. Not for a menu that scrolls.
+-- A heading with `pick` (and an id) is also a choice: its click picks it,
+-- the pointer lights it and opts.onEnter / onLeave / disabled are asked of
+-- it as of a row; in such a menu it is asked opts.caption too, and put away
+-- with the group under it.
 local ACTION = { H = 26, SIDE = 2, TOP = 5, BOTTOM = 1, GLYPH = 12, GAP = 4 }
 
 function ACTION.Paint(row)
@@ -1662,7 +1666,7 @@ function Dropdown.Menu(owner, items, opts)
         -- An action row: live or at rest in its own look (ACTION.Paint).
         row._off = disabled and disabled(row.item.id) and true or false
         row._paintAction(row)
-      elseif disabled and row.item.id ~= nil and not row.item.heading then
+      elseif disabled and row.item.id ~= nil and (not row.item.heading or row.item.pick) then
         local off = disabled(row.item.id) and true or false
         row._off = off
         row.Text:SetAlpha(off and 0.4 or 1)
@@ -1735,6 +1739,29 @@ function Dropdown.Menu(owner, items, opts)
     -- the choices' viewport.
     local y = LIST_PADDING
     local footY = content and (LIST_PADDING + viewport) or nil
+    -- A choice's pointer and click (and a heading's that can be picked):
+    -- the hover wash `bg` while it is not set aside, the owner's tooltip
+    -- hooks, and the pick.
+    local function Live(row, bg)
+      row:SetScript("OnEnter", function(self)
+        if not self._off then
+          -- (A look's own hover for a menu's row, as a select's rows'.)
+          local lit = ns.Theme and ns.Theme.MenuHover
+          if not (lit and lit(bg)) then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
+        end
+        if opts.onEnter then opts.onEnter(self, self.item) end
+      end)
+      row:SetScript("OnLeave", function(self)
+        bg:SetColorTexture(0, 0, 0, 0)
+        if opts.onLeave then opts.onLeave(self, self.item) end
+      end)
+      row:SetScript("OnClick", function(self)
+        if self._off then return end
+        if not opts.keepOpen then list:Hide() end
+        if opts.onPick then opts.onPick(self.item.id) end
+        if opts.keepOpen and list:IsShown() then PaintMarks() end
+      end)
+    end
     for i = 1, #items do
       local item = items[i]
       -- A heading: the group's name, quiet, at the rows' edge, as a
@@ -1752,9 +1779,12 @@ function Dropdown.Menu(owner, items, opts)
         rows[i] = row
         if footY then footY = footY + ACTION.H else y = y + ACTION.H end
       elseif item.heading then
-        local head = CreateFrame("Frame", nil, parent)
+        -- One with `pick` is also a choice: a click picks it, as a row's
+        -- does (the Send tab's kinds: a heading adds every kind under it).
+        local head = CreateFrame(item.pick and "Button" or "Frame", nil, parent)
         head:SetHeight(DEFAULT_ROW_HEIGHT)
         Anchor(head, y)
+        head._y = y
         local text = head:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         text:SetPoint("LEFT", head, "LEFT", LIST_PADDING, 0)
         text:SetWordWrap(false)
@@ -1776,15 +1806,23 @@ function Dropdown.Menu(owner, items, opts)
           else
             rule:SetColorTexture(1, 1, 1, 0.12)
           end
+          head._rule = rule
         end
         -- Measured with the rows (Place): its words from the rows' edge.
         head.Text, head.item, head._textX = text, item, LIST_PADDING
+        if item.pick then
+          local bg = head:CreateTexture(nil, "BACKGROUND")
+          bg:SetAllPoints()
+          bg:SetColorTexture(0, 0, 0, 0)
+          Live(head, bg)
+        end
         rows[i] = head
         y = y + DEFAULT_ROW_HEIGHT
       else
         local row = CreateFrame("Button", nil, parent)
         row:SetHeight(DEFAULT_ROW_HEIGHT)
         Anchor(row, y)
+        row._y = y
         local bg = row:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
         bg:SetColorTexture(0, 0, 0, 0)
@@ -1820,24 +1858,7 @@ function Dropdown.Menu(owner, items, opts)
             row._turn = mark
           end
         end
-        row:SetScript("OnEnter", function(self)
-          if not self._off then
-            -- (A look's own hover for a menu's row, as a select's rows'.)
-            local lit = ns.Theme and ns.Theme.MenuHover
-            if not (lit and lit(bg)) then bg:SetColorTexture(hover[1], hover[2], hover[3], hover[4]) end
-          end
-          if opts.onEnter then opts.onEnter(self, self.item) end
-        end)
-        row:SetScript("OnLeave", function(self)
-          bg:SetColorTexture(0, 0, 0, 0)
-          if opts.onLeave then opts.onLeave(self, self.item) end
-        end)
-        row:SetScript("OnClick", function(self)
-          if self._off then return end
-          if not opts.keepOpen then list:Hide() end
-          if opts.onPick then opts.onPick(self.item.id) end
-          if opts.keepOpen and list:IsShown() then PaintMarks() end
-        end)
+        Live(row, bg)
         rows[i] = row
         y = y + DEFAULT_ROW_HEIGHT
       end
@@ -1857,12 +1878,18 @@ function Dropdown.Menu(owner, items, opts)
   -- `fit`, as the menu opens: a choice with no words is put away, its row
   -- emptied so it measures nothing, and the menu is as tall as the rows left
   -- showing. Without it, the words alone.
+  -- A heading that can be picked (`pick`) is asked as a choice is, and put
+  -- away with the group under it. The rows left showing close up under one
+  -- another, each moved only when its place changed (a menu whose rows put
+  -- away are the last ones moves none), and a heading's hairline shows only
+  -- under a row.
   local function Captions(fit)
     local height = LIST_PADDING
+    local above = false
     for i = 1, #rows do
       local row = rows[i]
       local item = row.item
-      if item and item.id ~= nil and not item.heading and not item.action then
+      if item and item.id ~= nil and not item.action and (not item.heading or item.pick) then
         local words = caption(item)
         if words then
           if row.Text:GetText() ~= words then row.Text:SetText(words) end
@@ -1871,7 +1898,19 @@ function Dropdown.Menu(owner, items, opts)
         end
         if fit then row:SetShown(words ~= nil) end
       end
-      if row:IsShown() then height = height + (row:GetHeight() or 0) end
+      if row:IsShown() then
+        if fit and not list._scroll then
+          if row._y ~= height then
+            row._y = height
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", list, "TOPLEFT", LIST_PADDING, -height)
+            row:SetPoint("RIGHT", list, "RIGHT", -LIST_PADDING, 0)
+          end
+          if row._rule then row._rule:SetShown(above) end
+        end
+        above = true
+        height = height + (row:GetHeight() or 0)
+      end
     end
     if fit and not list._scroll then list:SetHeight(height + LIST_PADDING) end
   end
