@@ -1603,7 +1603,7 @@ function BV.TileEnter(tile)
     if alt then return GameTooltip:Show() end
   else
     BV.TipItem(kind)
-    if kind.cod then
+    if kind.cod and not alt then
       local _, _, _, _, _, cod = GetInboxHeaderInfo(kind.index)
       if (tonumber(cod) or 0) > 0 and BV.Current(kind) then
         T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(tonumber(cod))))
@@ -2581,6 +2581,10 @@ local Alt = {
   -- Kept: the tooltip's facts, the question's, what the question names
   -- for the service (Mail.ReturnWant), the words being joined.
   tip = nil, ask = nil, want = {}, lines = {}, parts = {},
+  -- The "+" line's and the gray lines' joint; the warning tone (as the
+  -- tooltip draws it) and how near a class colour may come to it before a
+  -- name is drawn white (Alt.Name).
+  SEP = " \194\183 ", WARN = { 0.98, 0.56, 0.18 }, NEAR = 0.35,
 }
 BV.Alt = Alt
 
@@ -2734,14 +2738,24 @@ function Alt.Facts(kind, F, want)
   -- C.O.D.: the one case the tile shows everything that would leave.
   local g1 = list[1]
   F.only = F.qn == 1 and g1 ~= nil and g1.on == 0 and g1.gold == 0 and not g1.letter and F.cod == 0
+  -- The sums the tooltip and the question say: how much of the item goes
+  -- (the named senders'), of how much the tile holds; what stays, in how
+  -- many mails, and whether those are all the auction house's.
+  local nb = 0
+  for i = 1, F.shown do nb = nb + list[i].n end
+  F.nb, F.nt = nb, kind.n
+  F.stayN, F.stayMails = kind.n - nb, F.total - F.qn
+  F.stayAuction = F.auction > 0 and F.auction == F.stayMails
   return F
 end
 
--- Q01 (his to pick, f74): whether a return from a tile asks first.
--- Built as "always". His other card, "only when more goes", is this line:
---   return not F.only
+-- Q01, his f80 Q03 pick "only when more goes": a tile's return asks
+-- first unless it is ONE mail holding nothing but this item (no other
+-- item, no gold, no letter of its own, no C.O.D.), which goes back at the
+-- click as a row's does; the sweep still looks at it again right before
+-- the command, and stops if it holds anything else by then.
 function Alt.Asks(F)
-  return true
+  return not F.only
 end
 
 -- An item's name where its stack gave none.
@@ -2754,10 +2768,25 @@ function Alt.ItemName(key)
   return RETRIEVING_ITEM_INFO or "?"
 end
 
--- g -> what the group's mails hold besides the tile's item, in words
--- ("20 Storm Dust, 250g and a letter"), or nil: the first two other items
--- by name, how many more, the gold as the rows write it, a letter of
--- their own.
+-- A sender's name in its class colour, as a mail's From line shows it,
+-- but white where that colour would read as the warning tone of the "+"
+-- lines under it (a druid's orange): the "+" is never mistaken for a name.
+function Alt.Name(sender)
+  local CS = ns.ContactService
+  local token = (CS and CS.ClassOf) and CS.ClassOf(sender) or nil
+  if not (token and CS.WrapClass) then return sender end
+  local r, g, b = nil, nil, nil
+  if CS.ClassColour then r, g, b = CS.ClassColour(token) end
+  if r and math.abs(r - Alt.WARN[1]) + math.abs(g - Alt.WARN[2]) + math.abs(b - Alt.WARN[3]) < Alt.NEAR then
+    return sender
+  end
+  return CS.WrapClass(token, sender, "tooltip")
+end
+
+-- g -> what the group's mails hold besides the tile's item, the "+"
+-- line's words ("20 Storm Dust · 5 Bismuth · 6 more items · 250g · a
+-- letter"), or nil: the first two other items by name, how many more,
+-- the gold as the rows write it, a letter of their own.
 function Alt.Also(g)
   local L0 = L()
   local parts, n = Alt.parts, 0
@@ -2778,44 +2807,64 @@ function Alt.Also(g)
     parts[n] = L0["BAGALT_ALSO_LETTER"]
   end
   if n == 0 then return nil end
-  if n == 1 then return parts[1] end
-  return L0("BAGALT_AND", table.concat(parts, L0["BAGALT_LIST_SEP"], 1, n - 1), parts[n])
+  return L0("BAGALT_PLUS", table.concat(parts, Alt.SEP, 1, n))
 end
 
--- THE TOOLTIP'S LOOK (f74 T01 "senders"), from the facts alone, after the
--- item's own lines: the count, a line per sender with what else under it
--- in the warning tone, "+N more" past the cap, the auction mail that
--- stays in gray; a C.O.D. mail's sender and that nothing is paid; where
--- nothing can go back, why (the rows' faded x's words). Then the hints.
+-- The Return arrow, drawn in a line of text (the rows' art).
+function Alt.Arrow()
+  local arrow = Alt.arrow
+  if arrow == nil then
+    local G = Th().GLYPHS and Th().GLYPHS["expiry-back"]
+    arrow = G and ("|T" .. G.file .. ":0:0:0:0:16:16:0:12:0:12|t ") or false
+    Alt.arrow = arrow
+  end
+  return arrow or ""
+end
+
+-- THE TOOLTIP'S LOOK (his f80 T02 pick, "head"), from the facts alone,
+-- after the item's own lines. One sender and nothing staying: one line in
+-- the item name's size, "Returns all 20 to Thessaly" (with "in 3 mails"
+-- where there are several), and its "+" line. Otherwise: "Returns 100 of
+-- 140" in that size, "4 mails · 3 senders" under it in gray; a line per
+-- sender, the name in its class colour at the left, "60 · 2 mails" at the
+-- right; under a sender, only if its mails hold more, the "+" line (small,
+-- in the warning tone, wrapped); eight senders, then "+N more"; what stays
+-- in one gray line. A C.O.D. mail's tile adds its price and that nothing is
+-- paid. Where nothing can go back, why (the rows' faded x's words). Then
+-- the hints.
 function Alt.Tip(F, kind)
-  local T, L0 = Th(), L()
+  local T, L0, H = Th(), L(), ns.Helpers
   if F.back == 0 then
     local auction = F.auction > 0 and F.auction == F.total
     T.TipLine(L0[auction and "MARKS_FADED_AUCTION" or "MARKS_FADED_OTHER"])
-  elseif kind.cod then
+  elseif F.shown == 1 and F.stayN <= 0 then
     local g = F.g[1]
-    T.TipLine(L0("BAGALT_COD_TO", g.name))
-    local also = Alt.Also(g)
-    if also then GameTooltip:AddLine(T.TipTone("warning", L0("BAGALT_ALSO", also)), 1, 1, 1, true) end
-    T.TipLine(T.TipTone("muted", L0["BAGALT_NOTHING_PAID"]))
-  else
-    if F.total > 1 or F.back < F.total then
-      T.TipLine(L0("BAGALT_CAN_RETURN", F.back, ns.Plural("COUNT_MAILS", F.total)))
+    local text = Alt.Arrow() .. L0("BAGALT_TIP_ALL", F.nb, Alt.Name(g.name))
+    if g.mails > 1 then text = text .. " " .. T.TipTone("muted", L0("BAGALT_TIP_IN", ns.Plural("COUNT_MAILS", g.mails))) end
+    T.TipHead(text)
+    T.TipPlus(Alt.Also(g))
+    if F.cod > 0 then
+      T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(F.cod)) .. T.TipTone("muted", Alt.SEP .. L0["BAGALT_COD_FREE"]))
     end
+  else
+    T.TipHead(Alt.Arrow() .. L0("BAGALT_TIP_SUM", F.nb, F.nt))
+    T.TipLine(T.TipTone("muted", ns.Plural("COUNT_MAILS", F.qn) .. Alt.SEP .. ns.Plural("BAGALT_SENDERS", F.shown)))
     for i = 1, F.shown do
       local g = F.g[i]
-      GameTooltip:AddDoubleLine(g.name, L0("BAGALT_SENDER_COUNT", g.n, ns.Plural("COUNT_MAILS", g.mails)),
-        0.82, 0.82, 0.82, 1, 1, 1)
-      local also = Alt.Also(g)
-      if also then GameTooltip:AddLine(T.TipTone("warning", L0("BAGALT_ALSO", also)), 1, 1, 1, true) end
+      GameTooltip:AddDoubleLine(Alt.Name(g.name), tostring(g.n) .. T.TipTone("muted", Alt.SEP .. ns.Plural("COUNT_MAILS", g.mails)),
+        1, 1, 1, 1, 1, 1)
+      T.TipPlus(Alt.Also(g))
     end
     if F.capped > 0 then T.TipLine(T.TipTone("muted", ns.Plural("TIP_MORE", F.capped))) end
-    if F.auction > 0 then T.TipLine(T.TipTone("muted", ns.Plural("BAGALT_AUCTION_STAYS", F.auction))) end
+    if F.stayN > 0 and F.stayMails > 0 then
+      local mails = F.stayAuction and ns.Plural("BAGALT_AUCTION_MAILS", F.stayMails) or ns.Plural("COUNT_MAILS", F.stayMails)
+      T.TipLine(T.TipTone("muted", L0("BAGALT_STAYS", F.stayN, mails)))
+    end
   end
   if F.qn == 1 then
     T.TipHint(L0["HINT_MARKS_RETURN"])
   elseif F.qn > 1 then
-    T.TipHint(ns.Plural("BAGALT_HINT_RETURN", F.qn))
+    T.TipHint(L0("BAGALT_HINT_RETURN_N", ns.Plural("COUNT_MAILS", F.qn)))
   end
   T.TipHint(L0["BAG_HINT_MAILS"])
 end
@@ -2836,57 +2885,77 @@ function Alt.TipBody(kind)
   Alt.Tip(F, kind)
 end
 
--- THE QUESTION'S LOOK (f74 Q01's box), from the facts alone: what goes
--- and to whom; a line per sender, most of the item first, what else
--- under it in the warning tone; the C.O.D. and that nothing is paid; the
--- senders past the cap whose mail stays; the auction mail that stays;
--- last, in gray, that a returned mail cannot be taken back.
+-- THE QUESTION'S LOOK (his f80 Q02 pick, "words"), in the game's own box,
+-- from the facts alone: the act first; one mail holding more, its item
+-- and the "+" line; several mails, the sum ("100 of 140 Ironclaw Ore go
+-- back."), each sender most of the item first with what goes and its "+"
+-- line, what stays; a C.O.D.; the senders past the cap whose mail stays;
+-- last Delete's own closing words, in gray. (One mail holding only the
+-- item is never asked: Alt.Asks.)
 function Alt.AskText(F)
   local T, L0, H = Th(), L(), ns.Helpers
   local lines, n = Alt.lines, 0
   local g1 = F.g[1]
-  local first
+  n = n + 1
   if F.qn == 1 then
-    first = L0("BAGALT_ASK_THIS", g1.name)
-  elseif F.shown == 1 then
-    first = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), g1.name)
-  else
-    first = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), ns.Plural("BAGALT_SENDERS", F.shown))
-  end
-  n = n + 1
-  lines[n] = first
-  n = n + 1
-  lines[n] = ""
-  for i = 1, F.shown do
-    local g = F.g[i]
+    lines[n] = L0("BAGALT_ASK_THIS", g1.name)
     n = n + 1
-    if F.qn == 1 then
-      lines[n] = L0("BAGALT_ITEM_COUNT", g.n, F.name)
-    else
-      lines[n] = L0("BAGALT_ASK_LINE", g.name, g.n, F.name, ns.Plural("COUNT_MAILS", g.mails))
-    end
-    local also = Alt.Also(g)
+    lines[n] = L0("BAGALT_ITEM_COUNT", g1.n, F.name)
+    local also = Alt.Also(g1)
     if also then
       n = n + 1
-      lines[n] = T.TipTone("warning", L0("BAGALT_ALSO", also))
+      lines[n] = T.TipTone("warning", also)
+    end
+  else
+    local to = (F.shown == 1) and g1.name or ns.Plural("BAGALT_TO_SENDERS", F.shown)
+    lines[n] = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), to)
+    n = n + 1
+    if F.nb < F.nt then
+      lines[n] = L0("BAGALT_Q_SUM", F.nb, F.nt, F.name)
+    else
+      lines[n] = L0("BAGALT_Q_SUM_ALL", F.nb, F.name)
+    end
+    n = n + 1
+    lines[n] = ""
+    for i = 1, F.shown do
+      local g = F.g[i]
+      n = n + 1
+      lines[n] = L0("BAGALT_Q_SENDER", g.name, g.n, ns.Plural("COUNT_MAILS", g.mails))
+      local also = Alt.Also(g)
+      if also then
+        n = n + 1
+        lines[n] = T.TipTone("warning", also)
+      end
     end
   end
   if F.cod > 0 then
     n = n + 1
     lines[n] = L0("BAGALT_ASK_COD", H.FormatMoney(F.cod))
   end
+  local tail = false
+  if F.qn > 1 and F.stayN > 0 and F.stayMails > 0 then
+    n = n + 1
+    lines[n] = ""
+    tail = true
+    local mails = F.stayAuction and ns.Plural("BAGALT_AUCTION_MAILS", F.stayMails) or ns.Plural("COUNT_MAILS", F.stayMails)
+    n = n + 1
+    lines[n] = T.TipTone("muted", L0("BAGALT_Q_STAYS", F.stayN, mails))
+  end
   if F.capped > 0 then
+    if not tail then
+      n = n + 1
+      lines[n] = ""
+      tail = true
+    end
     n = n + 1
     lines[n] = ns.Plural("BAGALT_ASK_CAPPED", F.capped)
   end
-  if F.auction > 0 then
+  if not tail then
     n = n + 1
-    lines[n] = T.TipTone("muted", ns.Plural("BAGALT_AUCTION_STAYS", F.auction))
+    lines[n] = ""
   end
   n = n + 1
-  lines[n] = ""
-  n = n + 1
-  lines[n] = T.TipTone("muted", L0["BAGALT_ASK_FINAL"])
+  lines[n] = T.TipTone("muted", L0["BAGALT_UNDONE"])
   for k = #lines, n + 1, -1 do lines[k] = nil end
   return table.concat(lines, "\n", 1, n)
 end

@@ -4192,9 +4192,16 @@ local function WatchTip()
 end
 
 -- One gesture on a line of its own, muted, in the hint font.
+local AddFontLine
 local function AddHintLine(text)
-  GameTooltip:AddLine(text, TIP_MUTED, TIP_MUTED, TIP_MUTED, true)
-  local font = HintFont()
+  AddFontLine(text, HintFont(), TIP_MUTED, true)
+end
+
+-- text in `font` on a line of its own, in grey `v` (its own colour codes
+-- over it), wrapped or not; the line's own font put back as the hint
+-- lines' are (RestoreHintLines).
+function AddFontLine(text, font, v, wrap)
+  GameTooltip:AddLine(text, v, v, v, wrap and true or false)
   local n = type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines() or 0
   if tipGap.secret and tipGap.secret(n) then return end
   local fs = type(n) == "number" and n > 0 and TipLineString(n) or nil
@@ -4340,6 +4347,21 @@ end
 -- Postbox 2.0" lines). `gap`, in units: that much further from the line
 -- above than the game spaces its lines (negative: closer); 0 or nil, as
 -- the game spaces them.
+-- One line in the tooltip's title type (GameTooltipHeaderText), white and
+-- not wrapped, as large as the item's name above it: the one bag's
+-- return sum (BagView 7). Put back with the hint lines.
+function Theme.TipHead(text)
+  if not text or text == "" then return end
+  AddFontLine(text, _G.GameTooltipHeaderText, 1, false)
+end
+
+-- A wrapped line in the hint type, in the warning tone, set in a little:
+-- what else goes with the one bag's return under a sender (BagView 7).
+function Theme.TipPlus(text)
+  if not text or text == "" then return end
+  AddFontLine("  " .. Theme.TipTone("warning", text), HintFont(), 1, true)
+end
+
 function Theme.TipNote(text, gap)
   if not text or text == "" then return end
   AddHintLine(text)
