@@ -5546,6 +5546,9 @@ do
     ["eye-off-16"] = { file = MEDIA .. "glyph-eye-off-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["lock-16"] = { file = MEDIA .. "glyph-lock-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },
     ["lock-12"] = { file = MEDIA .. "glyph-lock-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
+    -- The one bag's letters' line (Phosphor bold's envelope-simple, fitted
+    -- to the grid at 12 as the lock is).
+    ["envelope-12"] = { file = MEDIA .. "glyph-envelope-12.tga", w = 12, h = 12, l = 0.0625, r = 0.8125, t = 0.0625, b = 0.8125, px = true },
     -- The one-bag button's pouch (the Mail tab's top row, after the sort),
     -- drawn in Phosphor bold's hand into the sort mark's rows (2 to 12).
     pouch = { file = MEDIA .. "glyph-pouch-16.tga", w = 16, h = 16, l = 0.03125, r = 0.53125, t = 0.03125, b = 0.53125, px = true },

@@ -745,31 +745,100 @@ function BV.RemHead()
   return head
 end
 
+-- The letters' line's look (his f77 B02 pick, "glyph"): a 12-unit envelope
+-- (Theme.GLYPHS envelope-12), LET_GAP before the words, the two centred
+-- together on the line. Its top LET_TOP under the line's top: the words'
+-- box is centred 1 under the line's middle (11 of 20), and their x-height's
+-- centre stands 1.25 under that in Friz Quadrata at 12 (0.87 to 1.44 over
+-- the faces and sizes measured), so at 12.25; the envelope's ink centre is
+-- 5.87 under its top, so its top on 6 puts it at 11.87, the nearest whole
+-- unit (a whole screen pixel at one pixel a unit).
+BV.LET_GLYPH, BV.LET_GAP, BV.LET_TOP = 12, 6, 6
+
 -- The letters' line (BV.TallyLetters): a frame of its own, as the
--- remembered mail's is, since it alone hears a click (BV.HeadPointer).
+-- remembered mail's is, since it alone hears a click (BV.HeadPointer); its
+-- envelope and its light under the pointer made with it, once.
 function BV.LettersHead()
   local head = BV.lettersHead
   if not head then
+    local T = Th()
     head = BV.NewHead()
+    head.Wash = head:CreateTexture(nil, "BACKGROUND")
+    head.Wash:SetPoint("TOPLEFT", head, "TOPLEFT", 0, -1)
+    head.Wash:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", 0, 0)
+    T.FillColor(head.Wash, "stripeHover")
+    head.Wash:Hide()
+    head.Env = T.Glyph and T.Glyph(head, "envelope-12", nil, "ARTWORK") or nil
+    head.Text:SetJustifyH("LEFT")
+    head.hot = false
+    head:SetScript("OnHide", BV.LettersHidden)
     BV.lettersHead = head
   end
   return head
 end
 
--- head, text -> the letters' line drawn. Its look, all of it, is here, so
--- it can be dressed apart from the other lines without touching what is
--- counted: today a section's line like any other (BV.HeadLook).
-function BV.LettersLook(head, text)
-  BV.HeadLook(head, text, nil)
+-- Hidden (the bag gone, the line scrolled away, no letters): at rest when
+-- it comes back.
+function BV.LettersHidden(head)
+  if head.hot then
+    head.hot = false
+    BV.LettersInk(head)
+  end
 end
 
--- head, text, plain -> a section's line drawn: on the look's ground for a
--- line of words where it has one (the Blizzard look's gold-edged note,
--- Theme.LineGround, on its page): the words in the ground's one ink
--- (`plain`, where the words carry inks of their own), a C.O.D. line's
--- price still in its own, and the hairline the ground's. Asked for every
--- line at every bind, so a line follows Row texture to None and back.
-function BV.HeadLook(head, text, plain)
+-- head, text -> the letters' line drawn. Its look, all of it, is here,
+-- apart from what is counted: the section's line (BV.HeadLook) with the
+-- room for the envelope kept, the envelope and the words centred together
+-- (placed again only when the words or the width change), then its inks.
+function BV.LettersLook(head, text)
+  local env = head.Env
+  local lead = env and (BV.LET_GLYPH + BV.LET_GAP) or 0
+  local T = Th()
+  if BV.HeadLook(head, text, nil, lead) or head.letLead ~= lead then
+    head.letLead = lead
+    local width = head.pbWidth or 0
+    local x0 = floor((width - (lead + T.TextWidth(head.Text))) / 2 + 0.5)
+    if x0 < 0 then x0 = 0 end
+    head.Text:ClearAllPoints()
+    head.Text:SetPoint("LEFT", head, "LEFT", x0 + lead, -1)
+    if env then
+      env:ClearAllPoints()
+      env:SetPoint("TOPLEFT", head, "TOPLEFT", x0, -BV.LET_TOP)
+    end
+  end
+  BV.LettersInk(head)
+end
+
+-- The letters' line's inks: at rest the words and the envelope in the
+-- secondary gray, quieter than the tiles (on the Blizzard look's ground,
+-- the ground's own ink, which its words are given at each bind); under the
+-- pointer both white and the line lit with the list rows' hover wash (on
+-- that ground the wash stands under the note, and the white words are its
+-- light). Asked at every bind and on enter and leave; nothing is made.
+function BV.LettersInk(head)
+  local T = Th()
+  local text, env, hot = head.Text, head.Env, head.hot
+  if hot then
+    T.SetColor(text, "textPrimary")
+    if env then T.SetColor(env, "textPrimary") end
+  elseif head.grounded then
+    if env then env:SetVertexColor(text:GetTextColor()) end
+  else
+    T.SetColor(text, "textSecondary")
+    if env then T.SetColor(env, "textSecondary") end
+  end
+  if head.Wash:IsShown() ~= hot then head.Wash:SetShown(hot) end
+end
+
+-- head, text, plain [, lead] -> a section's line drawn: on the look's
+-- ground for a line of words where it has one (the Blizzard look's
+-- gold-edged note, Theme.LineGround, on its page): the words in the
+-- ground's one ink (`plain`, where the words carry inks of their own), a
+-- C.O.D. line's price still in its own, and the hairline the ground's.
+-- Asked for every line at every bind, so a line follows Row texture to None
+-- and back. `lead`: room kept before the words (the letters' envelope).
+-- Answers whether the words were fitted again.
+function BV.HeadLook(head, text, plain, lead)
   local T = Th()
   local grounded = T.LineGround and T.LineGround(head) or false
   if head.grounded ~= grounded then
@@ -781,8 +850,10 @@ function BV.HeadLook(head, text, plain)
   local width = BV.child:GetWidth() or 0
   if head.pbText ~= text or head.pbWidth ~= width then
     head.pbText, head.pbWidth = text, width
-    T.FitText(head.Text, width - 2 * T.Metrics.inset, text, nil)
+    T.FitText(head.Text, width - 2 * T.Metrics.inset - (lead or 0), text, nil)
+    return true
   end
+  return false
 end
 
 -- head, s, every -> whether the line hears a click, and what it does: the
@@ -831,8 +902,14 @@ end
 
 -- A character's heading: whose matches these are and what its click does,
 -- as the list's heading says it (nothing on it looks like a button). The
--- letters' line has none.
+-- letters' line has no tooltip (no string says its click alone): it lights
+-- under the pointer, and leaves any tooltip that is up alone.
 function BV.HeadEnter(head)
+  if head.go == "letters" then
+    head.hot = true
+    BV.LettersInk(head)
+    return
+  end
   if head.go ~= "box" then return end
   local T, Memory = Th(), ns.MailMemory
   T.TipBegin(head)
@@ -844,6 +921,10 @@ function BV.HeadEnter(head)
 end
 
 function BV.HeadLeave(head)
+  if head.hot then
+    head.hot = false
+    BV.LettersInk(head)
+  end
   if GameTooltip:IsOwned(head) then GameTooltip:Hide() end
 end
 
