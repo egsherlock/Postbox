@@ -548,7 +548,9 @@ end
 -- the drag proposes, after the bounds have been applied: the owner puts it
 -- on whatever steps its content comes in (whole rows), and the bounds are
 -- applied once more to what it answers.
-function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset, snapFn)
+-- `onKeep` (optional): a Shift-right-click's, in onReset's place, where the
+-- owner keeps a size of the player's own (the mail window only).
+function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset, snapFn, onKeep)
   if not frame then return nil end
 
   local button = CreateFrame("Button", nil, frame)
@@ -694,7 +696,13 @@ function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onR
     local reset = resetArmed and mouseButton == "RightButton"
     if mouseButton == "RightButton" then resetArmed = false end
     StopSizing()
-    if reset and self:IsMouseOver() then onReset(frame) end
+    if reset and self:IsMouseOver() then
+      if type(onKeep) == "function" and type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then
+        onKeep(frame)
+      else
+        onReset(frame)
+      end
+    end
   end)
   button:SetScript("OnHide", function()
     resetArmed = false

@@ -4218,6 +4218,84 @@ local function ApplyResizeBounds()
   end
 end
 
+-- (s32 widths, f78 "shift") A SIZE OF THE PLAYER'S OWN. Shift-right-click on
+-- the grip keeps the window's size as it stands: the width the player chose
+-- (less a raised floor's loan, extraW) and the height without the compose
+-- screen's transient extra (TotalExtra), held to the bounds, kept in the
+-- window's store beside its saved size (keptW, keptH), so Reset settings
+-- clears it with them; an older build reads neither. A right-click then goes
+-- back to it, and from it to Postbox's size (OnResizeReset, in BuildFrame).
+-- -> width, height held to today's bounds, or nil with nothing kept. A size
+-- kept on a larger screen, or under another floor, comes back clamped.
+function UI.KeptWindowSize()
+  local store = UI._windowStore
+  local w, h = store and tonumber(store.keptW), store and tonumber(store.keptH)
+  if not (w and h) then return nil end
+  local baseMin = BaseMinHeight()
+  w = max(MIN_WIDTH, min(MAX_WIDTH, w))
+  h = max(baseMin, min(max(MAX_HEIGHT, baseMin), h))
+  return w, h
+end
+
+-- frame -> its size as the player chose it: the width less the floor's loan,
+-- the height less the transient extra.
+local function ChosenSize(frame)
+  local width = (tonumber((frame:GetWidth())) or 0) - (UI._state.extraW or 0)
+  local height = (tonumber((frame:GetHeight())) or 0) - TotalExtra()
+  return width, height
+end
+
+-- Whether the window stands at the kept size (within half a unit).
+function UI.AtKeptSize(frame)
+  local keptW, keptH = UI.KeptWindowSize()
+  if not (keptW and frame) then return false end
+  local width, height = ChosenSize(frame)
+  return math.abs(width - keptW) < 0.5 and math.abs(height - keptH) < 0.5
+end
+
+function UI.KeepWindowSize(frame)
+  local store = UI._windowStore
+  if not (store and frame) then return end
+  local width, height = ChosenSize(frame)
+  local baseMin = BaseMinHeight()
+  store.keptW = floor(max(MIN_WIDTH, min(MAX_WIDTH, width)) + 0.5)
+  store.keptH = floor(max(baseMin, min(max(MAX_HEIGHT, baseMin), height)) + 0.5)
+end
+
+-- The grip's hint, `grip` pointed at: Drag; the right-click's line, which
+-- says where it goes (reset with nothing kept, your size, or Postbox's size
+-- at yours); Shift-right-click. The three lists are made once; the size's
+-- line again only when the kept size changes. Shown only while the pointer
+-- is on the grip.
+function UI.GripHint(grip)
+  local T = ns.Theme
+  if not (grip and T and T.ShowHint) then return end
+  if grip.IsMouseOver and not grip:IsMouseOver() then return end
+  local H = UI._gripHint
+  if not H then
+    H = {
+      plain = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET"), L("GRIP_TIP_KEEP") },
+      yours = { L("GRIP_TIP_DRAG"), "", L("GRIP_TIP_KEEP") },
+      at = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_POSTBOX"), L("GRIP_TIP_KEEP") },
+    }
+    UI._gripHint = H
+  end
+  local keptW, keptH = UI.KeptWindowSize()
+  local lines = H.plain
+  if keptW then
+    if UI.AtKeptSize(grip:GetParent()) then
+      lines = H.at
+    else
+      if H.w ~= keptW or H.h ~= keptH then
+        H.w, H.h = keptW, keptH
+        H.yours[2] = string.format(L("GRIP_TIP_YOURS"), keptW, keptH)
+      end
+      lines = H.yours
+    end
+  end
+  T.ShowHint(grip, lines)
+end
+
 -- Taint-free: this reads MailFrame's position and writes only our own anchor.
 local function DockToSlot()
   local frame = UI._frame
@@ -5657,14 +5735,30 @@ local function BuildFrame()
     -- Where the Mail tab's top row has raised the width's floor, the window
     -- stands on that instead, on loan, and comes back to the default width
     -- when the floor does.
+    --
+    -- (s32 widths, f78 "shift") A size the player kept (Shift-right-click,
+    -- UI.KeepWindowSize) comes first: a right-click goes back to it, and
+    -- from it, one more goes to the size above. Read before the extension
+    -- is folded away, so "at it" is the size the player chose.
     local function OnResizeReset(target)
+      local keptW, keptH = UI.KeptWindowSize()
+      local toKept = keptW ~= nil and not UI.AtKeptSize(target)
       AdoptTransientHeight(target)
       helpers.PinFrameTopLeft(target)
-      local width = max(DEFAULT_WIDTH, MinWindowWidth())
-      target:SetSize(width, BaseMinHeight())
-      UI._state.extraW = width - DEFAULT_WIDTH
+      local chosen = toKept and keptW or DEFAULT_WIDTH
+      local width = max(chosen, MinWindowWidth())
+      target:SetSize(width, toKept and keptH or BaseMinHeight())
+      UI._state.extraW = width - chosen
       UI._state.adoptedAtWidth = nil
       OnResizeStop(target)
+      UI.GripHint(target.ResizeButton)
+    end
+
+    -- Shift-right-click on the grip: the window's size as it stands is kept
+    -- as the player's own (UI.KeepWindowSize). Nothing moves.
+    local function OnResizeKeep(target)
+      UI.KeepWindowSize(target)
+      UI.GripHint(target.ResizeButton)
     end
 
     -- The drag is free between the bounds. It stepped a row at a time for a
@@ -5676,15 +5770,15 @@ local function BuildFrame()
     end
 
     frame.ResizeButton = helpers.CreateResizeButton(frame, OnResizeStop,
-      AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap)
+      AdoptTransientHeight, DragMinHeight, OnResizeReset, OnResizeSnap, OnResizeKeep)
     -- The right-click cannot be discovered by looking: a small hint of the
-    -- theme's own says both gestures, one to a line, quieter than a full
-    -- tooltip. Built once, not on every hover.
+    -- theme's own says the gestures, one to a line, quieter than a full
+    -- tooltip (UI.GripHint: its lines made once, the kept size's line when
+    -- the kept size changes).
     local grip = frame.ResizeButton
     if grip and ns.Theme and ns.Theme.ShowHint then
-      local gripHint = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET") }
       grip:HookScript("OnEnter", function(self)
-        ns.Theme.ShowHint(self, gripHint)
+        UI.GripHint(self)
       end)
       grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
       -- Gone the moment the grip is pressed: a drag moves the window from
