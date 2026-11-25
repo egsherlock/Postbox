@@ -2629,7 +2629,7 @@ function Alt.Group(F, sender)
     g = { idx = {}, cnt = {}, oid = {}, oname = {}, ocnt = {} }
     F.pool[i] = g
   end
-  g.name, g.n, g.mails, g.on, g.gold, g.letter = sender, 0, 0, 0, 0, false
+  g.name, g.n, g.mails, g.on, g.gold, g.letter, g.unread = sender, 0, 0, 0, 0, false, 0
   F.g[i] = g
   return g
 end
@@ -2711,14 +2711,21 @@ function Alt.Facts(kind, F, want)
         g.gold = g.gold + (tonumber(money) or 0)
         F.cod = F.cod + (tonumber(cod) or 0)
         if M.HasOwnText(index) then g.letter = true end
+        local read = 0
         for slot = 1, slots do
           local name, sid, tex, n = GetInboxItem(index, slot)
           if name or sid or tex then
+            read = read + 1
             local mine
             if id ~= nil then mine = sid == id else mine = (name ~= nil and name == kind.name) or (name == nil and tex == kind.tex) end
             if not mine then Alt.Other(g, sid or name or tex, name, tonumber(n) or 1) end
           end
         end
+        -- Attachments the header counts and no slot names: said as "more
+        -- items", never left out.
+        local _, _, _, _, _, _, _, count = GetInboxHeaderInfo(index)
+        count = tonumber(count) or 0
+        if count > read then g.unread = g.unread + (count - read) end
       elseif M.SenderKind(index) == "ah" then
         F.auction = F.auction + 1
       end
@@ -2742,7 +2749,8 @@ function Alt.Facts(kind, F, want)
   -- One mail holding nothing but this item, no gold, no letter, no
   -- C.O.D.: the one case the tile shows everything that would leave.
   local g1 = list[1]
-  F.only = F.qn == 1 and g1 ~= nil and g1.on == 0 and g1.gold == 0 and not g1.letter and F.cod == 0
+  F.only = F.qn == 1 and g1 ~= nil and g1.on == 0 and g1.unread == 0 and g1.gold == 0 and not g1.letter and F.cod == 0
+    and M.OnlyItem(g1.idx[1], kind.id, kind.name)
   -- The sums the tooltip and the question say: how much of the item goes
   -- (the named senders'), of how much the tile holds; what stays, in how
   -- many mails, and whether those are all the auction house's.
@@ -2799,9 +2807,10 @@ function Alt.AlsoParts(g)
     n = n + 1
     parts[n] = L0("BAGALT_ITEM_COUNT", g.ocnt[1], g.oname[1] or Alt.ItemName(g.oid[1]))
   end
-  if g.on > 1 then
+  local more = (g.on > 1 and g.on - 1 or 0) + (g.unread or 0)
+  if more > 0 then
     n = n + 1
-    parts[n] = ns.Plural("BAGALT_ALSO_MORE", g.on - 1)
+    parts[n] = ns.Plural("BAGALT_ALSO_MORE", more)
   end
   if g.gold > 0 then
     n = n + 1
@@ -3226,6 +3235,9 @@ function Alt.Start(kind)
   if F.qn == 0 then return end
   GameTooltip:Hide()
   if Alt.Asks(F) then return Alt.Ask(F) end
+  -- No question: the service checks again, right before the command, that
+  -- the mail still holds nothing but this item (Mail.OnlyItem).
+  want.only, want.onlyId, want.onlyName = true, kind.id, kind.name
   Alt.Send()
 end
 

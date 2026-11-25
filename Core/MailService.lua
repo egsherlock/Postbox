@@ -395,6 +395,35 @@ function Mail.Returnable(index)
   return Mail.ReturnRule((tonumber(cod) or 0) > 0, holds, fate, answered)
 end
 
+-- index, id, name -> whether it is CERTAIN the mail there holds nothing but
+-- the item `id` (or, with no id, the item named `name`): the header's own
+-- item count is known and equals the stacks of that item the slots read
+-- back, no slot reads as anything else, the header's gold is zero, it owes
+-- no C.O.D., and the client says outright that it has no text of its own
+-- (its text flag true; nil or unknown is not a no). Anything short of
+-- certain answers false. The one bag's return goes without a question
+-- only on this, at the click and again right before the command
+-- (Mail.ReturnMails). Nothing is allocated.
+function Mail.OnlyItem(index, id, name)
+  local _, _, sender, subject, money, cod, _, itemCount, _, _, textCreated = GetInboxHeaderInfo(index)
+  if sender == nil and subject == nil then return false end
+  itemCount = tonumber(itemCount)
+  if not itemCount or itemCount < 1 then return false end
+  if (tonumber(money) or 0) ~= 0 or (tonumber(cod) or 0) ~= 0 then return false end
+  if textCreated ~= true then return false end
+  local mine = 0
+  for slot = 1, MAX_ATTACHMENTS do
+    local slotName, slotId, tex = GetInboxItem(index, slot)
+    if slotName or slotId or tex then
+      local same
+      if id ~= nil then same = slotId == id else same = slotName ~= nil and slotName == name end
+      if not same then return false end
+      mine = mine + 1
+    end
+  end
+  return mine == itemCount
+end
+
 -------------------------------------------------------------
 -- Queue construction -- the order, and the critical identity invariant
 -------------------------------------------------------------
@@ -5691,6 +5720,9 @@ do
     if not ((tonumber(money) or 0) > 0 or (tonumber(itemCount) or 0) > 0) then return SweepFinish("changed") end
     if sweep.Held(at) ~= w.held[k] or not sweep.DaysHold(at, w.days[k], w.t0) then return SweepFinish("changed") end
     if not Mail.Returnable(at) then return SweepFinish("changed") end
+    -- Sent with no question, as holding nothing but one item: still
+    -- certain of that now (Mail.OnlyItem), or nothing goes.
+    if w.only and not Mail.OnlyItem(at, w.onlyId, w.onlyName) then return SweepFinish("changed") end
     s.capture = Mail.ReturnCapture(at)
     s.at, s.seen = at, false
     TrackBegin(at)
@@ -5896,6 +5928,9 @@ function Mail.ReturnWant(want)
   want.n = 0
   want.stamp = Mail.Stamp()
   want.t0 = type(GetTime) == "function" and GetTime() or 0
+  -- Set by a caller that sends with no question, as one mail holding only
+  -- this item (Mail.OnlyItem): checked again before the command.
+  want.only, want.onlyId, want.onlyName = false, nil, nil
   return want
 end
 
