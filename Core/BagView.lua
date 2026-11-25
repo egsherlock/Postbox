@@ -1098,6 +1098,11 @@ function BV.Refresh(panel)
   if not BV.Build(panel) then BV.Layout() end
   BV.Apply(panel)
   if BV.Many.open then BV.Many.Check() end
+  -- A question to return a tile's mails stands only while they show (7).
+  if BV.Alt.open then
+    local M = BV.Alt.M()
+    BV.Alt.Watch(M ~= nil and M.Eligible(panel))
+  end
 end
 
 -- The arrange mode opened over the tab or left it (CT.ArrangeHost): it
@@ -2922,15 +2927,16 @@ end
 
 -- A press on a tile: what it shows then, for the click that ends it.
 function Alt.Down(tile)
-  tile.altKind, tile.altBuild = tile.kind, model.build
+  tile.altKind, tile.altBuild, tile.altMode = tile.kind, model.build, Alt.Live()
 end
 
 -- tile -> whether it shows what it showed at the press that ends in this
--- click; the press is used up either way.
+-- click, and whether there was a press and the marks owned it; the press
+-- is used up either way.
 function Alt.Pressed(tile)
-  local kind, build = tile.altKind, tile.altBuild
-  tile.altKind, tile.altBuild = nil, nil
-  return kind ~= nil and kind == tile.kind and build == model.build
+  local kind, build, mode = tile.altKind, tile.altBuild, tile.altMode
+  tile.altKind, tile.altBuild, tile.altMode = nil, nil, nil
+  return kind ~= nil and kind == tile.kind and build == model.build, kind ~= nil, mode and true or false
 end
 
 -- tile, button -> true where the marks own the click (BV.TileClick asks
@@ -2938,14 +2944,19 @@ end
 -- section's head. A click while the marks are still coming in does
 -- nothing at all.
 function Alt.Owns(tile, button)
-  local same = Alt.Pressed(tile)
+  local same, pressed, pressMode = Alt.Pressed(tile)
   local M = Alt.M()
-  if not (M and model.src == "inbox" and Alt.Shows(BV.panel)) then return false end
+  local shows = M ~= nil and model.src == "inbox" and Alt.Shows(BV.panel)
   -- Alt read again, as a row's click reads it (M.Click): one still down
   -- that no hold took (a text box had the keyboard) brings the marks in
   -- now, and this click, before they are fully in, does nothing.
-  M.Check()
-  if M.goal ~= 1 then return false end
+  if shows then M.Check() end
+  local live = shows and M.goal == 1
+  -- A press made with the marks showing and released without them (Alt let
+  -- go first), or the other way round, is neither the marks' click nor a
+  -- take: nothing.
+  if pressed and pressMode ~= live then return true end
+  if not live then return false end
   M.Used()
   if M.p < 1 then return true end
   local kind = tile.kind
@@ -3042,8 +3053,23 @@ function Alt.Accept(serial)
   Alt.open = false
   local M = Alt.M()
   if not (M and M.Wanted()) then return end
-  if not Alt.Base(Alt.panel) then return end
+  local panel = Alt.panel
+  if not Alt.Base(panel) then
+    -- Nothing is sent; the title bar says why.
+    local busy = ns.CollectTab.IsRunning() or Mail().IsBusy() or Alt.running
+    Parts().StatusOutcome(L()[busy and "STATUS_RETURN_BUSY" or "STATUS_RETURN_GONE"], "warning")
+    return
+  end
   Alt.Send()
+end
+
+-- The question stands only while what it names is on screen: the bag, on
+-- the inbox, with the marks eligible (CollectTab's M.Sync asks after every
+-- pass). Otherwise it goes, unanswered, as on the bag switching off.
+function Alt.Watch(eligible)
+  if not Alt.open then return end
+  if eligible and model.src == "inbox" and Alt.Shows(Alt.panel) and BV.Active(Alt.panel) then return end
+  Alt.Hide()
 end
 
 function Alt.Send()
@@ -3064,7 +3090,10 @@ end
 -- The sweep's end: the title bar says how it ended (all back; stopped,
 -- how far and why; the mailbox closed), chat keeps the receipt of what
 -- went, and the bag is drawn again once. A further return waits CALM.
-function Alt.Done(returned, status, n)
+-- `returned` is only what the mailbox showed going; `unsure`, one more may
+-- have gone that it never showed (a command out when the sweep stopped):
+-- then every line says "at least", never a number that may be wrong.
+function Alt.Done(returned, status, n, _, unsure)
   local P, M, L0 = Parts(), Alt.M(), L()
   Alt.running = false
   Alt.want.onStep = nil
@@ -3074,13 +3103,25 @@ function Alt.Done(returned, status, n)
     P.StatusOutcome(L0("STATUS_RETURNED_N", returned))
   elseif status == "closed" then
     P.StatusMailboxClosed()
-  elseif status == "changed" or status == "refused" then
-    P.StatusOutcome(L0(status == "refused" and "STATUS_RETURN_REFUSED" or "STATUS_RETURN_CHANGED", returned, n), "warning")
+  elseif status == "timeout" then
+    P.StatusActivity(nil)
+    ns.Print(L0["MSG_MAIL_TIMEOUT"])
+  elseif unsure and returned == 0 then
+    P.StatusOutcome(L0("STATUS_RETURN_UNSURE_NONE", n), "warning")
+  elseif unsure then
+    P.StatusOutcome(L0("STATUS_RETURN_UNSURE", returned, n), "warning")
+  elseif status == "changed" or status == "refused" or status == "error" then
+    local key = (status == "refused" and "STATUS_RETURN_REFUSED") or (status == "error" and "STATUS_RETURN_ERROR")
+      or "STATUS_RETURN_CHANGED"
+    P.StatusOutcome(L0(key, returned, n), "warning")
   else
     P.StatusActivity(nil)
-    if status == "timeout" then ns.Print(L0["MSG_MAIL_TIMEOUT"]) end
   end
-  if returned > 0 then
+  if unsure and returned == 0 then
+    ns.Print(L0("MSG_RETURNED_UNSURE_NONE", ns.Plural("COUNT_MAILS", n)))
+  elseif unsure then
+    ns.Print(L0("MSG_RETURNED_UNSURE", returned, ns.Plural("COUNT_MAILS", n)))
+  elseif returned > 0 then
     if returned >= n then
       ns.Print(L0("MSG_RETURNED", ns.Plural("COUNT_MAILS", returned)))
     else

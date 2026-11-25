@@ -9371,6 +9371,9 @@ do
       M.chord = false
     end
     M.Aim(ok and (M.held or M.latched), not ok)
+    -- A one bag's question stands only while what it names shows (BagView 7).
+    local BV = ns.BagView
+    if BV and BV.Alt and BV.Alt.open then BV.Alt.Watch(ok) end
   end
 
   function M.Watcher()

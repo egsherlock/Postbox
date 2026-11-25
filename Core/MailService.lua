@@ -5397,6 +5397,8 @@ function Mail.ReturnCapture(at)
     c = (cod > 0) and cod or nil }
 end
 
+local sweep
+
 function Mail.ReturnMail(index, onDone, expected, stamp, item)
   if testHold then
     if onDone then onDone("closed") end
@@ -5418,7 +5420,9 @@ function Mail.ReturnMail(index, onDone, expected, stamp, item)
     -- Confirmed: the mail is gone from the inbox (nil), not merely asked.
     if where == nil and capture then
       local MM = ns.MailMemory
-      if MM and type(MM.ReturnRecord) == "function" then MM.ReturnRecord(capture) end
+      -- Guarded: an error there is reported, and the command's own end
+      -- (the channel released, the caller told) still comes.
+      if MM and type(MM.ReturnRecord) == "function" then sweep.Call(MM.ReturnRecord, capture) end
     end
     capture = nil
     return true
@@ -5454,28 +5458,51 @@ end
 -- The same table runs the return sweep (Mail.ReturnMails, below): `kind`
 -- says which ("delete" | "return"), `want` is what the player agreed to
 -- return, and `deleted` counts what went either way.
-local sweep = {
+sweep = {
   token = nil, onDone = nil, expected = nil, stamp = 0,
   list = {}, n = 0, cursor = 0, deleted = 0, pending = nil,
   kind = nil, want = nil, at = nil, capture = nil, waiting = false, waitArmed = 0, waitFired = 0,
   seen = false, listening = false,
+  -- A return command is out and its mail not yet seen to go or stay
+  -- (`out`); the game's error words heard for it (`errors`); how long the
+  -- inbox's word on a mail still listed after its answer is waited for.
+  out = false, errors = false, WAIT = 10,
 }
 
 local function SweepOrder(a, b) return a > b end
 
--- onDone(count, status, n, cursor): how many went, why it ended, how many
--- it was given and the place in its list it ended at.
+-- onDone(count, status, n, cursor, unsure): how many went, why it ended,
+-- how many it was given, the place in its list it ended at, and (a return
+-- sweep only) whether one more mail may have gone that Postbox cannot see:
+-- its command was sent and neither its leaving nor its staying is known.
+-- `count` is only what is certain.
 local function SweepFinish(status)
   local s = sweep
   if not s.token then return end
   s.waiting, s.seen = false, false
-  if s.listening then sweep.Unlisten() end
+  if s.listening then pcall(sweep.Unlisten) end
+  if s.errors then
+    s.errors = false
+    pcall(ErrorWatch.Close)
+  end
+  if s.out then
+    -- The last command's mail, looked for by what it is: listed nowhere
+    -- in a box that lists every mail, it went back.
+    local ok, gone = pcall(sweep.Absent)
+    if ok and gone then
+      s.out = false
+      sweep.Record()
+      s.deleted = s.deleted + 1
+    end
+  end
+  local unsure = s.out
+  s.out = false
   local token, onDone, deleted, n, cursor = s.token, s.onDone, s.deleted, s.n, s.cursor
   s.token, s.onDone, s.expected, s.pending = nil, nil, nil, nil
   s.kind, s.want, s.at, s.capture = nil, nil, nil, nil
   TrackEnd()
   Release(token)
-  if onDone then onDone(deleted, status, n, cursor) end
+  if onDone then onDone(deleted, status, n, cursor, unsure) end
 end
 
 local function SweepTimeout()
@@ -5490,7 +5517,7 @@ local function SweepOnHandshake(timedOut)
   if pending ~= "delete" and pending ~= "return" then return end
   s.pending = nil
   if timedOut then return SweepFinish("timeout") end
-  if pending == "return" then return sweep.Returned() end
+  if pending == "return" then return sweep.Run(sweep.Returned) end
   TrackSettled(true)
   TrackEnd()
   s.deleted = s.deleted + 1
@@ -5503,7 +5530,7 @@ function SweepStep()
   if s.cursor > s.n then return SweepFinish("done") end
   local index = s.list[s.cursor]
   if not MailboxOpen() then return SweepFinish("closed") end
-  if s.kind == "return" then return sweep.ReturnStep() end
+  if s.kind == "return" then return sweep.Run(sweep.ReturnStep) end
 
   -- The last look before the irreversible command (see the contract above).
   -- A mail that cannot be followed, or reads as another, is skipped, not
@@ -5595,13 +5622,17 @@ end
 -- and still one the game sends back (Mail.Returnable). The first mail
 -- that fails any of it STOPS the sweep ("changed"): nothing after it is
 -- sent, where the delete sweep skips. After each command the mail must be
--- seen to leave the inbox; one the game kept ("refused", after waiting up
--- to SETTLE_DEADLINE for the inbox to say so) stops it too, as do the
--- mailbox closing ("closed") and no answer ("timeout"). Whatever stops
--- it, every mail not yet commanded is untouched.
+-- seen to leave the inbox (by the inbox's log, or listed nowhere by what
+-- it is); one the game kept by its own error words ("refused", after
+-- waiting up to WAIT for the inbox), one whose fate the inbox never told
+-- ("unknown"), the mailbox closing ("closed"), no answer ("timeout") and
+-- an error in Postbox's own code ("error", reported as any error) stop it
+-- too. Whatever stops it, every mail not yet commanded is untouched, and
+-- the count is only what is certain: `unsure` says one more may have gone.
 --
--- onDone(returned, status, n, cursor), status "done" | "changed" |
--- "refused" | "closed" | "timeout" | "busy" | "unavailable". want.onStep
+-- onDone(returned, status, n, cursor, unsure), status "done" | "changed" |
+-- "refused" | "unknown" | "closed" | "timeout" | "error" | "busy" |
+-- "unavailable". want.onStep
 -- (returned, n), where given, hears each mail go. Mail Memory is told of
 -- each one only once it has left (Mail.ReturnCapture, MailMemory's
 -- ReturnRecord), as for a single return.
@@ -5664,6 +5695,8 @@ do
     s.at, s.seen = at, false
     TrackBegin(at)
     TrackMayEmpty(true)
+    ErrorWatch.Open()
+    s.errors, s.out = true, true
     ReturnInboxItem(at)
     s.pending = "return"
     WaitForCommand(SweepOnHandshake)
@@ -5695,6 +5728,10 @@ do
   end
 
   function sweep.OnEvent(event)
+    return sweep.Run(sweep.Heard, event)
+  end
+
+  function sweep.Heard(event)
     local s = sweep
     if not s.listening or s.at == nil then return end
     if event == "MAIL_CLOSED" then
@@ -5723,9 +5760,8 @@ do
 
   -- The command's answer: the mail gone (seen go, or gone now), it counts
   -- and the next goes; still listed, the inbox's word on it is waited for,
-  -- up to SETTLE_DEADLINE, after which it was kept ("refused"). One wait at
-  -- a time, ended by one one-shot timer told from an older one by two
-  -- counts; nothing made per wait.
+  -- up to WAIT seconds. One wait at a time, ended by one one-shot timer told
+  -- from an older one by two counts; nothing made per wait.
   function sweep.Returned()
     local s = sweep
     if s.seen then return sweep.Went() end
@@ -5733,48 +5769,117 @@ do
     local where = TrackWhere(s.at)
     if where == nil then return sweep.Went() end
     if where == false then return sweep.Unsure() end
-    if not s.listening or type(C_Timer) ~= "table" then return SweepFinish("refused") end
+    if not s.listening or type(C_Timer) ~= "table" then return SweepFinish("unknown") end
     s.waiting = true
     s.waitArmed = s.waitArmed + 1
-    C_Timer.After(SETTLE_DEADLINE, sweep.WaitDue)
+    C_Timer.After(s.WAIT, sweep.WaitDue)
   end
 
+  -- The wait is over with the mail still listed. It was kept only where
+  -- the game said so (its error words heard while the command was out);
+  -- otherwise Postbox does not know, and says that ("unknown": one more
+  -- may have gone).
   function sweep.WaitDue()
     local s = sweep
     s.waitFired = s.waitFired + 1
-    if s.waiting and s.waitFired == s.waitArmed then
-      s.waiting = false
-      SweepFinish("refused")
+    if not (s.waiting and s.waitFired == s.waitArmed) then return end
+    s.waiting = false
+    local said = nil
+    if s.errors then
+      s.errors = false
+      said = ErrorWatch.Close()
     end
+    if said then
+      s.out = false
+      return SweepFinish("refused")
+    end
+    SweepFinish("unknown")
   end
 
-  -- The reading cannot say whether the mail went or a twin of it beside it
-  -- did (TrackStayed): one of the two went as the return was answered, so
-  -- on the command's own evidence it is this one (TrackWent), as a run
-  -- settles it. Any other mail the reading cannot follow: stop. The next
-  -- mail is followed again before its command either way.
+  -- The reading cannot follow the mail: a twin of it beside it went or it
+  -- did (TrackStayed), which the command's own evidence settles as this one
+  -- (TrackWent), as a run settles it; or the mail is listed nowhere in a box
+  -- that lists every mail (Absent): it went. Otherwise stop, with the last
+  -- mail not known. The next mail is followed again before its command.
   function sweep.Unsure()
     if TrackMaybeWent() then
       TrackWent()
       return sweep.Went()
     end
+    if sweep.Absent() then
+      TrackEnd()
+      return sweep.Went()
+    end
     return SweepFinish("changed")
   end
 
-  function sweep.Went()
+  -- Whether the mail of the command out is listed nowhere: no mail in the
+  -- box reads as it did (fingerprint, what it holds, its time left), and
+  -- the box lists every mail it has (none past the game's listing could
+  -- be it). By what it is, never by its place.
+  function sweep.Absent()
     local s = sweep
-    s.seen, s.at = false, nil
-    TrackSettled(true)
-    TrackEnd()
+    local w, k = s.want, s.cursor
+    if not (w and w.expected[k]) or not MailboxOpen() then return false end
+    local now, total = GetInboxNumItems()
+    now = tonumber(now) or 0
+    total = tonumber(total) or now
+    if total > now then return false end
+    local fp, held, days = w.expected[k], w.held[k], w.days[k]
+    for i = 1, now do
+      if Fingerprint(i) == fp and sweep.Held(i) == held and sweep.DaysHold(i, days, w.t0) then return false end
+    end
+    return true
+  end
+
+  -- Mail Memory told of the mail that went (its capture), once.
+  function sweep.Record()
+    local s = sweep
     local capture = s.capture
     s.capture = nil
     if capture then
       local MM = ns.MailMemory
-      if MM and type(MM.ReturnRecord) == "function" then MM.ReturnRecord(capture) end
+      if MM and type(MM.ReturnRecord) == "function" then sweep.Call(MM.ReturnRecord, capture) end
     end
+  end
+
+  -- fn(a, b) run guarded: an error in it is reported (Report) and goes no
+  -- further, so nobody else's code can stop the sweep's own steps.
+  function sweep.Call(fn, a, b)
+    local ok, err = pcall(fn, a, b)
+    if not ok then sweep.Report(err) end
+  end
+
+  -- A step of the sweep run guarded: an error ends the sweep cleanly (the
+  -- channel released, the listener and the wait gone, the caller told
+  -- "error" with what went) and is then reported as any error is.
+  function sweep.Run(fn, a)
+    local ok, err = pcall(fn, a)
+    if ok then return end
+    pcall(SweepFinish, "error")
+    sweep.Report(err)
+  end
+
+  function sweep.Report(err)
+    local handler = type(geterrorhandler) == "function" and geterrorhandler() or nil
+    -- The game's own error handler (BugSack and the like hook it); every
+    -- client has one.
+    if type(handler) == "function" then pcall(handler, err) end
+  end
+
+  function sweep.Went()
+    local s = sweep
+    s.seen, s.at, s.out = false, nil, false
+    if s.errors then
+      s.errors = false
+      ErrorWatch.Close()
+    end
+    TrackSettled(true)
+    TrackEnd()
+    sweep.Record()
     s.deleted = s.deleted + 1
     local w = s.want
-    if w and w.onStep then w.onStep(s.deleted, s.n) end
+    if w and w.onStep then sweep.Call(w.onStep, s.deleted, s.n) end
     return SweepStep()
   end
 end
