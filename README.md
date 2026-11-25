@@ -60,8 +60,10 @@ Forever keeps its own settings, separate from retail's.
 - **First or last names in the Sender column.** Mail rows can write a
   sender's **First name** or **Last name** in place of the **Full name**
   (Arrange > Sender column > Show), so characters that share one half read
-  apart by the other. Two senders who share the half you chose keep their
-  full names, and a row's tooltip always names the sender whole.
+  apart by the other. Each writes the whole name where it fits and steps
+  down only as far as it must ("Wegnerd I.", "W. Ironfoot", then the
+  half). Two senders who share the half you chose keep their full names,
+  and a row's tooltip always names the sender whole.
 - **Reload and controller.** After a style change, **Reload now** reloads;
   in combat it asks you to type `/reload`. With the Gamepad interface style
   you get Blizzard's own mailbox, and a style change made with the mailbox
@@ -101,9 +103,10 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   on the chip, ends it. Alt does nothing while you are typing, and a
   click acts only once the marks are fully showing. **Return and Delete
   with Alt** (Options > Mail tab > Collecting) turns it off. In the
-  one-bag view the marks show on your own Inbox's tiles: a click on an
-  item asks first, naming every sender and what else their mails hold,
-  then sends back exactly those mails.
+  one-bag view the marks show on your own Inbox's tiles: one mail holding
+  only that item goes back at the click; anything more asks first, naming
+  every sender and what else their mails hold, then sends back exactly
+  those mails.
 - **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
   mail All mail takes: **Auction house**, **The game**, **My alts**
   and **Other players**, all four by default (**Every mail**). What you

@@ -41,7 +41,8 @@
   that hold it, and the bag is back when you clear the search; Ctrl-click
   tries it on. A C.O.D. mail has one tile for each item it holds, and a
   click asks once, with the mail's price, before anything is paid.
-  Unread letters with nothing attached have a line under the tiles ("2
+  Unread letters with nothing attached have a line under the tiles (an
+  envelope and "2
   letters with nothing attached"); click it for the list. It follows a
   search, the sort and the filters, and it works on another character's
   box and in History, where it shows what is there and takes nothing.
@@ -90,11 +91,13 @@
 - **Mail tab, one bag: Return with Alt.** On your own Inbox, hold Alt (or
   double-tap to keep it on) and each item whose mail can go back wears
   the return arrow; its tooltip says who gets mail back and what else
-  those mails hold. A click asks first: the question names every sender,
-  how many mails each, anything else in them and any C.O.D. (nothing is
-  paid). Return sends back exactly those mails, one at a time, checking
-  each again, and stops at the first that has changed. The title bar
-  says how many went back, or where it stopped and why.
+  those mails hold, the sum first ("Returns 100 of 140"). One mail that
+  holds only that item goes back at the click, as a row's click does;
+  anything more asks first: the question names every sender, how many
+  mails each, anything else in them and any C.O.D. (nothing is paid).
+  Return sends back exactly those mails, one at a time, checking each
+  again, and stops at the first that has changed. The title bar says how
+  many went back, or where it stopped and why.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
@@ -111,6 +114,10 @@
 
 ### Improved
 
+- **The mailbox window can keep a size of your own.** Shift-right-click
+  the resize grip (bottom right) to keep the size the window is now; a
+  right-click then goes back to your size, and from there to Postbox's.
+  Reset settings clears it. The grip's tooltip says which.
 - **The mailbox window is a little wider:** 520 at its narrowest and by
   default, where it was 480, so auction labels and sums have room. A
   window you had narrower opens at 520, growing to the right.
@@ -185,6 +192,11 @@
   Show > Last name): characters that share a first name read apart, as
   "Ironfoot" and "Stormwind". Two senders who share a last name keep
   their full names, and the row's tooltip names the sender whole.
+- **First name and Last name write the whole name where it fits**
+  (Arrange > Sender column > Show). In a narrow column a name steps down
+  only as far as it must: "Wegnerd Ironfoot", then "Wegnerd I." or
+  "W. Ironfoot", then the half. Drag the window wider and the whole name
+  is back.
 
 ### Fixed
 
