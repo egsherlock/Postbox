@@ -100,7 +100,10 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   bar and a line along the top of the list say so); one tap, or a click
   on the chip, ends it. Alt does nothing while you are typing, and a
   click acts only once the marks are fully showing. **Return and Delete
-  with Alt** (Options > Mail tab > Collecting) turns it off.
+  with Alt** (Options > Mail tab > Collecting) turns it off. In the
+  one-bag view the marks show on your own Inbox's tiles: a click on an
+  item asks first, naming every sender and what else their mails hold,
+  then sends back exactly those mails.
 - **All mail takes** (Options > Mail tab > Collecting) ticks the kinds of
   mail All mail takes: **Auction house**, **The game**, **My alts**
   and **Other players**, all four by default (**Every mail**). What you

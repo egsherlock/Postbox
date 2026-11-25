@@ -87,6 +87,14 @@
   A finished mail's tooltip says "Hold Alt: delete". Rather not have it?
   Options > Mail tab > Return and Delete with Alt turns it off, and an
   Alt+click collects as it used to.
+- **Mail tab, one bag: Return with Alt.** On your own Inbox, hold Alt (or
+  double-tap to keep it on) and each item whose mail can go back wears
+  the return arrow; its tooltip says who gets mail back and what else
+  those mails hold. A click asks first: the question names every sender,
+  how many mails each, anything else in them and any C.O.D. (nothing is
+  paid). Return sends back exactly those mails, one at a time, checking
+  each again, and stops at the first that has changed. The title bar
+  says how many went back, or where it stopped and why.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
