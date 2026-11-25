@@ -2585,6 +2585,11 @@ local Alt = {
   -- tooltip draws it) and how near a class colour may come to it before a
   -- name is drawn white (Alt.Name).
   SEP = " \194\183 ", WARN = { 0.98, 0.56, 0.18 }, NEAR = 0.35,
+  -- Cutting the "+" lines: the header's arrow and its space, the least gap
+  -- between a double line's two sides, the "+" lines' indent, and the room
+  -- the game's question box gives its words (290 of its 320), kept short of
+  -- it so the game never wraps a "+" line itself.
+  HEAD_ARROW = 18, DOUBLE_GAP = 20, PLUS_INDENT = 8, BOX_ROOM = 270, plus = {},
 }
 BV.Alt = Alt
 
@@ -2783,20 +2788,20 @@ function Alt.Name(sender)
   return CS.WrapClass(token, sender, "tooltip")
 end
 
--- g -> what the group's mails hold besides the tile's item, the "+"
--- line's words ("20 Storm Dust · 5 Bismuth · 6 more items · 250g · a
--- letter"), or nil: the first two other items by name, how many more,
--- the gold as the rows write it, a letter of their own.
-function Alt.Also(g)
+-- g -> how many parts of what the group's mails hold besides the tile's
+-- item, written into Alt.parts: ONE other item by name ("8 Weavercloth"),
+-- then how many more items, the gold as the rows write it, a letter of
+-- their own. 0 where they hold nothing else.
+function Alt.AlsoParts(g)
   local L0 = L()
   local parts, n = Alt.parts, 0
-  for j = 1, (g.on < 2 and g.on or 2) do
+  if g.on >= 1 then
     n = n + 1
-    parts[n] = L0("BAGALT_ITEM_COUNT", g.ocnt[j], g.oname[j] or Alt.ItemName(g.oid[j]))
+    parts[n] = L0("BAGALT_ITEM_COUNT", g.ocnt[1], g.oname[1] or Alt.ItemName(g.oid[1]))
   end
-  if g.on > 2 then
+  if g.on > 1 then
     n = n + 1
-    parts[n] = ns.Plural("BAGALT_ALSO_MORE", g.on - 2)
+    parts[n] = ns.Plural("BAGALT_ALSO_MORE", g.on - 1)
   end
   if g.gold > 0 then
     n = n + 1
@@ -2806,8 +2811,35 @@ function Alt.Also(g)
     n = n + 1
     parts[n] = L0["BAGALT_ALSO_LETTER"]
   end
-  if n == 0 then return nil end
-  return L0("BAGALT_PLUS", table.concat(parts, Alt.SEP, 1, n))
+  return n
+end
+
+-- n parts (Alt.parts), room, kind, out, k -> the "+" lines, written into
+-- `out` from k + 1, returning the last index: as many parts on a line as
+-- fit `room` in that type (Theme.TipTextWidth), joined by " · ", each line
+-- "+ ..."; a line breaks only between parts, never inside one, so an
+-- item's name, "7 more items" and "a letter" are never split. A part wider
+-- than the room stands alone on its line. Nothing here is wrapped by the
+-- game.
+function Alt.Pack(n, room, kind, out, k)
+  local T, L0 = Th(), L()
+  local parts = Alt.parts
+  local line = nil
+  for i = 1, n do
+    local try = line and (line .. Alt.SEP .. parts[i]) or parts[i]
+    if line and T.TipTextWidth(L0("BAGALT_PLUS", try), kind) > room then
+      k = k + 1
+      out[k] = L0("BAGALT_PLUS", line)
+      line = parts[i]
+    else
+      line = try
+    end
+  end
+  if line then
+    k = k + 1
+    out[k] = L0("BAGALT_PLUS", line)
+  end
+  return k
 end
 
 -- The Return arrow, drawn in a line of text (the rows' art).
@@ -2842,18 +2874,32 @@ function Alt.Tip(F, kind)
     local text = Alt.Arrow() .. L0("BAGALT_TIP_ALL", F.nb, Alt.Name(g.name))
     if g.mails > 1 then text = text .. " " .. T.TipTone("muted", L0("BAGALT_TIP_IN", ns.Plural("COUNT_MAILS", g.mails))) end
     T.TipHead(text)
-    T.TipPlus(Alt.Also(g))
+    Alt.TipPlus(g, T.TipTextWidth(text, "head") + Alt.HEAD_ARROW)
     if F.cod > 0 then
       T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(F.cod)) .. T.TipTone("muted", Alt.SEP .. L0["BAGALT_COD_FREE"]))
     end
   else
-    T.TipHead(Alt.Arrow() .. L0("BAGALT_TIP_SUM", F.nb, F.nt))
-    T.TipLine(T.TipTone("muted", ns.Plural("COUNT_MAILS", F.qn) .. Alt.SEP .. ns.Plural("BAGALT_SENDERS", F.shown)))
+    -- Everything of the item goes: "Returns all 720"; something stays:
+    -- "Returns 100 of 140".
+    local head = (F.nb >= F.nt) and L0("BAGALT_TIP_ALL_N", F.nb) or L0("BAGALT_TIP_SUM", F.nb, F.nt)
+    local sub = ns.Plural("COUNT_MAILS", F.qn) .. Alt.SEP .. ns.Plural("BAGALT_SENDERS", F.shown)
+    T.TipHead(Alt.Arrow() .. head)
+    T.TipLine(T.TipTone("muted", sub))
+    -- The tooltip's width, as far as Postbox's own lines make it.
+    local room = T.TipTextWidth(head, "head") + Alt.HEAD_ARROW
+    local w = T.TipTextWidth(sub, "body")
+    if w > room then room = w end
+    for i = 1, F.shown do
+      local g = F.g[i]
+      local right = tostring(g.n) .. Alt.SEP .. ns.Plural("COUNT_MAILS", g.mails)
+      w = T.TipTextWidth(g.name, "body") + Alt.DOUBLE_GAP + T.TipTextWidth(right, "body")
+      if w > room then room = w end
+    end
     for i = 1, F.shown do
       local g = F.g[i]
       GameTooltip:AddDoubleLine(Alt.Name(g.name), tostring(g.n) .. T.TipTone("muted", Alt.SEP .. ns.Plural("COUNT_MAILS", g.mails)),
         1, 1, 1, 1, 1, 1)
-      T.TipPlus(Alt.Also(g))
+      Alt.TipPlus(g, room)
     end
     if F.capped > 0 then T.TipLine(T.TipTone("muted", ns.Plural("TIP_MORE", F.capped))) end
     if F.stayN > 0 and F.stayMails > 0 then
@@ -2867,6 +2913,17 @@ function Alt.Tip(F, kind)
     T.TipHint(L0("BAGALT_HINT_RETURN_N", ns.Plural("COUNT_MAILS", F.qn)))
   end
   T.TipHint(L0["BAG_HINT_MAILS"])
+end
+
+-- A sender's "+" lines in the tooltip: its parts packed to `room` (less
+-- the lines' indent), each line unwrapped.
+function Alt.TipPlus(g, room)
+  local n = Alt.AlsoParts(g)
+  if n == 0 then return end
+  local out = Alt.plus
+  local k = Alt.Pack(n, room - Alt.PLUS_INDENT, "hint", out, 0)
+  local T = Th()
+  for i = 1, k do T.TipPlus(out[i]) end
 end
 
 -- The tooltip's body while the marks show (BV.TileEnter): the facts read
@@ -2885,6 +2942,18 @@ function Alt.TipBody(kind)
   Alt.Tip(F, kind)
 end
 
+-- A sender's "+" lines in the question: packed to the box's room for its
+-- words, each in the warning tone. -> the last index of `lines`.
+function Alt.AskPlus(g, lines, n)
+  local parts = Alt.AlsoParts(g)
+  if parts == 0 then return n end
+  local first = n + 1
+  n = Alt.Pack(parts, Alt.BOX_ROOM, "box", lines, n)
+  local T = Th()
+  for i = first, n do lines[i] = T.TipTone("warning", lines[i]) end
+  return n
+end
+
 -- THE QUESTION'S LOOK (his f80 Q02 pick, "words"), in the game's own box,
 -- from the facts alone: the act first; one mail holding more, its item
 -- and the "+" line; several mails, the sum ("100 of 140 Ironclaw Ore go
@@ -2901,11 +2970,7 @@ function Alt.AskText(F)
     lines[n] = L0("BAGALT_ASK_THIS", g1.name)
     n = n + 1
     lines[n] = L0("BAGALT_ITEM_COUNT", g1.n, F.name)
-    local also = Alt.Also(g1)
-    if also then
-      n = n + 1
-      lines[n] = T.TipTone("warning", also)
-    end
+    n = Alt.AskPlus(g1, lines, n)
   else
     local to = (F.shown == 1) and g1.name or ns.Plural("BAGALT_TO_SENDERS", F.shown)
     lines[n] = L0("BAGALT_ASK_TO", ns.Plural("COUNT_MAILS", F.qn), to)
@@ -2921,11 +2986,7 @@ function Alt.AskText(F)
       local g = F.g[i]
       n = n + 1
       lines[n] = L0("BAGALT_Q_SENDER", g.name, g.n, ns.Plural("COUNT_MAILS", g.mails))
-      local also = Alt.Also(g)
-      if also then
-        n = n + 1
-        lines[n] = T.TipTone("warning", also)
-      end
+      n = Alt.AskPlus(g, lines, n)
     end
   end
   if F.cod > 0 then

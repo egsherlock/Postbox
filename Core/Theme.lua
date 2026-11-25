@@ -4355,11 +4355,39 @@ function Theme.TipHead(text)
   AddFontLine(text, _G.GameTooltipHeaderText, 1, false)
 end
 
--- A wrapped line in the hint type, in the warning tone, set in a little:
--- what else goes with the one bag's return under a sender (BagView 7).
+-- A line in the hint type, in the warning tone, set in a little, not
+-- wrapped (the caller has already cut it where it may be cut): what else
+-- goes with the one bag's return under a sender (BagView 7).
 function Theme.TipPlus(text)
   if not text or text == "" then return end
-  AddFontLine("  " .. Theme.TipTone("warning", text), HintFont(), 1, true)
+  AddFontLine("  " .. Theme.TipTone("warning", text), HintFont(), 1, false)
+end
+
+-- text, kind -> its width in a tooltip's type ("head" the title's, "hint"
+-- the hints', "box" the game's question box's, else the body's), measured
+-- on a hidden font string of Postbox's own, never read off the game's
+-- tooltip: for cutting a line only where it may be cut. 0 where it cannot
+-- be measured.
+local tipMeasure = { fs = false, font = false }
+function Theme.TipTextWidth(text, kind)
+  local font = (kind == "head" and _G.GameTooltipHeaderText) or (kind == "hint" and HintFont())
+    or (kind == "box" and _G.GameFontHighlight) or _G.GameTooltipText
+  if not font or type(CreateFrame) ~= "function" then return 0 end
+  local fs = tipMeasure.fs
+  if not fs then
+    local holder = CreateFrame("Frame", nil, UIParent)
+    holder:Hide()
+    fs = holder:CreateFontString(nil, "ARTWORK")
+    tipMeasure.fs = fs
+  end
+  if tipMeasure.font ~= font then
+    fs:SetFontObject(font)
+    tipMeasure.font = font
+  end
+  fs:SetText(text or "")
+  local width = fs:GetStringWidth()
+  if type(issecretvalue) == "function" and issecretvalue(width) then return 0 end
+  return (type(width) == "number" and width > 0) and width or 0
 end
 
 function Theme.TipNote(text, gap)
