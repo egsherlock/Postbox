@@ -5714,6 +5714,7 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     or named or L["MEMORY_SENDER_UNKNOWN"]
   -- On Forever, the first name alone, or the last, where no other sender
   -- listed shares it (the rules' Firsts, noted as the list was measured).
+  local wholeName = senderText
   if cols and cols.firsts and named and not outcome then senderText = R.Firsts.Pick(cols.firsts, senderText) end
   -- Whether the row shows less of the name than the mail has, for the
   -- tooltip, which then says it whole.
@@ -5751,6 +5752,9 @@ function MM.FillRow(row, mail, now, cols, position, onHeader, realm, name)
     el.time, el.money, el.slots = row.ColTime, row.ColMoney, row.ColSlots
     el.stuck, spec.stuck = row.Warning, stuck
     text.sender, text.subject = senderText, subject
+    -- WoW Forever's First name / Last name: the whole name or its short
+    -- form where the column holds it (the rules' Firsts.Flex, RV.Place).
+    if R.Firsts and R.Firsts.Flex then R.Firsts.Flex(spec, wholeName, senderText) end
     text.time, text.money, text.slots = timeText, moneyText, slotsText
     spec.size.icon = ROW_ICON
     spec.width, spec.left, spec.trail, spec.gap = width, 6, trail, 6

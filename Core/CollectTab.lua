@@ -2418,9 +2418,92 @@ do
     return part or nil
   end
 
+  -- (s32 widths, f78 "flex") First name and Last name write the whole name
+  -- where it fits the row's Sender column, then a short form where that
+  -- fits -- First name "Wegnerd I.", Last name "W. Ironfoot" -- and the half
+  -- alone only where neither does (RV.Place, RV.FlexSender). Only where the
+  -- list gives this sender the half alone (FN.Pick): a half two senders
+  -- share still keeps the full name, and then its short form, made of that
+  -- same unique half, is never shared either. The short forms are made once
+  -- a name and kept (`short1` for the first's, `short2` for the last's);
+  -- the widths once a text and font (`w`, FN.Width), both let go whole
+  -- where a build starts once full (FN.Trim), the widths too when the
+  -- rows' font changes.
+  FN.short1, FN.short2, FN.sN = {}, {}, 0
+  FN.w, FN.wN = {}, 0
+
+  -- A name's first letter, a whole UTF-8 character.
+  function FN.Initial(part)
+    return part:match("^[%z\1-\127\194-\244][\128-\191]*") or part:sub(1, 1)
+  end
+
+  -- name, half -> its short form for that half: "Wegnerd I." (first) or
+  -- "W. Ironfoot" (last); nil for a name without halves.
+  function FN.Short(name, half)
+    local kept = (half == "last") and FN.short2 or FN.short1
+    local text = kept[name]
+    if text ~= nil then return text or nil end
+    local a, b = FN.Of(name, "first"), FN.Of(name, "last")
+    text = false
+    if a and b then
+      local sep = Helpers().NameSeparator()
+      if half == "last" then
+        text = FN.Initial(a) .. "." .. sep .. b
+      else
+        text = a .. sep .. FN.Initial(b) .. "."
+      end
+    end
+    if FN.sN < FN.MAX then
+      kept[name] = text
+      FN.sN = FN.sN + 1
+    end
+    return text or nil
+  end
+
+  -- s (a row's placement spec), name (whole), shown (what FN.Pick gave) ->
+  -- the spec told the forms its Place may step between; nothing where the
+  -- row writes the whole name anyway. Every bind of a spec calls it, so a
+  -- row never inherits another's.
+  function FN.Flex(s, name, shown)
+    if not (shown and name and shown ~= name) then
+      s.flexFull, s.flexShort = nil, nil
+      return
+    end
+    s.flexFull = name
+    s.flexShort = FN.Short(name, (shown == FN.Of(name, "last") and shown ~= FN.Of(name, "first")) and "last" or "first")
+  end
+
+  -- region, text -> its width in that string's font, kept.
+  function FN.Width(region, text)
+    local path, size, flags = region:GetFont()
+    if path ~= FN.wPath or size ~= FN.wSize or flags ~= FN.wFlags then
+      for k in pairs(FN.w) do FN.w[k] = nil end
+      FN.wN, FN.wPath, FN.wSize, FN.wFlags = 0, path, size, flags
+    end
+    local width = FN.w[text]
+    if not width then
+      region:SetText(text)
+      width = ceil(tonumber((region:GetStringWidth())) or 0)
+      if FN.wN < FN.MAX then
+        FN.w[text] = width
+        FN.wN = FN.wN + 1
+      end
+    end
+    return width
+  end
+
   -- At the start of a list's build: let the names go if the last ones
   -- filled the record, each half's on its own.
   function FN.Trim()
+    if FN.sN >= FN.MAX then
+      for k in pairs(FN.short1) do FN.short1[k] = nil end
+      for k in pairs(FN.short2) do FN.short2[k] = nil end
+      FN.sN = 0
+    end
+    if FN.wN >= FN.MAX then
+      for k in pairs(FN.w) do FN.w[k] = nil end
+      FN.wN = 0
+    end
     if FN.n >= FN.MAX then
       for k in pairs(FN.first) do FN.first[k] = nil end
       FN.n = 0
@@ -2514,6 +2597,7 @@ do
     end
     local name = DisplaySender(named)
     local shown = FN.Pick(owners, name)
+    FN.named = name
     if shown == name then return nil end
     return shown
   end
@@ -3860,6 +3944,16 @@ function RV.FitSender(region, width, text, bare)
   end
 end
 
+-- s, region, width -> what a First name / Last name row writes in `width`:
+-- the whole name, else its short form, else the half (RV.Firsts.Flex).
+function RV.FlexSender(s, region, width)
+  local FN = RV.Firsts
+  if FN.Width(region, s.flexFull) <= width then return s.flexFull end
+  local short = s.flexShort
+  if short and FN.Width(region, short) <= width then return short end
+  return s.text.sender
+end
+
 function RV.Place(row, s)
   local layout = s.layout or RV.Layout()
   local T = Th()
@@ -3973,6 +4067,9 @@ function RV.Place(row, s)
     senderW = min(s.senderLeast, lineWidth - gap - 20)
   end
   local subjectW = max(lineWidth - (senderShown and (senderW + gap) or 0), 20)
+  -- WoW Forever's First name / Last name: the most of the name this width
+  -- holds (RV.Firsts.Flex).
+  if senderShown and s.flexFull then text.sender = RV.FlexSender(s, el.sender, senderW) end
 
   local focus, target = s.focus, nil
   -- What this row's own figures take, lined up (below).
@@ -10559,9 +10656,14 @@ local function BindRow(panel, row, index, position, compact, done)
   end
   local senderText = DisplaySender(sender) or L()["SENDER_UNKNOWN"]
   -- On Forever, the first name alone, or the last, where the arrangement
-  -- asks for it and no other sender listed shares it (RV.Firsts).
+  -- asks for it and no other sender listed shares it (RV.Firsts), the
+  -- whole name or its short form where the column holds it (FN.Flex).
   if ns.IsForever and sender and not AUCTION_OUTCOME[kind] and S ~= RV.REM then
+    local whole = senderText
     senderText = RV.Firsts.Inbox(panel, S, layout, senderText)
+    RV.Firsts.Flex(panel._rowSpec, whole, senderText)
+  else
+    RV.Firsts.Flex(panel._rowSpec, nil, nil)
   end
   -- Whether the row shows less of the name than the mail has, for the
   -- tooltip, which then says it whole.
@@ -11097,6 +11199,9 @@ function HV.BindHistoryRow(panel, row, entry, position, now, style, realm)
   -- (RV.Firsts); a Sent row's after its "to".
   local firstName = ns.IsForever and named and not outcome and RV.Firsts.History(panel, named, sent) or nil
   if firstName then text.sender = sent and RV.Firsts.SentTo(firstName) or firstName end
+  -- Received: the whole name or its short form where the column holds it
+  -- (FN.Flex); a Sent row's names are never cut, and step not.
+  RV.Firsts.Flex(spec, (firstName and not sent) and RV.Firsts.named or nil, firstName)
   -- Coloured by the class it has on the realm its record is from (`realm`:
   -- nil, this character's own).
   RV.PaintSender(row.Sender, not outcome and named or nil, realm, T.ROW)

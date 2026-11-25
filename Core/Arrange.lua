@@ -7055,7 +7055,15 @@ local function FillColumn(id, y)
     end
     -- The sender's (World of Warcraft: Forever): what a first or last name
     -- two senders share does, in one quiet line under the answers.
-    if spec.choice == "sender" then y = PutText(insp.LayoutNote, L()["ARRANGE_SENDER_SHARED"], y, "note") end
+    -- (s32 widths, f78) and that each writes the whole name where it fits.
+    if spec.choice == "sender" then
+      local note = AR._senderNote
+      if not note then
+        note = L()["ARRANGE_SENDER_FITS"] .. " " .. L()["ARRANGE_SENDER_SHARED"]
+        AR._senderNote = note
+      end
+      y = PutText(insp.LayoutNote, note, y, "note")
+    end
     -- The gold's: then how its sums are written, under a kicker of its own,
     -- its answers after the first choice's.
     if spec.choice == "gold" then
