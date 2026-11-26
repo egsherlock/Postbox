@@ -343,12 +343,11 @@ hook on its own show and hide); none is put in `UISpecialFrames`, so in combat E
 is the client's pass as before. The frame looks no further than the key's name for any
 key that cannot be the game-menu key (`AR.MENU_KEYS`).
 
-`Postbox.lua`: the error trap calls `seterrorhandler`. **Not a taint source.** The
-error handler is a plain global function reference, not a frame and not a secure
-capability: replacing it does not touch anything protected, and it is what every
-error-catching addon on the account already does. The handler Postbox installs
-records the message and calls straight through to whatever was there before, so it
-neither swallows an error nor lengthens the chain by anything a secure path reads.
+`Postbox.lua`: Postbox installs no error handler (since 2.1.0; until then an error trap
+called `seterrorhandler` and chained the one before, which was never a taint source: the
+handler is a plain global function reference). It now only notes the errors it catches
+itself (`ns.NoteError`) and reads BugGrabber's list when a report is built, so another
+addon's error runs no Postbox code.
 
 ---
 

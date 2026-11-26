@@ -146,7 +146,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   links the item), right-click lists its mails and the bag is back when
   you clear the search. A C.O.D. mail has one tile for each item and asks
   once before anything is paid; unread letters with nothing attached have
-  a line under the tiles. It follows a search, the sort and the filters,
+  a line under the tiles (one letter opens on a click). It follows a search, the sort and the filters,
   and shows another character's box and History too, where a click takes
   nothing and a small lock says so. Click or
   right-click the button for the list; Options > Mail tab > One-bag

@@ -42,8 +42,8 @@
   tries it on. A C.O.D. mail has one tile for each item it holds, and a
   click asks once, with the mail's price, before anything is paid.
   Unread letters with nothing attached have a line under the tiles (an
-  envelope and "2
-  letters with nothing attached"); click it for the list. It follows a
+  envelope and "2 letters with nothing attached"); click it for the list,
+  or, when it is one letter, to read it (Back brings the bag). It follows a
   search, the sort and the filters, and it works on another character's
   box and in History, where it shows what is there and takes nothing.
   While you search every character, a click on a tile or on a
@@ -78,10 +78,13 @@
   return arrow shows in place of the read dot on every mail that can go
   back, and finished mail keeps its x: the Return and Delete marks.
   While they show, a click anywhere on a row sends that mail back and a
-  right-click deletes finished mail; the row under the pointer lights to
-  say which, and a row that can do neither says why. Alt does nothing
-  while you are typing, and a click acts only once the marks are fully
-  showing, and only on the mail you pressed. Auction mail that still holds
+  right-click deletes finished mail. The row under the pointer says
+  which: mail that can go back is washed evenly in your accent, end to
+  end, and finished mail lights as any row does with only its x in red.
+  A row that can do neither says why. Alt does nothing while you are
+  typing, and a click acts only once the marks are fully showing, only on
+  the mail you pressed, and only if Alt was the same when you pressed and
+  when you let go. Auction mail that still holds
   something shows a faded x: it can only be taken. Double-tap Alt to keep
   the marks on: a small chip in the title bar and a thin line along the
   top of the list say so, and a tap of Alt or a click on the chip ends it.
@@ -114,6 +117,11 @@
 
 ### Improved
 
+- **Report a bug lists only Postbox's own errors.** Postbox no longer
+  watches every addon's errors: it notes the ones it catches itself and,
+  with BugSack installed, picks its own out of BugSack's list when you
+  make a report. Other addons' errors reach BugSack or the game exactly as
+  before.
 - **The mailbox window can keep a size of your own.** Shift-right-click
   the resize grip (bottom right) to keep the size the window is now; a
   right-click then goes back to your size, and from there to Postbox's.
