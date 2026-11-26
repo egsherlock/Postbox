@@ -8988,6 +8988,96 @@ local function OpenOptions()
   if panel and type(panel.Toggle) == "function" then panel.Toggle(MM._frame, "memory") end
 end
 
+-- The grip's size of the player's own, as the Postbox window's grip keeps
+-- one (UI.KeptWindowSize and its neighbours): Shift-right-click keeps the
+-- size on screen in profile.mmWindow (keptW, keptH), so Reset settings
+-- clears it with the other settings; a right-click goes back to it, and at
+-- it, or with nothing kept, to the default width and six rows. Back at it,
+-- the kept height is the player's height again, which Refresh honours
+-- within the content's bounds as it does a dragged one.
+MM.Grip = {}
+
+-- The stored size, as stored: width, height, or nil with nothing kept.
+function MM.Grip.Stored()
+  local store = ns.Store.Get("profile.mmWindow")
+  if type(store) ~= "table" then return nil end
+  local w, h = tonumber(store.keptW), tonumber(store.keptH)
+  if not (w and h) then return nil end
+  return w, h
+end
+
+-- The kept size held to the window's bounds as Refresh last set them (the
+-- height to the content), which is the size a right-click back to it
+-- stands at. -> width, height, or nil with nothing kept.
+function MM.Grip.Kept(frame)
+  local w, h = MM.Grip.Stored()
+  if not w then return nil end
+  w = math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, w))
+  local minH, maxH
+  if frame and frame.GetResizeBounds then
+    local _
+    _, minH, _, maxH = frame:GetResizeBounds()
+  end
+  minH, maxH = tonumber(minH), tonumber(maxH)
+  if maxH and maxH > 0 and h > maxH then h = maxH end
+  if minH and h < minH then h = minH end
+  return w, h
+end
+
+-- Whether the window stands at the kept size (within half a unit).
+function MM.Grip.AtKept(frame)
+  local w, h = MM.Grip.Kept(frame)
+  if not (w and frame) then return false end
+  return math.abs((frame:GetWidth() or 0) - w) < 0.5 and math.abs((frame:GetHeight() or 0) - h) < 0.5
+end
+
+-- Shift-right-click: the size on screen kept as the player's own. Nothing
+-- moves.
+function MM.Grip.Keep(frame)
+  local store = ns.Store.EnsurePath("profile.mmWindow", {})
+  if type(store) ~= "table" or not frame then return end
+  local w, h = frame:GetWidth() or WINDOW_WIDTH, frame:GetHeight() or RowsHeight(DEFAULT_ROWS)
+  store.keptW = math.floor(math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, w)) + 0.5)
+  store.keptH = math.floor(math.max(1, h) + 0.5)
+  MM.Grip.Hint(frame.ResizeButton)
+end
+
+-- Right-click: back to the kept size, or, at it or with nothing kept, the
+-- default width and six rows (or the content, if less).
+function MM.Grip.Reset(frame)
+  local keptW, keptH = MM.Grip.Stored()
+  local toKept = keptW ~= nil and not MM.Grip.AtKept(frame)
+  frame.sizing = false
+  frame.userHeight = toKept and keptH or nil
+  frame.Scroll:SetVerticalScroll(0)
+  frame:SetWidth(toKept and math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, keptW)) or WINDOW_WIDTH)
+  Refresh(frame)
+  -- Once more after the layout has settled at the new size.
+  C_Timer.After(0, MM.Grip.Settle)
+  MM.Grip.Hint(frame.ResizeButton)
+end
+
+function MM.Grip.Settle()
+  local frame = MM._frame
+  if frame and frame:IsShown() then Refresh(frame) end
+end
+
+-- The grip's hint: the Postbox window's (UI.ShowGripHint), on this
+-- window's kept size, its lists in a table of its own.
+function MM.Grip.Hint(grip)
+  local UI = ns.MailboxUI
+  if not (grip and UI and type(UI.ShowGripHint) == "function") then return end
+  local frame = grip:GetParent()
+  local w, h = MM.Grip.Kept(frame)
+  local H = MM.Grip.H
+  if not H then
+    H = {}
+    MM.Grip.H = H
+  end
+  UI.ShowGripHint(grip, H, w and math.floor(w + 0.5), h and math.floor(h + 0.5),
+    w ~= nil and MM.Grip.AtKept(frame))
+end
+
 local function Build()
   if MM._frame then return MM._frame end
 
@@ -9110,30 +9200,19 @@ local function Build()
 
   -- The grip changes both: once the user has chosen a size it is theirs for
   -- the session; Refresh keeps honouring it within the content's bounds.
-  -- Right-click resets it, as the Postbox window's grip does: the default
-  -- width and six rows (or the content, if less).
+  -- The same three gestures as the Postbox window's grip (MM.Grip):
+  -- Shift-right-click keeps the size as the player's own, a right-click
+  -- goes back to it, and from it to the default width and six rows (or the
+  -- content, if less).
   local grip = ns.Core.UI.Helpers.CreateResizeButton(frame, function(self)
     self.sizing = false
     self.userHeight = self:GetHeight()
   end, function(self)
     self.sizing = true
-  end, nil, function(self)
-    self.sizing = false
-    self.userHeight = nil
-    self.Scroll:SetVerticalScroll(0)
-    self:SetWidth(WINDOW_WIDTH)
-    Refresh(self)
-    -- Once more after the layout has settled at the new size.
-    C_Timer.After(0, function()
-      if self:IsShown() then Refresh(self) end
-    end)
-  end)
+  end, nil, MM.Grip.Reset, nil, MM.Grip.Keep)
+  frame.ResizeButton = grip
   if grip then
-    -- Built once, not on every hover.
-    local gripHint = { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] }
-    grip:HookScript("OnEnter", function(self)
-      ns.Theme.ShowHint(self, gripHint)
-    end)
+    grip:HookScript("OnEnter", MM.Grip.Hint)
     grip:HookScript("OnLeave", function() ns.Theme.HideHint() end)
     grip:HookScript("OnMouseDown", function() ns.Theme.HideHint() end)
   end

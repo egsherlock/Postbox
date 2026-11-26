@@ -3115,17 +3115,75 @@ function BUILD.Grip(frame)
     UpdateVisibleRows()
   end
 
-  -- Right-click: the size a first open uses, where the window stands.
-  local function OnGripReset(f)
-    helpers.PinFrameTopLeft(f)
-    SetDefaultSize(f)
+  -- A size of the player's own, as the Postbox window's grip keeps one
+  -- (UI.KeptWindowSize and its neighbours): Shift-right-click keeps the
+  -- size as the player chose it (the window less the floor's loan) beside
+  -- the saved one (keptW, keptH), so Reset settings clears it with it.
+  -- -> the kept size as a right-click back to it leaves the window's own
+  -- (held under the ceiling; a floor above it is lent, as ever), or nil.
+  local function KeptSize(f)
+    local w, h = tonumber(store.keptW), tonumber(store.keptH)
+    if not (w and h) then return nil end
+    local maxH
+    if f.GetResizeBounds then
+      local _
+      _, _, _, maxH = f:GetResizeBounds()
+    end
+    maxH = tonumber(maxH)
+    if maxH and maxH > 0 and h > maxH then h = maxH end
+    return math.min(w, MAX_W), h
   end
 
-  frame.ResizeButton = helpers.CreateResizeButton(frame, OnGripStop, OnGripStart, nil, OnGripReset)
+  -- Whether the window, less its loan, stands at the kept size.
+  local function AtKept(f)
+    local w, h = KeptSize(f)
+    if not w then return false end
+    return math.abs(f:GetWidth() - (RM._loanW or 0) - w) < 0.5
+       and math.abs(f:GetHeight() - (RM._loanH or 0) - h) < 0.5
+  end
+
+  -- The grip's hint: the Postbox window's (UI.ShowGripHint), on this
+  -- window's kept size, its lists in a table of its own.
+  local hint = {}
+  local function GripHint(grip)
+    local UI = ns.MailboxUI
+    if not (grip and UI and type(UI.ShowGripHint) == "function") then return end
+    local w, h = KeptSize(frame)
+    UI.ShowGripHint(grip, hint, w and math.floor(w + 0.5), h and math.floor(h + 0.5),
+      w ~= nil and AtKept(frame))
+  end
+
+  -- Shift-right-click: the size as the player chose it, kept. Nothing moves.
+  local function OnGripKeep(f)
+    local w = f:GetWidth() - (RM._loanW or 0)
+    local h = f:GetHeight() - (RM._loanH or 0)
+    store.keptW = math.floor(math.max(MIN_W, math.min(MAX_W, w)) + 0.5)
+    store.keptH = math.floor(math.max(MIN_ROWS * ROW.MIN_H, math.min(MAX_H, h)) + 0.5)
+    GripHint(f.ResizeButton)
+  end
+
+  -- Right-click: back to the kept size; at it, or with nothing kept, the
+  -- size a first open uses. Either where the window stands.
+  local function OnGripReset(f)
+    local keptW, keptH = KeptSize(f)
+    helpers.PinFrameTopLeft(f)
+    if keptW and not AtKept(f) then
+      -- The player's own size: no longer the default's, and the bounds
+      -- lend it whatever the floor stands above it.
+      store.auto = nil
+      RM._loanW, RM._loanH = 0, 0
+      f:SetSize(keptW, keptH)
+      ApplyBounds(f)
+    else
+      SetDefaultSize(f)
+    end
+    GripHint(f.ResizeButton)
+  end
+
+  frame.ResizeButton = helpers.CreateResizeButton(frame, OnGripStop, OnGripStart, nil, OnGripReset, nil, OnGripKeep)
   local grip = frame.ResizeButton
   if grip then
-    local hint = { L["GRIP_TIP_DRAG"], L["GRIP_TIP_RESET"] }
-    grip:HookScript("OnEnter", function(self) Theme.ShowHint(self, hint) end)
+    grip:HookScript("OnEnter", GripHint)
     grip:HookScript("OnLeave", function() Theme.HideHint() end)
     grip:HookScript("OnMouseDown", function() Theme.HideHint() end)
   end

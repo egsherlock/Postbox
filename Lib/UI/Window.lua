@@ -549,7 +549,8 @@ end
 -- on whatever steps its content comes in (whole rows), and the bounds are
 -- applied once more to what it answers.
 -- `onKeep` (optional): a Shift-right-click's, in onReset's place, where the
--- owner keeps a size of the player's own (the mail window only).
+-- owner keeps a size of the player's own (the mail window, Mail Memory and
+-- Manage Recipients).
 function Helpers.CreateResizeButton(frame, onStop, onStart, dragMinHeightFn, onReset, snapFn, onKeep)
   if not frame then return nil end
 

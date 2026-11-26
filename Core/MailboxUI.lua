@@ -4263,28 +4263,27 @@ function UI.KeepWindowSize(frame)
   store.keptH = floor(max(baseMin, min(max(MAX_HEIGHT, baseMin), height)) + 0.5)
 end
 
--- The grip's hint, `grip` pointed at: Drag; the right-click's line, which
--- says where it goes (reset with nothing kept, your size, or Postbox's size
--- at yours); Shift-right-click. The three lists are made once; the size's
--- line again only when the kept size changes. Shown only while the pointer
--- is on the grip.
-function UI.GripHint(grip)
+-- A grip's hint, `grip` pointed at: Drag; the right-click's line, which
+-- says where it goes (reset with nothing kept, your size, or the window's
+-- default size, Postbox's, at yours); Shift-right-click. Every grip that
+-- keeps a size of the player's own says it through this (the mail window,
+-- Mail Memory, Manage Recipients), each with a table of its own, `H`, that
+-- holds its three lists, made the first time, and the size's line, made
+-- again only when its kept size changes. `keptW`/`keptH` are the window's
+-- kept size (nil with nothing kept); `atKept`, whether it stands at it.
+-- Shown only while the pointer is on the grip.
+function UI.ShowGripHint(grip, H, keptW, keptH, atKept)
   local T = ns.Theme
-  if not (grip and T and T.ShowHint) then return end
+  if not (grip and H and T and T.ShowHint) then return end
   if grip.IsMouseOver and not grip:IsMouseOver() then return end
-  local H = UI._gripHint
-  if not H then
-    H = {
-      plain = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET"), L("GRIP_TIP_KEEP") },
-      yours = { L("GRIP_TIP_DRAG"), "", L("GRIP_TIP_KEEP") },
-      at = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_POSTBOX"), L("GRIP_TIP_KEEP") },
-    }
-    UI._gripHint = H
+  if not H.plain then
+    H.plain = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET"), L("GRIP_TIP_KEEP") }
+    H.yours = { L("GRIP_TIP_DRAG"), "", L("GRIP_TIP_KEEP") }
+    H.at = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_POSTBOX"), L("GRIP_TIP_KEEP") }
   end
-  local keptW, keptH = UI.KeptWindowSize()
   local lines = H.plain
   if keptW then
-    if UI.AtKeptSize(grip:GetParent()) then
+    if atKept then
       lines = H.at
     else
       if H.w ~= keptW or H.h ~= keptH then
@@ -4295,6 +4294,18 @@ function UI.GripHint(grip)
     end
   end
   T.ShowHint(grip, lines)
+end
+
+-- The mail window's grip's hint (UI.ShowGripHint, on its kept size).
+function UI.GripHint(grip)
+  if not grip then return end
+  local H = UI._gripHint
+  if not H then
+    H = {}
+    UI._gripHint = H
+  end
+  local keptW, keptH = UI.KeptWindowSize()
+  UI.ShowGripHint(grip, H, keptW, keptH, keptW ~= nil and UI.AtKeptSize(grip:GetParent()))
 end
 
 -- Taint-free: this reads MailFrame's position and writes only our own anchor.
