@@ -311,6 +311,16 @@ local function TallyCOD(P, index, sender, cod, itemCount, slots, held)
   end
 end
 
+-- money, cod, itemCount, wasRead (a mail's header, as numbers) -> whether
+-- it is a letter the letters' line counts: nothing attached, no gold, no
+-- C.O.D., and not finished, so unread (a read letter with nothing in it is
+-- the list's Done, and the bag leaves it out as it leaves all of those).
+-- The one test for the line's count (BV.TallyInbox) and its click
+-- (BV.OneLetter).
+function BV.IsLetter(money, cod, itemCount, wasRead)
+  return money <= 0 and cod <= 0 and itemCount <= 0 and not wasRead
+end
+
 -- The inbox's list as it is drawn (panel._filtered: the search, the sort
 -- and the filters have shaped it): the gold and every stack of the mail
 -- still to collect, a kind an item id. Mail a sweep leaves -- stuck, or
@@ -331,9 +341,7 @@ function BV.TallyInbox(panel, frozen)
       local _, _, sender, _, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
       money, cod, itemCount = tonumber(money) or 0, tonumber(cod) or 0, tonumber(itemCount) or 0
       local held = itemCount > 0 and M.HeldBack(index, itemCount) or nil
-      -- Not finished, so unread: a read letter with nothing in it is the
-      -- list's Done, and the bag leaves it out as it leaves all of those.
-      if money <= 0 and cod <= 0 and itemCount <= 0 and not wasRead then letters = letters + 1 end
+      if BV.IsLetter(money, cod, itemCount, wasRead) then letters = letters + 1 end
       if cod > 0 then
         if not frozen and itemCount > 0 then TallyCOD(P, index, sender, cod, itemCount, slots, held) end
       else
@@ -857,8 +865,8 @@ function BV.HeadLook(head, text, plain, lead)
 end
 
 -- head, s, every -> whether the line hears a click, and what it does: the
--- letters' line shows the list (BV.ShowLetters); a character's heading
--- among every box's matches (`every`, BV.EveryBox) shows that box, as the
+-- letters' line opens its one letter or shows the list (BV.LettersClick);
+-- a character's heading among every box's matches (`every`, BV.EveryBox) shows that box, as the
 -- list's heading does (BV.GoBox). Every other line takes no pointer. A
 -- line that hears one passes every press on, so the window is dragged by
 -- it as by the ground under it, and only a press that did not move is its
@@ -894,7 +902,7 @@ function BV.HeadUp(head, button)
   local P, panel = Parts(), BV.panel
   if not (P and panel) or P.RV.Modified() then return end
   if head.go == "letters" then
-    BV.ShowLetters(panel)
+    BV.LettersClick(panel)
   else
     BV.GoBox(panel, head.realm, head.name)
   end
@@ -902,8 +910,8 @@ end
 
 -- A character's heading: whose matches these are and what its click does,
 -- as the list's heading says it (nothing on it looks like a button). The
--- letters' line has no tooltip (no string says its click alone): it lights
--- under the pointer, and leaves any tooltip that is up alone.
+-- letters' line has no tooltip (his f72 B02 pick; f82 T03 kept it so): it
+-- lights under the pointer, and leaves any tooltip that is up alone.
 function BV.HeadEnter(head)
   if head.go == "letters" then
     head.hot = true
@@ -2054,6 +2062,61 @@ function BV.ShowLetters(panel)
   panel._bagPeek, panel._bagPeekAlt, panel._bagPeekAll = panel.viewMode, panel._alt, true
   if panel.MailListScroll then panel.MailListScroll:SetVerticalScroll(0) end
   ns.CollectTab.RefreshMailList(panel)
+end
+
+-- panel -> the index of the list's one letter with nothing attached, found
+-- now, by the walk and the test the line's count is made with
+-- (BV.TallyInbox, BV.IsLetter), in the list as it was built; nil where an
+-- inbox update has come since it was built (its indices may name other
+-- mail), or it holds none or more than one. Nothing is kept from the draw,
+-- so nothing can go stale, and nothing is made.
+function BV.OneLetter(panel)
+  local P = Parts()
+  local filtered, done = panel._filtered, panel._filteredDone
+  if not (P and filtered and done) then return nil end
+  local gen = panel._bindGen
+  if gen == nil or gen ~= Mail().InboxGen() then return nil end
+  local divider = P.DIVIDER
+  local found = nil
+  for i = 1, #filtered do
+    local index = filtered[i]
+    if index ~= divider and not done[i] then
+      local _, _, sender, subject, money, cod, _, itemCount, wasRead = GetInboxHeaderInfo(index)
+      -- An index that names no mail (as the reading view's fingerprint
+      -- reads it) is no letter.
+      if (sender ~= nil or subject ~= nil)
+          and BV.IsLetter(tonumber(money) or 0, tonumber(cod) or 0, tonumber(itemCount) or 0, wasRead) then
+        if found then return nil end
+        found = index
+      end
+    end
+  end
+  return found
+end
+
+-- The letters' line clicked (his f82 T03 pick, "one"): where it says one
+-- letter, that letter opens to read in the reading view, as its row's open
+-- gesture opens it (ShowDetail), and closing the view brings the bag back
+-- without it (reading marks it read; BV.DetailChanged); where it says
+-- several, the list in the bag's place (BV.ShowLetters). The one letter
+-- opens only where its row would open it (ActivateRow): never while a run
+-- is on, the columns are being arranged, Test mail stands in the list's
+-- place, or away from this character's own box at an open mailbox; then
+-- the click does nothing, as the row's does.
+-- Where the letter cannot be found for certain now (BV.OneLetter: the box
+-- changed since the line was drawn), the list, and nothing is opened.
+function BV.LettersClick(panel)
+  if BV.lettersN ~= 1 then return BV.ShowLetters(panel) end
+  local P = Parts()
+  local CT = ns.CollectTab
+  if not (P and CT) or type(P.ShowDetail) ~= "function" then return BV.ShowLetters(panel) end
+  if panel._preview or P.RV.Arranging(panel) or CT.IsRunning() then return end
+  if model.src ~= "inbox" or P.AV.Active(panel) or not P.MailboxOpen() then return end
+  local index = BV.OneLetter(panel)
+  if not index then return BV.ShowLetters(panel) end
+  BV.want = nil
+  if GameTooltip:IsShown() then GameTooltip:Hide() end
+  P.ShowDetail(panel, index)
 end
 do
   local H = ns.Helpers

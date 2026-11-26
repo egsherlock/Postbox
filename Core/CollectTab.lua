@@ -17321,6 +17321,10 @@ function ShowDetail(panel, index)
     RequestRefresh(panel)
   end
 end
+-- The bag's line for letters with nothing attached opens its one letter here
+-- (Core/BagView.lua, BV.LettersClick). Set after ShowDetail is defined: CT.Bag
+-- is built above it, where the forward local is still nil.
+CT.Bag.ShowDetail = ShowDetail
 
 -------------------------------------------------------------
 -- Reply
