@@ -2105,8 +2105,12 @@ end
 -- the click does nothing, as the row's does.
 -- Where the letter cannot be found for certain now (BV.OneLetter: the box
 -- changed since the line was drawn), the list, and nothing is opened.
+-- While Return and Delete with Alt is kept on over the bag (Alt.Live), the
+-- one letter does not open: its row does nothing in the mode either, and
+-- opening it would end the mode, so the next tile click would collect.
 function BV.LettersClick(panel)
   if BV.lettersN ~= 1 then return BV.ShowLetters(panel) end
+  if BV.Alt.Live() then return end
   local P = Parts()
   local CT = ns.CollectTab
   if not (P and CT) or type(P.ShowDetail) ~= "function" then return BV.ShowLetters(panel) end
