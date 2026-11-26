@@ -9291,11 +9291,11 @@ end
 -- does not open, and "Left-click opens a mail" does not swap the two.
 -- Shift-click and Ctrl-click do nothing while Alt is held and select while
 -- kept on, as before. The row under the pointer says what its click will
--- do before it is made (f57 B01): a soft light in the action's tone spreads
--- from just past its mark (f63 B01) -- the accent from the arrow, the x's
--- red from the x -- the arrow stays in the row's text ink, the x is drawn
--- whole in the red, and the tooltip ends "Click: return" or
--- "Right-click: delete" (M.Click, M.Light, M.Hint).
+-- do before it is made (f57 B01; f82 H02 "neutral"): a row a click returns
+-- lies evenly in the accent, its arrow in the row's text ink; finished
+-- mail is lit as any pointed row is, with only its x in red, drawn whole
+-- and keyed in black on a dark ground; and the tooltip ends "Click:
+-- return" or "Right-click: delete" (M.Click, M.Light, M.Hint).
 --
 -- Built inside the house rules: the game's MODIFIER_STATE_CHANGED is
 -- registered only while the inbox's list (or the one bag in its place,
@@ -9327,17 +9327,11 @@ do
     CALM = 0.4, actAt = nil,
     -- The arrow's art, in units: on one-line rows and on two-line rows.
     SIZE = 9, SIZE_LARGE = 12,
-    -- The light on the row under the pointer (f57 B01 "tone"): its alpha at
-    -- the mark's edge of the row and at the bend, and where the bend and
-    -- its end stand, as shares of the row's width from that edge.
-    LIGHT = 0.42, BEND = 0.18, BEND_AT = 0.24, LIGHT_TO = 0.58,
-    -- (f63 B01 "gap") It starts just past the mark, so the mark stands on
-    -- the row's own ground, and fades in from nothing over an icon's width
-    -- as its far end fades out, mirrored: a gentle part to BEND, then a
-    -- steeper one to LIGHT, in the far end's proportions (EASE). The x's
-    -- side starts XGAP short of its button. A lit x on finished mail is
-    -- drawn whole, in an ink that reads X_NEED on that row's ground.
-    EASE = 0.34 / 0.58, XGAP = 2, X_NEED = 3.0,
+    -- The light on the row under the pointer (f82 H02 "neutral"): on a row
+    -- a click returns, the accent evenly over the whole row at WASH. A lit
+    -- x on finished mail is drawn whole, in an ink that reads X_NEED on
+    -- that row's ground.
+    WASH = 0.26, X_NEED = 3.0,
     -- The marks chip (f63 A01 "both"): its width, its glyphs' centres from
     -- its left and the x's size. The line, kept on: its height, the glow
     -- under it, the glow's alpha, its level over the list, and where a look
@@ -9627,12 +9621,7 @@ do
       if row._mkKind then M.Apply(row, p) end
     end
     local lit = M.lit
-    if lit then
-      lit._mkLitA:SetAlpha(p)
-      lit._mkLitB:SetAlpha(p)
-      lit._mkLitC:SetAlpha(p)
-      lit._mkLitD:SetAlpha(p)
-    end
+    if lit then lit._mkLit:SetAlpha(p) end
     -- The chip and the line come in with the marks.
     local key, line = M.key, panel._mkLine
     if key and key:IsShown() then key:SetAlpha(p) end
@@ -10021,15 +10010,21 @@ do
 
   -- The row's light, as the pointer and the marks stand: on the row under
   -- the pointer (row._hovered, StyleMailRow's) while its click acts, else
-  -- off. At most one row is lit (M.lit). Four textures per row, over its
-  -- stripe and under its words, made the first time it is lit and kept.
-  -- The light starts just past the mark (f63 B01 "gap": the arrow's right
-  -- edge; XGAP short of the x's button, from the right), so the mark stands
-  -- on the row's own ground, and fades in over an icon's width -- nothing,
-  -- BEND after EASE of it, LIGHT at its end -- then runs on as it did: to
-  -- BEND at BEND_AT of the stripe's width, to nothing at LIGHT_TO. The
-  -- arrow stays in the row's primary ink, as pointed at; the x on finished
-  -- mail takes the row's negative, drawn whole (M.XInk).
+  -- off. At most one row is lit (M.lit). One texture per row over its
+  -- stripe (on the stripe's own bounds, which a look's paper moves) and
+  -- under its words, made the first time the row is lit and kept (f82 H02
+  -- "neutral"), with no gradient and no edge at either end:
+  -- - a row a click returns: the accent's mark tone, evenly at WASH (on a
+  --   ground a look laid under its rows, the accent as its ink, as the
+  --   selection's bar takes it); the arrow in the row's primary ink, as
+  --   pointed at;
+  -- - finished mail, which only a right-click acts on: no colour of its
+  --   own. The row's own hover wash laid a second time, through the row's
+  --   own paint (Theme.StyleMailRow handed this texture as the stripe, on
+  --   a table made with it, M.Wash), so it is whatever the look's pointed
+  --   row is: one step lighter on a dark ground, one darker on Postbox
+  --   Light, one brighter on the Blizzard style's paper. Only its x is
+  --   red, drawn whole (M.XInk) and keyed in black on a dark ground (M.KeyX).
   function M.Light(row)
     local act = row._hovered and M.Act(row) or nil
     local lit = M.lit
@@ -10038,95 +10033,26 @@ do
     local ground = row._bg
     if not ground then return end
     local T = Th()
-    local a, b, c, d = row._mkLitA, row._mkLitB, row._mkLitC, row._mkLitD
-    if not a then
-      a = row:CreateTexture(nil, "BACKGROUND", nil, 2)
-      b = row:CreateTexture(nil, "BACKGROUND", nil, 2)
-      c = row:CreateTexture(nil, "BACKGROUND", nil, 2)
-      d = row:CreateTexture(nil, "BACKGROUND", nil, 2)
-      a:SetColorTexture(1, 1, 1, 1)
-      b:SetColorTexture(1, 1, 1, 1)
-      c:SetColorTexture(1, 1, 1, 1)
-      d:SetColorTexture(1, 1, 1, 1)
-      row._mkLitA, row._mkLitB, row._mkLitC, row._mkLitD = a, b, c, d
-      M.Grads(a)
+    local tex = row._mkLit
+    if not tex then
+      tex = row:CreateTexture(nil, "BACKGROUND", nil, 2)
+      tex:SetAllPoints(ground)
+      row._mkLit = tex
+      row._mkWash = { _bg = tex }
     end
-    local back = act == "back"
-    local r, g, bl
-    if back then
-      r, g, bl = T.GetAccentTone("mark")
-      -- On a ground a look laid under its rows, the accent as its ink
-      -- (Theme.SetRowInks), as the selection's bar takes it.
+    if act == "back" then
+      local r, g, b = T.GetAccentTone("mark")
       local rows = T._rowInks
       local ink = rows and rows.Ink("accent")
-      if ink then r, g, bl = ink[1], ink[2], ink[3] end
+      if ink then r, g, b = ink[1], ink[2], ink[3] end
+      tex:SetColorTexture(r, g, b, M.WASH)
     else
-      r, g, bl = T.Ink("negative", T.ROW)
+      M.Wash(T, row)
     end
-    local w = ground:GetWidth() or 0
-    local near, bend = M.LIGHT, M.BEND
-    local side = back and "LEFT" or "RIGHT"
-    local away = back and "RIGHT" or "LEFT"
-    -- Where it starts, from the stripe's edge on the mark's side.
-    local mark = back and row.Return or row.Delete
-    local s = 0
-    if back then
-      local mr, gl = mark:GetRight(), ground:GetLeft()
-      if mr and gl then s = mr - gl end
-    else
-      local ml, gr = mark:GetLeft(), ground:GetRight()
-      if ml and gr then s = gr - ml + M.XGAP end
-    end
-    if s < 0 then s = 0 end
-    local ramp = row._compact and ROW_ICON_COMPACT or ROW_ICON
-    local x = back and s or -s
-    c:ClearAllPoints()
-    d:ClearAllPoints()
-    a:ClearAllPoints()
-    b:ClearAllPoints()
-    c:SetPoint("TOP" .. side, ground, "TOP" .. side, x, 0)
-    c:SetPoint("BOTTOM" .. side, ground, "BOTTOM" .. side, x, 0)
-    d:SetPoint("TOP" .. side, c, "TOP" .. away, 0, 0)
-    d:SetPoint("BOTTOM" .. side, c, "BOTTOM" .. away, 0, 0)
-    a:SetPoint("TOP" .. side, d, "TOP" .. away, 0, 0)
-    a:SetPoint("BOTTOM" .. side, d, "BOTTOM" .. away, 0, 0)
-    b:SetPoint("TOP" .. side, a, "TOP" .. away, 0, 0)
-    b:SetPoint("BOTTOM" .. side, a, "BOTTOM" .. away, 0, 0)
-    c:SetWidth(ramp * M.EASE)
-    d:SetWidth(ramp * (1 - M.EASE))
-    a:SetWidth(max(w * M.BEND_AT, 1))
-    b:SetWidth(max(w * (M.LIGHT_TO - M.BEND_AT), 1))
-    if M.c1 then
-      -- HORIZONTAL: the first colour is the left's.
-      if back then
-        M.Ramp(c, r, g, bl, 0, bend)
-        M.Ramp(d, r, g, bl, bend, near)
-        M.Ramp(a, r, g, bl, near, bend)
-        M.Ramp(b, r, g, bl, bend, 0)
-      else
-        M.Ramp(c, r, g, bl, bend, 0)
-        M.Ramp(d, r, g, bl, near, bend)
-        M.Ramp(a, r, g, bl, bend, near)
-        M.Ramp(b, r, g, bl, 0, bend)
-      end
-    else
-      -- A client with no gradient: each part flat at its mean.
-      c:SetColorTexture(r, g, bl, bend / 2)
-      d:SetColorTexture(r, g, bl, (near + bend) / 2)
-      a:SetColorTexture(r, g, bl, (near + bend) / 2)
-      b:SetColorTexture(r, g, bl, bend / 2)
-    end
-    local p = M.p
-    a:SetAlpha(p)
-    b:SetAlpha(p)
-    c:SetAlpha(p)
-    d:SetAlpha(p)
-    a:Show()
-    b:Show()
-    c:Show()
-    d:Show()
+    tex:SetAlpha(M.p)
+    tex:Show()
     M.lit = row
-    if back then
+    if act == "back" then
       if row.Return then T.SetColor(row.Return.Glyph, "textPrimary", T.ROW) end
     elseif row.Delete then
       local x = row.Delete
@@ -10139,20 +10065,76 @@ do
       end
       -- Whole, not at the finished row's own alpha.
       if x.SetIgnoreParentAlpha then x:SetIgnoreParentAlpha(true) end
+      M.KeyX(T, row, true)
     end
   end
 
-  -- `tex` laid as a horizontal gradient of r, g, b from alpha `lo` (its
-  -- left) to `hi`, through the two colour objects kept for it (M.Grads).
-  function M.Ramp(tex, r, g, b, lo, hi)
-    local c1, c2 = M.c1, M.c2
-    c1:SetRGBA(r, g, b, lo)
-    c2:SetRGBA(r, g, b, hi)
-    tex:SetGradient("HORIZONTAL", c1, c2)
+  -- The pointed row's wash laid on `row`'s light: the row's paint handed
+  -- the light as its stripe, hovered, with what a look's paper keeps on the
+  -- row (Skin_Blizzard's paint and whether the paper is on) carried over,
+  -- so the look paints it as it paints the row under the pointer. The
+  -- table is the row's, made with its light; nothing is made here.
+  function M.Wash(T, row)
+    local wash = row._mkWash
+    wash.__pbRowPaint, wash.__pbPaperOn = row.__pbRowPaint, row.__pbPaperOn
+    T.StyleMailRow(wash, row._rowIndex, true)
+  end
+
+  -- The lit x keyed in black where the row's ink is light on a dark
+  -- ground, as the arrow's art is keylined there (M.Art): the x's atlas
+  -- drawn again in black under it, a pixel down and to the right (made the
+  -- first time, on the x's own button, so it is whole with it), or, where
+  -- the x is the font's glyph, the glyph's shadow black at a pixel. On a
+  -- light ground (a paper look, Postbox Light) it is drawn clean, as the
+  -- arrow's clean twin is. `on` false: the key put away and the glyph's
+  -- own shadow back.
+  function M.KeyX(T, row, on)
+    local x = row.Delete
+    local glyph = x and x.Glyph
+    if not glyph then return end
+    local keyed = on and not T.InkOnLight("textSecondary", T.ROW)
+    if not row._deleteTexture then
+      if keyed then
+        if not row._mkShadow then
+          row._mkSx, row._mkSy = glyph:GetShadowOffset()
+          row._mkSr, row._mkSg, row._mkSb, row._mkSa = glyph:GetShadowColor()
+          row._mkShadow = true
+        end
+        local o = T.OnePixel(x)
+        glyph:SetShadowColor(0, 0, 0, 1)
+        glyph:SetShadowOffset(o, -o)
+      elseif row._mkShadow then
+        row._mkShadow = nil
+        glyph:SetShadowColor(row._mkSr or 0, row._mkSg or 0, row._mkSb or 0, row._mkSa or 0)
+        glyph:SetShadowOffset(row._mkSx or 0, row._mkSy or 0)
+      end
+      return
+    end
+    local key = row._mkXKey
+    if not keyed then
+      if key then key:Hide() end
+      return
+    end
+    if not key then
+      local atlas = ProbeAtlas(DELETE_ATLASES)
+      if not atlas then return end
+      key = x:CreateTexture(nil, "ARTWORK", nil, -1)
+      key:SetAtlas(atlas, false)
+      key:SetVertexColor(0, 0, 0, 1)
+      row._mkXKey = key
+    end
+    local o = T.OnePixel(x)
+    if row._mkXO ~= o then
+      row._mkXO = o
+      key:ClearAllPoints()
+      key:SetPoint("TOPLEFT", glyph, "TOPLEFT", o, -o)
+      key:SetPoint("BOTTOMRIGHT", glyph, "BOTTOMRIGHT", o, -o)
+    end
+    key:Show()
   end
 
   -- Whether the client lays a gradient with colour objects: probed once on
-  -- `tex`, and the two objects every light and the line reuse made then.
+  -- `tex`, and the two objects the marks line's glow reuses made then.
   function M.Grads(tex)
     if M.c1 == nil then
       M.c1 = false
@@ -10166,10 +10148,10 @@ do
 
   -- The lit x's ink: the row's negative; on a look's light paper (Theme's
   -- row inks, the Blizzard style's Light parchment), moved toward black
-  -- until X_NEED on that paper as a finished row shows it under the
-  -- pointer: its darker grain (rows.ground) under the pointer's wash, at
-  -- the row's own alpha, over black. Worked out again only when the inks
-  -- or the row's alpha moved.
+  -- until X_NEED on that paper as a finished row shows it lit: its darker
+  -- grain (rows.ground) under the pointer's wash twice (the row's own and
+  -- the light's, M.Wash), at the row's own alpha, over black. Worked out
+  -- again only when the inks or the row's alpha moved.
   function M.XInk(T, row)
     local r, g, b = T.Ink("negative", T.ROW)
     local rows = T._rowInks
@@ -10179,6 +10161,7 @@ do
       local v = 1.055 * rows.ground ^ (1 / 2.4) - 0.055
       local wash = T.Colors.stripeHover
       local k = wash and wash[4] or 0
+      v = v * (1 - k) + k
       v = (v * (1 - k) + k) * alpha
       M.xGen, M.xA, M.xR, M.xG, M.xB = rows.gen, alpha, r, g, b
       M.xr, M.xg, M.xb = T.Legible(r, g, b, v, v, v, M.X_NEED, false)
@@ -10189,12 +10172,9 @@ do
   -- The light off, and the mark back in its own ink.
   function M.Unlight(row)
     if M.lit == row then M.lit = nil end
-    local a = row._mkLitA
-    if not a then return end
-    a:Hide()
-    row._mkLitB:Hide()
-    row._mkLitC:Hide()
-    row._mkLitD:Hide()
+    local tex = row._mkLit
+    if not tex then return end
+    tex:Hide()
     local T = Th()
     local b = row.Return
     if b and row._mkKind == "back" then T.SetColor(b.Glyph, b.hover and "textPrimary" or "textSecondary", T.ROW) end
@@ -10202,6 +10182,7 @@ do
     if x then
       if x.SetIgnoreParentAlpha then x:SetIgnoreParentAlpha(false) end
       if row.mailDone then T.SetColor(x.Glyph, "textSecondary", T.ROW) end
+      M.KeyX(T, row, false)
     end
   end
 
