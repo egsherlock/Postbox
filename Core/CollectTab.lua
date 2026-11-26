@@ -9880,25 +9880,27 @@ do
   end
 
   -- A press on the row, or on its icon, x or arrow: the mail the row shows
-  -- now (its fingerprint, as the service follows a mail), kept for the
-  -- click that ends it (M.Pressed).
+  -- now (its fingerprint, as the service follows a mail) and whether the
+  -- marks show, kept for the click that ends it (M.Pressed), as a tile's
+  -- press keeps them (BagView's Alt.Down).
   function M.Down(self)
-    self._mkPress = self.fingerprint
+    self._mkPress, self._mkPressOn = self.fingerprint, M.goal == 1
   end
 
   function M.PartDown(self)
     local row = self:GetParent()
-    row._mkPress = row.fingerprint
+    row._mkPress, row._mkPressOn = row.fingerprint, M.goal == 1
   end
 
   -- row -> whether it shows the mail it showed at the press that ends in
-  -- this click; the press is used up either way. A row bound again between
-  -- press and release (new mail arriving) shows another mail, and the
-  -- marks' click then does nothing.
+  -- this click, whether there was a press, and whether the marks showed at
+  -- it; the press is used up either way. A row bound again between press
+  -- and release (new mail arriving) shows another mail, and the marks'
+  -- click then does nothing.
   function M.Pressed(row)
-    local pressed = row._mkPress
-    row._mkPress = nil
-    return pressed ~= nil and pressed == row.fingerprint
+    local pressed, on = row._mkPress, row._mkPressOn
+    row._mkPress, row._mkPressOn = nil, nil
+    return pressed ~= nil and pressed == row.fingerprint, on ~= nil, on == true
   end
 
   -- The house tooltip: the title, what the click does, and how to keep the
@@ -9969,11 +9971,17 @@ do
   -- mail not finished go on to select while kept on; held, nothing. A click
   -- with Alt held uses the marks, so its press is no tap. While the marks
   -- are still coming in (M.p under 1, the first 150 ms) a click does
-  -- nothing at all, on either button: it neither acts nor collects.
+  -- nothing at all, on either button: it neither acts nor collects. A
+  -- press made with the marks showing and released without them (Alt let
+  -- go first), or the other way round (Alt pressed during the click), is
+  -- neither the marks' click nor the row's own: nothing, as on a tile
+  -- (BagView's Alt.Owns).
   function M.Click(row, button, index)
-    local same = M.Pressed(row)
+    local same, pressed, pressOn = M.Pressed(row)
     M.Check()
-    if M.goal ~= 1 then return false end
+    local live = M.goal == 1
+    if pressed and pressOn ~= live then return true end
+    if not live then return false end
     M.Used()
     if M.p < 1 then return true end
     if IsShiftKeyDown() or IsControlKeyDown() then
