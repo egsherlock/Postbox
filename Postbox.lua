@@ -372,6 +372,7 @@ local function Upgrade(savedBy)
       local step = UPGRADES[i]
       if savedBy < step.before and step.before <= (own or math.huge) then
         local ok, err = pcall(step.run)
+        if not ok and ns.NoteError then ns.NoteError(err) end
         if not ok and type(geterrorhandler) == "function" then
           local handler = geterrorhandler()
           if type(handler) == "function" then handler(err) end
@@ -535,26 +536,36 @@ end
 -- A Lua error is announced once and then gone. By the time the player who
 -- hit it gets round to writing the bug report, the single most useful thing
 -- about it has scrolled out of the chat frame -- so what arrives instead is
--- "it broke", and the report is unactionable. The last few are kept here for
+-- "it broke", and the report is unactionable. Postbox's own are kept here for
 -- the diagnostic snapshot to carry.
 --
--- Three rules govern this, and all three exist because the error handler is
--- shared with every other addon on the account:
+-- Only Postbox's OWN errors, and only where Postbox catches them itself:
 --
---   * The previous handler is CHAINED, never replaced. Whatever was
---     installed before -- BugSack, an error-frame addon, Blizzard's own --
---     receives every error unchanged and in full, including ours.
---   * Only OUR errors are recorded. Another addon's stack trace is not ours
---     to collect and would not belong in a Postbox bug report.
+--   * Postbox installs no error handler. The game's handler -- BugSack's,
+--     where it is installed -- is the one every addon's errors reach, and
+--     another addon's error never runs a line of Postbox.
+--   * Where Postbox catches an error and carries on -- the event bus's
+--     handlers, and the few places that pcall a step and pass what it threw
+--     to the game's handler -- the error is noted here first (ns.NoteError),
+--     then passed on exactly as before.
+--   * The rest of Postbox's errors reach the game's handler on their own.
+--     Where BugSack's grabber keeps them, the report reads its list for the
+--     ones naming Postbox when it is built (section 6, BugGrabberLines);
+--     nothing of it is read before that.
 --   * Nothing here runs until something has already gone wrong.
 -------------------------------------------------------------
 
--- Five, not fifty: the first error is almost always the one that matters and
--- the rest are its wreckage, and this text is meant to be pasted into an
--- issue by hand.
-local ERROR_LIMIT = 5
-local errorLog = {}       -- newest last; {text, count, when}
-local errorsSeen = 0      -- everything recorded this session, dropped ones too
+-- Twenty different errors at most, kept in the order first seen: the first
+-- is almost always the one that matters and the rest are its wreckage, and
+-- this text is meant to be pasted into an issue by hand. A repeat counts on
+-- its first line wherever it falls; one past the twentieth is only counted.
+local ERROR_LIMIT = 20
+-- The lines of stack kept with an error: where Postbox caught it and the two
+-- calls that led there. The message itself names the line that failed.
+local STACK_LINES = 3
+local errorLog = {}       -- first seen first; {text, count, when, stack}
+local errorIndex = {}     -- text -> its entry in errorLog
+local errorsSeen = 0      -- everything noted this session, repeats and dropped ones too
 
 -- An addon path in a message is spelled with backslashes on one client and
 -- forward slashes on another, and the prefix is the same for every line --
@@ -565,85 +576,64 @@ local function ShortenPath(text)
 end
 
 -- A repeat is counted, not appended. One error inside an OnUpdate or a list
--- refresh fires every frame, and five identical lines would push out the
--- four different errors that came before it -- which are the interesting
--- ones. The count is itself a diagnosis: "x412" says this fires constantly.
-local function RecordError(text)
+-- refresh fires every frame, and twenty identical lines would push out the
+-- different errors that came before it -- which are the interesting ones.
+-- The count is itself a diagnosis: "x412" says this fires constantly.
+--
+-- `level`: where the stack starts, counted from here (1 is this function),
+-- read once, for an error's first time; nil records no stack (the bus's
+-- handlers have already unwound by the time it logs, so its stack would
+-- only ever name the bus).
+local function RecordError(text, level)
   errorsSeen = errorsSeen + 1
 
-  local newest = errorLog[#errorLog]
-  if newest and newest.text == text then
-    newest.count = newest.count + 1
+  local entry = errorIndex[text]
+  if entry then
+    entry.count = entry.count + 1
     return
   end
+  if #errorLog >= ERROR_LIMIT then return end
 
-  errorLog[#errorLog + 1] = {
+  entry = {
     text  = text,
     count = 1,
     when  = (type(date) == "function" and date("%H:%M:%S")) or "?",
   }
-  if #errorLog > ERROR_LIMIT then table.remove(errorLog, 1) end
-end
-
--- The first Postbox frame on a stack -- and the reason this is not simply a
--- search for "Postbox".
---
--- The stack is taken from inside the trap, and the trap is Postbox code, so
--- its own frames are always on it: a plain search would answer "ours" for
--- every error raised by every addon on the account. What separates them is
--- that the trap lives in Postbox.lua and NOTHING else in the addon does --
--- every other source file is under Core\ or Lib\. So that is the line the
--- filter draws, and it holds however many frames the trap happens to add.
---
--- The cost is that an error raised inside Postbox.lua itself, whose message
--- somehow does not name the file, goes unrecorded. That file is 700 lines of
--- setup and its errors name it; the trade is worth making for a test that
--- cannot produce a false positive.
-local function FirstOurFrame(stack)
-  for line in stack:gmatch("[^\n]+") do
-    if line:find("Postbox[\\/]Core[\\/]") or line:find("Postbox[\\/]Lib[\\/]") then
-      return (line:gsub("^%s+", ""))
+  if level and type(debugstack) == "function" then
+    local stack = debugstack(level, STACK_LINES, 0)
+    -- The game may hand insecure code a secret in place of a stack; a secret
+    -- cannot be searched or joined, so it is left out.
+    if not (type(issecretvalue) == "function" and issecretvalue(stack)) and type(stack) == "string" then
+      entry.stack = ShortenPath(stack)
     end
   end
-  return nil
+  errorLog[#errorLog + 1] = entry
+  errorIndex[text] = entry
 end
 
--- Ours or not. The message names the file that raised the error, which is
--- the cheap answer and the right one most of the time; when it names someone
--- else's file the error may still be ours, raised inside a Blizzard or
--- library function we called, and only the stack can say so. The stack walk
--- is therefore reached ONLY after the cheap test has already failed, and an
--- error is a rare enough event that one debugstack is not worth optimising.
-local function ConsiderError(message)
-  local text = tostring(message)
-  if text:find("Postbox", 1, true) then
-    RecordError(ShortenPath(text))
-    return
+-- What a catch of Postbox's calls with the error it caught, on the line
+-- before it passes the error to the game's handler as it always has, so the
+-- handler sees the same error from the same place. Noting never raises, so
+-- it can never be the reason an error goes unreported.
+--
+-- Level 4 is the catch that called this: RecordError 1, pcall 2, NoteError
+-- 3. Not a tail call, so this frame stays on the stack and the count holds.
+local function NoteError(err)
+  local text
+  if type(issecretvalue) == "function" and issecretvalue(err) then
+    text = "(an error whose message the game keeps secret)"
+  else
+    text = ShortenPath(tostring(err))
   end
-
-  if type(debugstack) ~= "function" then return end
-  local frame = FirstOurFrame(debugstack(2, 10, 0) or "")
-  if not frame then return end
-
-  -- "Their function, blamed on our file" -- the connection is the whole
-  -- point of recording an error whose message names someone else.
-  RecordError(ShortenPath(text) .. "  <- " .. ShortenPath(frame))
+  pcall(RecordError, text, 4)
 end
+ns.NoteError = NoteError
 
-if type(geterrorhandler) == "function" and type(seterrorhandler) == "function" then
-  local previous = geterrorhandler()
-  seterrorhandler(function(message, ...)
-    -- Recording must never become the reason an error goes unreported, so it
-    -- is wrapped, and the handler that was here before is called either way.
-    pcall(ConsiderError, message)
-    if type(previous) == "function" then return previous(message, ...) end
-  end)
-end
-
--- The event bus pcalls its handlers and logs what they threw, which means a
--- handler error never reaches the trap above -- and event handlers are where
--- a mail addon does most of its work. This is what the bus's logger is
--- pointed at, so both roads end in the same place.
+-- The event bus pcalls its handlers and logs what they threw, and event
+-- handlers are where a mail addon does most of its work. This is what the
+-- bus's logger is pointed at, so its errors are noted with the rest; it
+-- prints them to chat as it always has, and hands nothing to the game's
+-- handler, as before.
 --
 -- Everything it is given is recorded, not just the lines saying "error": the
 -- bus logs nothing routine. Its three messages are a handler that threw, an
@@ -2294,6 +2284,106 @@ do
   end
 end
 
+-- The report's last part: the errors Postbox noted itself (section 5), then
+-- those BugSack's grabber holds from this session whose message or stack
+-- names Postbox's folder, less the ones already listed. The grabber is read
+-- only here, when a report is built, through its own two readers; nothing
+-- of it is written or kept.
+local ErrorLines
+do
+  -- Ten of the grabber's at most, after Postbox's own twenty.
+  local GRABBER_LIMIT = 10
+  local MESSAGE_CHARS = 400
+
+  -- A string that can be searched, or nil: the grabber stores what the game
+  -- gave it, and a secret cannot be searched.
+  local function Plain(v)
+    if type(issecretvalue) == "function" and issecretvalue(v) then return nil end
+    if type(v) ~= "string" then return nil end
+    return v
+  end
+
+  local function Ours(text)
+    return text ~= nil and text:find("[Aa]dd[Oo]ns[\\/]Postbox[\\/]") ~= nil
+  end
+
+  local function AddEntry(add, when, count, text)
+    text = text:gsub("[\r\n]+", " ")
+    if #text > MESSAGE_CHARS then text = text:sub(1, MESSAGE_CHARS) .. "..." end
+    add(string.format("  [%s]%s %s", when, count > 1 and (" x" .. count) or "", text))
+  end
+
+  -- A stack's first `keep` lines, under its error. Where none of them is
+  -- Postbox's, the first line that is follows them: another addon's error
+  -- raised inside a call of Postbox's then says where Postbox was.
+  local function AddStack(add, stack, keep)
+    local n, oursShown = 0, false
+    for line in stack:gmatch("[^\r\n]+") do
+      line = line:gsub("^%s+", "")
+      if line ~= "" then
+        if n < keep then
+          n = n + 1
+          if Ours(line) then oursShown = true end
+          add("      " .. ShortenPath(line))
+        elseif oursShown then
+          return
+        elseif Ours(line) then
+          add("      ... " .. ShortenPath(line))
+          return
+        end
+      end
+    end
+  end
+
+  local function GrabberLines(add)
+    local grabber = _G.BugGrabber
+    if type(grabber) ~= "table" then return end
+    local GetDB, GetSessionId = grabber.GetDB, grabber.GetSessionId
+    if type(GetDB) ~= "function" then return end
+    local db = GetDB(grabber)
+    if type(db) ~= "table" then return end
+    local session = type(GetSessionId) == "function" and GetSessionId(grabber) or nil
+    if type(session) ~= "number" then session = nil end
+
+    local picked, found = {}, 0
+    for i = 1, #db do
+      local e = db[i]
+      if type(e) == "table" and (session == nil or e.session == session) then
+        local message, stack = Plain(e.message), Plain(e.stack)
+        if message and (Ours(message) or Ours(stack)) and not errorIndex[ShortenPath(message)] then
+          found = found + 1
+          if #picked < GRABBER_LIMIT then picked[#picked + 1] = e end
+        end
+      end
+    end
+    if found == 0 then return end
+
+    add(string.format("BugSack, this session, naming Postbox: %d", found))
+    for i = 1, #picked do
+      local e = picked[i]
+      local when = (type(e.time) == "number" and type(date) == "function") and date("%H:%M:%S", e.time) or "?"
+      AddEntry(add, when, type(e.counter) == "number" and e.counter or 1, ShortenPath(e.message))
+      local stack = Plain(e.stack)
+      if stack then AddStack(add, stack, STACK_LINES) end
+    end
+    if found > #picked then add(string.format("  and %d more", found - #picked)) end
+  end
+
+  function ErrorLines(add)
+    if #errorLog > 0 then
+      add(string.format("Errors Postbox caught this session: %d", errorsSeen))
+      for i = 1, #errorLog do
+        local entry = errorLog[i]
+        AddEntry(add, entry.when, entry.count, entry.text)
+        if entry.stack then AddStack(add, entry.stack, STACK_LINES) end
+      end
+    end
+    -- Its own pcall: a grabber shaped otherwise than expected costs this
+    -- part, never the lines above it.
+    pcall(GrabberLines, add)
+  end
+end
+
 local function BuildDiagnosticReport()
   local lines = {}
   local function add(text) lines[#lines + 1] = text end
@@ -2468,14 +2558,7 @@ local function BuildDiagnosticReport()
 
   -- Last, and last for a reason: it is the part a maintainer scrolls to, and
   -- anything appended below it would be missed.
-  if #errorLog > 0 then
-    add(string.format("Errors this session: %d", errorsSeen))
-    for i = 1, #errorLog do
-      local entry = errorLog[i]
-      add(string.format("  [%s]%s %s", entry.when,
-        entry.count > 1 and (" x" .. entry.count) or "", entry.text))
-    end
-  end
+  pcall(ErrorLines, add)
 
   return table.concat(lines, "\n")
 end
@@ -2705,8 +2788,8 @@ end
 -------------------------------------------------------------
 
 -- LogLine, not ns.Print: the bus pcalls its handlers, so an error inside one
--- never reaches the global error handler and would otherwise be the one
--- class of Postbox error the bug report could not see.
+-- never reaches the game's error handler, and the bug report sees it only
+-- because LogLine notes it (section 5).
 ns.Events = ns.Core.Events.NewBus(LogLine)
 
 ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
@@ -2758,6 +2841,7 @@ ns.Events.Register("ADDON_LOADED", function(_, loadedAddon)
   for _, settle in ipairs({ SettleGridDefault, SettleGroupOrder, SettleGridShown, SettleHiddenRecipients,
       SettleAttachHover }) do
     local ok, err = pcall(settle, ns.freshInstall, savedBy)
+    if not ok then NoteError(err) end
     if not ok and type(geterrorhandler) == "function" then
       local handler = geterrorhandler()
       if type(handler) == "function" then handler(err) end
