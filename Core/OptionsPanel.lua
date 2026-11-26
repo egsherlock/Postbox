@@ -10677,6 +10677,7 @@ do
     Put(profile, snap, units, keeps, false, nil)
     if type(UI.ForgetSettings) == "function" then UI.ForgetSettings() end
     if not ok then
+      if ns.NoteError then ns.NoteError(err) end
       if type(geterrorhandler) == "function" then geterrorhandler()(err) end
       return nil
     end

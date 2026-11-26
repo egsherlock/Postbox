@@ -5893,6 +5893,7 @@ do
   end
 
   function sweep.Report(err)
+    if ns.NoteError then ns.NoteError(err) end
     local handler = type(geterrorhandler) == "function" and geterrorhandler() or nil
     -- The game's own error handler (BugSack and the like hook it); every
     -- client has one.

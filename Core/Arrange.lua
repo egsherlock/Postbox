@@ -1457,6 +1457,7 @@ do
     end
     if not theirs then
       local ok, left = pcall(EscapeLayer, drag)
+      if not ok and ns.NoteError then ns.NoteError(left) end
       if not ok and type(geterrorhandler) == "function" then geterrorhandler()(left) end
       if ok and left then return end
     end

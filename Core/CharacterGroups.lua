@@ -737,6 +737,7 @@ function CG.GridButtons()
   -- failure is its own: the grid keeps its buttons.
   if CG._editor and FollowEditor then
     local ok, err = pcall(FollowEditor, false)
+    if not ok and ns.NoteError then ns.NoteError(err) end
     if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
   end
   return out

@@ -400,6 +400,7 @@ local RESET_KEEP = {
 local function ResetStep(fn, ...)
   if type(fn) ~= "function" then return end
   local ok, err = pcall(fn, ...)
+  if not ok and ns.NoteError then ns.NoteError(err) end
   if not ok and type(geterrorhandler) == "function" then
     local handler = geterrorhandler()
     if type(handler) == "function" then handler(err) end
@@ -5151,6 +5152,7 @@ local function EndPreview()
   UI.TestMailChanged()
   -- A failed leave is said where errors are read, once the preview is put
   -- away regardless.
+  if not ok and ns.NoteError then ns.NoteError(err) end
   if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
 end
 

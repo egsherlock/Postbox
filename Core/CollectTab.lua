@@ -17395,6 +17395,7 @@ function RV.GroupSpecs(panel)
   if not (groups and type(groups.GridButtons) == "function") then return nil end
   local ok, specs = pcall(groups.GridButtons, panel)
   if not ok then
+    if ns.NoteError then ns.NoteError(specs) end
     if type(geterrorhandler) == "function" then geterrorhandler()(specs) end
     return nil
   end
@@ -17642,6 +17643,7 @@ function RV.GridClick(panel, id)
     if CT.IsRunning() then return end
     if type(spec.collect) == "function" then
       local ok, err = pcall(spec.collect, panel)
+      if not ok and ns.NoteError then ns.NoteError(err) end
       if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
     end
     return
@@ -17660,6 +17662,7 @@ function RV.GridEdit(panel, id)
   if not (groups and type(groups.OpenEditor) == "function") then return end
   local UI = ns.MailboxUI
   local ok, err = pcall(groups.OpenEditor, id ~= "alts" and id or nil, UI and UI._frame)
+  if not ok and ns.NoteError then ns.NoteError(err) end
   if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
 end
 
@@ -19782,6 +19785,7 @@ function CT.ArrangeHost(panel)
     local UI = ns.MailboxUI
     local anchor = (insp and insp:IsShown()) and insp or (UI and UI._frame)
     local ok, err = pcall(groups.OpenEditor, nil, anchor, insp and insp:IsShown() and insp.side or nil)
+    if not ok and ns.NoteError then ns.NoteError(err) end
     if not ok and type(geterrorhandler) == "function" then geterrorhandler()(err) end
   end
   panel._arrangeHost = host

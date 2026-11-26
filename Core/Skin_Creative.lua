@@ -616,6 +616,7 @@ end
 -- window it was dressing.
 local function Report(ok, err)
   if ok then return end
+  if ns.NoteError then ns.NoteError(err) end
   if type(geterrorhandler) == "function" then geterrorhandler()(err) end
 end
 
