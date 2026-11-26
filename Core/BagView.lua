@@ -2586,9 +2586,9 @@ end
 -- row's Return arrow in the tile's corner), f74 T01 "senders" (the
 -- tooltip: a line per sender, what else goes under it), S01 "build" (one
 -- question, then every mail it named, one at a time, each checked again).
--- f74 Q01 (when the question is asked) is still his to pick: the safest
--- card is built, every return from a tile asks first (Alt.Asks, the one
--- place that decides it).
+-- f80 Q03 (when the question is asked): one mail holding nothing but the
+-- tile's item goes back at the click (Mail.OnlyItem); anything more asks
+-- first (Alt.Asks, the one place that decides it).
 --
 -- Only on this character's own Inbox at a mailbox, where the marks are
 -- eligible (CollectTab's M.Eligible: the list, or the bag in its place),
