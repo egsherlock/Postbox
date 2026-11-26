@@ -122,10 +122,11 @@
   with BugSack installed, picks its own out of BugSack's list when you
   make a report. Other addons' errors reach BugSack or the game exactly as
   before.
-- **The mailbox window can keep a size of your own.** Shift-right-click
-  the resize grip (bottom right) to keep the size the window is now; a
-  right-click then goes back to your size, and from there to Postbox's.
-  Reset settings clears it. The grip's tooltip says which.
+- **The mailbox window, Mail Memory and Manage Recipients can each keep a
+  size of your own.** Shift-right-click a window's resize grip (bottom
+  right) to keep the size it is now; a right-click then goes back to your
+  size, and from there to the default. Reset settings clears them. The
+  grip's tooltip says which.
 - **The mailbox window is a little wider:** 520 at its narrowest and by
   default, where it was 480, so auction labels and sums have room. A
   window you had narrower opens at 520, growing to the right.
