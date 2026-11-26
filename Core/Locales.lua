@@ -1087,7 +1087,7 @@ L["OPT_ROW_MARKS_TITLE"]       = "Return and Delete with Alt"
 L["OPT_ROW_MARKS_DESC"]        = "Hold Alt on the Mail tab's list and a click on a mail that can go back sends it back, with no question; a right-click on finished mail deletes it. Double-tap Alt to keep them on.\n\nOff, Alt does nothing on the list."
 L["MARKS_KEY_KEPT_DOES"]       = "While on, a click on a mail that can go back returns it, and a right-click on finished mail deletes it."
 -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-L["MARKS_KEY_KEPT_BAG"]        = "While on, a click on an item asks first, then returns the mails holding it."
+L["MARKS_KEY_KEPT_BAG"]        = "While on, a click on an item returns its mails; it asks first unless it is one mail holding only that item."
 L["BAGALT_TIP_SUM"]            = "Returns %d of %d"
 L["BAGALT_TIP_ALL"]            = "Returns all %d to %s"
 L["BAGALT_TIP_ALL_N"]          = "Returns all %d"
@@ -1785,7 +1785,7 @@ if GetLocale() == "frFR" then
   L["OPT_ROW_MARKS_DESC"]        = "Maintiens Alt sur la liste de l'onglet Courrier : un clic sur un courrier qui peut être renvoyé le renvoie, sans rien demander ; un clic droit sur un courrier terminé le supprime. Appuie deux fois sur Alt pour les garder.\n\nDésactivé, Alt ne fait rien sur la liste."
   L["MARKS_KEY_KEPT_DOES"]       = "Tant que c'est actif, un clic sur un courrier qui peut être renvoyé le renvoie, et un clic droit sur un courrier terminé le supprime."
   -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-  L["MARKS_KEY_KEPT_BAG"]        = "Tant que c'est actif, un clic sur un objet demande d'abord, puis renvoie les courriers qui le contiennent."
+  L["MARKS_KEY_KEPT_BAG"]        = "Tant que c'est actif, un clic sur un objet renvoie ses courriers, en demandant d'abord sauf pour un seul courrier ne contenant que lui."
   L["BAGALT_TIP_SUM"]            = "Renvoie %d sur %d"
   L["BAGALT_TIP_ALL"]            = "Renvoie les %d à %s"
   L["BAGALT_TIP_ALL_N"]          = "Renvoie les %d"
@@ -3223,7 +3223,7 @@ if GetLocale() == "deDE" then
   L["OPT_ROW_MARKS_DESC"]        = "Halte Alt über der Liste im Post-Tab: Ein Klick auf Post, die zurückgehen kann, schickt sie ohne Rückfrage zurück; ein Rechtsklick auf erledigte Post löscht sie. Tippe zweimal auf Alt, damit es eingeschaltet bleibt.\n\nAusgeschaltet bewirkt Alt in der Liste nichts."
   L["MARKS_KEY_KEPT_DOES"]       = "Solange es eingeschaltet ist, schickt ein Klick auf Post, die zurückgehen kann, sie zurück, und ein Rechtsklick auf erledigte Post löscht sie."
   -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-  L["MARKS_KEY_KEPT_BAG"]        = "Solange es eingeschaltet ist, fragt ein Klick auf einen Gegenstand zuerst und schickt dann die Post zurück, die ihn enthält."
+  L["MARKS_KEY_KEPT_BAG"]        = "Solange es eingeschaltet ist, schickt ein Klick auf einen Gegenstand seine Post zurück und fragt zuerst, außer bei einem einzigen Brief nur mit ihm."
   L["BAGALT_TIP_SUM"]            = "Schickt %d von %d zurück"
   L["BAGALT_TIP_ALL"]            = "Schickt alle %d an %s zurück"
   L["BAGALT_TIP_ALL_N"]          = "Schickt alle %d zurück"
@@ -4658,7 +4658,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["OPT_ROW_MARKS_DESC"]        = "Mantén Alt sobre la lista de la pestaña Correo: un clic en un correo que puede devolverse lo devuelve, sin preguntar; un clic derecho en un correo terminado lo borra. Pulsa Alt dos veces para mantenerlo.\n\nDesactivado, Alt no hace nada en la lista."
   L["MARKS_KEY_KEPT_DOES"]       = "Mientras está activo, un clic en un correo que puede devolverse lo devuelve, y un clic derecho en un correo terminado lo borra."
   -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-  L["MARKS_KEY_KEPT_BAG"]        = "Mientras está activo, un clic en un objeto pregunta primero y luego devuelve los correos que lo contienen."
+  L["MARKS_KEY_KEPT_BAG"]        = "Mientras está activo, un clic en un objeto devuelve sus correos y pregunta primero, salvo si es un solo correo que solo lo contiene."
   L["BAGALT_TIP_SUM"]            = "Devuelve %d de %d"
   L["BAGALT_TIP_ALL"]            = "Devuelve los %d a %s"
   L["BAGALT_TIP_ALL_N"]          = "Devuelve los %d"
@@ -6097,7 +6097,7 @@ L["OPT_ROW_MARKS_TITLE"]       = "Возврат и удаление с Alt"
 L["OPT_ROW_MARKS_DESC"]        = "Удерживайте Alt над списком вкладки «Почта»: щелчок по письму, которое можно вернуть, возвращает его без вопросов; правый клик по разобранному письму удаляет его. Нажмите Alt дважды, чтобы режим остался включённым.\n\nВыключено — Alt в списке ничего не делает."
 L["MARKS_KEY_KEPT_DOES"]       = "Пока режим включён, щелчок по письму, которое можно вернуть, возвращает его, а правый клик по разобранному письму удаляет его."
 -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-L["MARKS_KEY_KEPT_BAG"]        = "Пока режим включён, щелчок по предмету сначала спрашивает, затем возвращает письма с ним."
+L["MARKS_KEY_KEPT_BAG"]        = "Пока режим включён, щелчок по предмету возвращает письма с ним и сначала спрашивает, кроме одного письма только с этим предметом."
 L["BAGALT_TIP_SUM"]            = "Вернёт %d из %d"
 L["BAGALT_TIP_ALL"]            = "Вернёт все %d: %s"
 L["BAGALT_TIP_ALL_N"]          = "Вернёт все %d"
@@ -8443,7 +8443,7 @@ if GetLocale() == "zhCN" then
   L["OPT_ROW_MARKS_DESC"]      = "在“收件”标签页的列表上按住 Alt：点击可以退回的邮件会直接将其退回，不再询问；右键点击已处理的邮件会将其删除。双击 Alt 可保持开启。\n\n关闭后，Alt 在列表上不起作用。"
   L["MARKS_KEY_KEPT_DOES"]     = "开启期间，点击可以退回的邮件会将其退回，右键点击已处理的邮件会将其删除。"
   -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-  L["MARKS_KEY_KEPT_BAG"]      = "开启期间，点击物品会先询问，然后退回装有该物品的邮件。"
+  L["MARKS_KEY_KEPT_BAG"]      = "开启期间，点击物品会退回装有它的邮件；仅一封只含该物品的邮件时直接退回，否则先询问。"
   L["BAGALT_TIP_SUM"]          = "退回 %d / %d"
   L["BAGALT_TIP_ALL"]          = "全部 %d 退回给%s"
   L["BAGALT_TIP_ALL_N"]        = "全部 %d 退回"
@@ -9855,7 +9855,7 @@ if GetLocale() == "zhTW" then
   L["OPT_ROW_MARKS_DESC"]      = "在「收件」分頁的列表上按住 Alt：點擊可以退回的郵件會直接將其退回，不再詢問；右鍵點擊已處理的郵件會將其刪除。雙擊 Alt 可保持開啟。\n\n關閉後，Alt 在列表上不起作用。"
   L["MARKS_KEY_KEPT_DOES"]     = "開啟期間，點擊可以退回的郵件會將其退回，右鍵點擊已處理的郵件會將其刪除。"
   -- s33 bagalt: Return and Delete with Alt in the one bag (BagView 7)
-  L["MARKS_KEY_KEPT_BAG"]      = "開啟期間，點擊物品會先詢問，然後退回裝有該物品的郵件。"
+  L["MARKS_KEY_KEPT_BAG"]      = "開啟期間，點擊物品會退回裝有它的郵件；僅一封只含該物品的郵件時直接退回，否則先詢問。"
   L["BAGALT_TIP_SUM"]          = "退回 %d / %d"
   L["BAGALT_TIP_ALL"]          = "全部 %d 退回給%s"
   L["BAGALT_TIP_ALL_N"]        = "全部 %d 退回"
