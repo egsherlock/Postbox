@@ -1489,8 +1489,16 @@ function BV.TipMail(kind, i)
     local expires = tonumber(where.expires)
     if expires then days = (expires - time()) / 86400 end
   end
-  if type(who) ~= "string" or who == "" then who = L()["SENDER_UNKNOWN"] end
-  local right = kind.gold and ns.Core.Formatting.FormatMoneyCompact(count, true) or tostring(count)
+  -- A person whole, in their class colour, as every tooltip writes one
+  -- (CollectTab's RV.TipSender; the box's realm where the tile has one).
+  if type(who) ~= "string" or who == "" then
+    who = L()["SENDER_UNKNOWN"]
+  else
+    who = P.RV.TipSender(who, kind.sect and kind.sect.realm)
+  end
+  -- Gold exact, as the title says it: this line is the one place each
+  -- mail's share is given.
+  local right = kind.gold and H.FormatMoney(count) or tostring(count)
   if age then
     right = right .. P.RV.SLOT_DOT .. age
   elseif days and days > 0 then
@@ -1498,7 +1506,8 @@ function BV.TipMail(kind, i)
     local left = H.TimeLeft(days)
     right = right .. P.RV.SLOT_DOT .. (short and T.TipTone("warning", left) or left)
   end
-  GameTooltip:AddDoubleLine(who, right, 0.82, 0.82, 0.82, 1, 1, 1)
+  local m = T.TIP_MUTED
+  GameTooltip:AddDoubleLine(who, right, m, m, m, 1, 1, 1)
 end
 
 -- kind -> how many mails it is in: one a mail, and a tally's row (Mail
