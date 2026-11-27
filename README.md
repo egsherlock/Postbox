@@ -90,16 +90,18 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   command at a time, in the order the list shows. Under a search it collects
   what's shown; with rows selected (Shift-click a range, Ctrl-click one) it
   collects your picks. C.O.D. mail is never swept. A run of three mails
-  or more draws a thin line under the title bar as it goes; if it stops
+  or more draws a thin line under the title bar as it goes, as does one
+  press of Send that sends two mails or more; if it stops
   early, the line fades where it stopped, holding a moment first in the
   color of the words beside it when they say why. **Progress line**
   (Options > General > Alerts) turns the line off.
 - **Hold Alt** to send back or delete from the list: a return arrow takes
   the read dot's place on every mail that can go back, finished mail keeps
   its x, and auction mail still holding something shows a faded x (it can
-  only be taken). While the marks show, a click anywhere on a row sends
-  that mail back and a right-click deletes finished mail; the row lights
-  to say which. Double-tap Alt to keep them on (a small chip in the title
+  only be taken). While the marks show, a click anywhere on a row does
+  what its mark shows (the arrow sends that mail back, the x deletes
+  finished mail) and a right-click opens the mail as usual and puts the
+  marks away; the row lights to say which. Double-tap Alt to keep them on (a small chip in the title
   bar and a line along the top of the list say so); one tap, or a click
   on the chip, ends it. Alt does nothing while you are typing, and a
   click acts only once the marks are fully showing. **Return and Delete

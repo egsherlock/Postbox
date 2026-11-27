@@ -12,9 +12,11 @@
   in its tooltip. Only All mail follows the choice:
   Collect shown, the other buttons and a click on a mail take what they
   always did.
-- **Mail tab: a progress line while All mail works.** A run of three
-  mails or more draws a thin line in your accent under the title bar (a
-  gold thread in the Blizzard look), filling as each mail comes out. If
+- **Mail tab and Send tab: a progress line while a run works.** An All
+  mail run of three mails or more, or one press of Send that sends two
+  mails or more, draws a thin line in your accent under the title bar (a
+  gold thread in the Blizzard look), filling as each mail comes out or
+  goes. If
   the run stops early, the line fades where it stopped; when the words
   beside it say why, it holds a moment in their color first. When a run
   has taken everything the line glows softly and trails away. The words
@@ -78,9 +80,10 @@
 - **Mail tab: send back or delete a mail from its row.** Hold Alt and a
   return arrow shows in place of the read dot on every mail that can go
   back, and finished mail keeps its x: the Return and Delete marks.
-  While they show, a click anywhere on a row sends that mail back and a
-  right-click deletes finished mail. The row under the pointer says
-  which: mail that can go back is washed evenly in your accent, end to
+  While they show, a click anywhere on a row does what its mark shows:
+  the arrow sends that mail back, the x deletes finished mail. A
+  right-click opens the mail as usual and puts the marks away. The row
+  under the pointer says which: mail that can go back is washed evenly in your accent, end to
   end, and finished mail lights as any row does with only its x in red.
   A row that can do neither says why. Alt does nothing while you are
   typing, and a click acts only once the marks are fully showing, only on
@@ -134,7 +137,8 @@
   size of your own.** Shift-right-click a window's resize grip (bottom
   right) to keep the size it is now; a right-click then goes back to your
   size, and from there to the default. Reset settings clears them. The
-  grip's tooltip says which.
+  grip's tooltip says which a right-click will do, with the size, and
+  "Saved" with the size just after you keep one.
 - **The mailbox window is a little wider:** 520 at its narrowest and by
   default, where it was 480, so auction labels and sums have room. A
   window you had narrower opens at 520, growing to the right.
@@ -148,8 +152,30 @@
 - **Mail tab: a click where nothing can be taken says so.** In another
   character's box, in History and while searching every character, the
   mail or tile you click wears a small lock for a moment and the line at
-  the foot of the list lights, in the list and in the one-bag view. In
-  History the line says "Nothing to take here" under its own words.
+  the foot of the list answers in your accent, in the list and in the
+  one-bag view. In another character's box its words light and the
+  character's name is underlined; in History and a search of every
+  character it reads "Nothing to take here" for a moment, then its own
+  words come back. Nothing is added under the line and nothing moves.
+- **Mail tab, History: a mail's tooltip reads as the whole record.** It
+  always says who sent it and the gold it held in full, and lists every
+  stack that came out, one line each.
+- **Mail tab, History: a sold auction's tooltip has the sale's
+  breakdown:** what it sold for, the deposit back and the auction
+  house's fee, under the gold you received. Sales collected before 2.0
+  read as before.
+- **Mail tab, History > Sent: a sent mail's tooltip reads like a received
+  one's.** Its title is the subject you wrote, then who it went to, each
+  stack, the gold, and the day and time you sent it.
+- **Mail tab: a mail of yours that came back says Returned in its
+  tooltip.**
+- **Mail tab: a sold auction's tooltip leads with the price it sold
+  for,** above the deposit and the fee.
+- **Mail tab: a mail shown gray below the game's list says its gold, its
+  price or its C.O.D. in full in its tooltip,** where the row shortens
+  it.
+- **Mail tab, one bag: the gold tile's tooltip gives each mail's gold in
+  full** and names each sender in their class color.
 - **Mail tab: the line at the foot of the list is a little brighter** in
   History and in another character's box, so it reads at a glance.
 - **Mail tab: right-click the History button to leave History**, or
@@ -227,6 +253,9 @@
 - **Minimap icon: it is drawn above other addons' map pins** (Questie's
   among them), which could cover it where a pin stood beside it, on
   Postbox's own icon and on EllesmereUI's minimap.
+- **Send tab: through a press of several mails the Send button stays
+  busy until the last mail has gone** ("Sending 2 of 3..."). It could be
+  pressed again for a moment between two mails.
 - Send tab, Forever: while Blizzard has C.O.D. switched off, the C.O.D.
   box shows a lock and a gray label, and its tooltip says Blizzard has
   turned it off, with the game's own words, instead of letting a C.O.D.
