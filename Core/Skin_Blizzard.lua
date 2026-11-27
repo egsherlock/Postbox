@@ -2676,7 +2676,12 @@ end
 -- Recipients key) is the field's last cell: the field's border has no end
 -- cap there and runs on into the cell (Parts.FieldEnd), which wears the art
 -- without its left end (its rim at its top, foot and right) and the rim's
--- one-unit column at its left, the line between field and key. The options'
+-- one-unit column at its left, the line between field and key. A cell with
+-- another joined after it (the Mail tab's sort before its bag switch) is an
+-- inner cell of that strip: no end at either side, its art stopping at the
+-- column the next cell's line stands on, which lights beside either lit
+-- cell; only the cell at the wrap's outer end has the rounded end
+-- (Theme.JoinedNext). The options'
 -- Mail tab drawing's Inbox and Done are dressed by its paint (Skin.
 -- PaintPreview), each standing alone; the arrange inspector's keep their look.
 do
@@ -2874,6 +2879,13 @@ do
       return
     end
     local lit = (plate.isSelected or (nxt and nxt.isSelected)) and true or false
+    -- A field's cell after another cell (the bag switch after the sort):
+    -- its line is the column the two share, lit beside either lit cell.
+    if field and not lit then
+      local T = ns.Theme
+      local prev = T and T.JoinedPrev and T.JoinedPrev(plate)
+      lit = (prev and prev.isSelected) and true or false
+    end
     if art.lineLit ~= lit or art.lineH ~= art.h or art.lineGap ~= art.gap then
       art.lineLit, art.lineH, art.lineGap = lit, art.h, art.gap
       local state = lit and "lit" or "up"
@@ -2934,6 +2946,12 @@ do
         if plate == last then return "last", -1, nil, first end
       end
     elseif kind == "field" then
+      -- The field's last cell only at the wrap's outer end: with a cell
+      -- after it (the sort before the bag switch) it is an inner cell,
+      -- square at both sides, its art stopping short of the column the
+      -- next cell's line stands on (Theme.JoinedNext).
+      local T = ns.Theme
+      if T and T.JoinedNext and T.JoinedNext(plate) then return "middle", -1, nil, nil end
       return "last", 0, nil, nil
     elseif kind == "clock" then
       if plate._joined then return "first", -1, plate.__pbBlizzSides[1], nil end
@@ -2983,6 +3001,15 @@ do
     art.next = nxt
     Line(plate, nxt)
     Ink(plate, state)
+    -- A field's cell with a cell after it: that cell's line, the column
+    -- they share, follows this one's light.
+    if plate.__pbBlizzJoin == "field" then
+      local T = ns.Theme
+      local after = T and T.JoinedNext and T.JoinedNext(plate)
+      -- (Once that cell is laid: a cell being dressed is laid after this.)
+      local laid = after and after.__pbBlizzSeg
+      if laid and laid.h then Line(after, nil) end
+    end
     -- The cell before: its line follows this one's light, and it is laid
     -- again where it last had another cell after it.
     local before = prev and prev.__pbBlizzSeg
@@ -3031,9 +3058,14 @@ do
   -- The ring a joined row draws round its plates today (a texture of the
   -- row's own, under them) is faded: the strip's art is the ring now.
   -- A field's cell shown or hidden: the field's end follows it.
+  -- The cell before it, if it is a field's cell too, is an inner cell or
+  -- the last one by whether this one shows: laid again.
   local function FieldMoved(plate)
     local wrap = plate.__pbJoinWrap
     if wrap then Parts.FieldEnd(wrap, plate) end
+    local T = ns.Theme
+    local prev = T and T.JoinedPrev and T.JoinedPrev(plate)
+    if prev and prev.__pbBlizzSeg then Paint(prev) end
   end
 
   local function Join(plate)
@@ -3044,7 +3076,7 @@ do
       Fade(plate.__pbDivider)
       plate:HookScript("OnShow", FieldMoved)
       plate:HookScript("OnHide", FieldMoved)
-      Parts.FieldEnd(wrap, plate)
+      FieldMoved(plate)
       return
     end
     local p = plate:GetParent()

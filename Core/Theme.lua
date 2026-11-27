@@ -6702,6 +6702,18 @@ function Theme.JoinCell(wrap, cell, first)
   line:SetPoint("BOTTOM" .. side, cell, "BOTTOM" .. side, 0, 0)
   cell.__pbDivider, cell.__pbJoinWrap = line, wrap
   cell:HookScript("OnShow", Theme.PaintJoin)
+  if not first then
+    -- The wrap's last cells in the order they were joined, which is the
+    -- order they stand in from left to right: each joins at the right end,
+    -- and the one before moves a cell in (the Mail tab's bag switch after
+    -- its sort). Theme.JoinedNext / JoinedPrev read it.
+    local cells = wrap.__pbJoinCells
+    if not cells then
+      cells = {}
+      wrap.__pbJoinCells = cells
+    end
+    cells[#cells + 1] = cell
+  end
   if first then
     wrap.__pbLeadCell = cell
     cell:HookScript("OnHide", Theme.PaintJoin)
@@ -6709,6 +6721,43 @@ function Theme.JoinCell(wrap, cell, first)
     -- first time the pointer finds it after a look added regions.
     wrap:HookScript("OnEnter", Theme.FitJoinFace)
   end
+end
+
+-- The shown cell joined after `cell` on its wrap, or nil where `cell` is
+-- the wrap's last shown cell: the cell that stands at the wrap's outer end.
+-- Only the outer end is rounded where a look rounds a cell's end; a cell
+-- with another after it is square at both sides, the two parted by the
+-- one-unit divider alone, as the search and its first cell are. Nothing is
+-- made.
+function Theme.JoinedNext(cell)
+  local wrap = cell and cell.__pbJoinWrap
+  local cells = wrap and wrap.__pbJoinCells
+  if not cells then return nil end
+  local seen = false
+  for i = 1, #cells do
+    local c = cells[i]
+    if c == cell then
+      seen = true
+    elseif seen and c:IsShown() then
+      return c
+    end
+  end
+  return nil
+end
+
+-- The shown cell joined before `cell` on its wrap (whose divider is the
+-- column the two share), or nil where the search's own cell is before it.
+function Theme.JoinedPrev(cell)
+  local wrap = cell and cell.__pbJoinWrap
+  local cells = wrap and wrap.__pbJoinCells
+  if not cells then return nil end
+  local prev
+  for i = 1, #cells do
+    local c = cells[i]
+    if c == cell then return prev end
+    if c:IsShown() then prev = c end
+  end
+  return nil
 end
 
 -- A button with a first cell (Theme.JoinCell's `first`): its face is the
