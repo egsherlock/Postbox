@@ -12363,15 +12363,40 @@ function HV.SentTip(owner, entries, who, hint)
 end
 CT.SentTip = HV.SentTip
 
--- A Sent row's tooltip: its one mail, by the rule above. The entry goes in
--- a list kept for it, so a hover builds no table.
-HV.oneSent = {}
+-- A Sent row's tooltip, read as a Received row's is (HV.RowTip): the
+-- subject the player wrote as its title (with none, "To X", as the Send
+-- tab's line titles a press); To, the recipient in full, where the title
+-- does not already say it; every stack, a line each; the gold and the
+-- C.O.D. asked, or that it came back (`r`); Sent, the day and the time;
+-- "Arrives in about an hour" under it while that applies. The Send tab's
+-- line after a press keeps HV.SentTip. Built on hover, no table.
 function HV.SentRowTip(row)
-  local one = HV.oneSent
-  one[1] = row.entry
-  local shown = HV.SentTip(row, one, row.tipWho, nil)
-  one[1] = nil
-  return shown
+  local e = row.entry
+  if not e then return false end
+  local T, L0, H = Th(), L(), Helpers()
+  T.TipBegin(row)
+  local sub = e.sub
+  if type(sub) == "string" and sub ~= "" then
+    T.TipTitle(sub)
+    T.TipFact(L0["TIP_TO"], HV.SentFull(e.s))
+  else
+    T.TipTitle(L0("SENT_TIP_TO", HV.SentFull(e.s)))
+  end
+  HV.TipStacks(e.it)
+  -- A mail returned (`r`): said so, with the arrow its row wears; its gold
+  -- the other character's, not spent; no C.O.D. said (HV.SentTip).
+  if e.r then
+    GameTooltip:AddLine(RV.ReturnedTip(), T.TIP_MUTED, T.TIP_MUTED, T.TIP_MUTED)
+    if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], H.FormatMoney(e.m)) end
+  else
+    if (e.m or 0) > 0 then T.TipFact(L0["LABEL_GOLD"], T.TipTone("negative", H.FormatMoney(e.m))) end
+    if (e.c or 0) > 0 then T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(e.c))) end
+  end
+  HV.TipTime(L0["TIP_SENT"], e.t)
+  local t = tonumber(e.t)
+  if e.h and t and time() - t < 3600 then T.TipNote(L0["SENT_TIP_ARRIVES"]) end
+  GameTooltip:Show()
+  return true
 end
 
 -- What the list says of itself, as `what` ("note" under it, "empty" in

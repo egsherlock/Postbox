@@ -1285,6 +1285,8 @@ L["MEMORY_TILE_ON_DRESS"]      = "Log in on %s to take it · Shift-click: link �
 L["MEMORY_TILE_HERE_DRESS"]    = "Take it at a mailbox · Shift-click: link · Ctrl-click: try on"
 L["TIP_HELD"]                  = "Held: "
 L["TIP_COLLECTED"]             = "Collected: "
+L["TIP_TO"]                    = "To: "
+L["TIP_SENT"]                  = "Sent: "
 L["MEMORY_TAKE_ON"]            = "Log in on %s to collect it"
 L["MEMORY_TAKE_HERE"]          = "Collect it at a mailbox"
 -- s33 foot
@@ -1946,6 +1948,8 @@ if GetLocale() == "frFR" then
   L["MEMORY_TILE_HERE_DRESS"]    = "À prendre à une boîte aux lettres · Maj-clic : lier · Ctrl-clic : l'essayer"
   L["TIP_HELD"]                  = "Contenait : "
   L["TIP_COLLECTED"]             = "Récupéré : "
+  L["TIP_TO"]                    = "À : "
+  L["TIP_SENT"]                  = "Envoyé : "
   L["MEMORY_TAKE_ON"]            = "Connecte-toi sur %s pour le récupérer"
   L["MEMORY_TAKE_HERE"]          = "À récupérer à une boîte aux lettres"
   -- s33 foot
@@ -3389,6 +3393,8 @@ if GetLocale() == "deDE" then
   L["MEMORY_TILE_HERE_DRESS"]    = "An einem Briefkasten zu nehmen · Umschalt-Klick: Verlinken · Strg-Klick: Anprobieren"
   L["TIP_HELD"]                  = "Enthielt: "
   L["TIP_COLLECTED"]             = "Abgeholt: "
+  L["TIP_TO"]                    = "An: "
+  L["TIP_SENT"]                  = "Gesendet: "
   L["MEMORY_TAKE_ON"]            = "Melde dich mit %s an, um es abzuholen"
   L["MEMORY_TAKE_HERE"]          = "An einem Briefkasten abzuholen"
   -- s33 foot
@@ -4830,6 +4836,8 @@ if esLocale == "esES" or esLocale == "esMX" then
   L["MEMORY_TILE_HERE_DRESS"]    = "Recógelo en un buzón · Mayús-clic: enlazar · Ctrl-clic: probarlo"
   L["TIP_HELD"]                  = "Contenía: "
   L["TIP_COLLECTED"]             = "Recogido: "
+  L["TIP_TO"]                    = "Para: "
+  L["TIP_SENT"]                  = "Enviado: "
   L["MEMORY_TAKE_ON"]            = "Entra con %s para recogerlo"
   L["MEMORY_TAKE_HERE"]          = "Recógelo en un buzón"
   -- s33 foot
@@ -6297,6 +6305,8 @@ L["MEMORY_TILE_ON_DRESS"]      = "Войдите за %s, чтобы забра�
 L["MEMORY_TILE_HERE_DRESS"]    = "Заберите у почтового ящика · Shift+щелчок: ссылка · Ctrl+щелчок: примерить"
 L["TIP_HELD"]                  = "Было вложено: "
 L["TIP_COLLECTED"]             = "Получено: "
+L["TIP_TO"]                    = "Кому: "
+L["TIP_SENT"]                  = "Отправлено: "
 L["MEMORY_TAKE_ON"]            = "Войдите за %s, чтобы забрать"
 L["MEMORY_TAKE_HERE"]          = "Заберите у почтового ящика"
 -- s33 foot
@@ -8646,6 +8656,8 @@ if GetLocale() == "zhCN" then
   L["MEMORY_TILE_HERE_DRESS"]  = "在邮箱处拿取 · Shift+点击：链接 · Ctrl+点击：试穿"
   L["TIP_HELD"]                = "曾含："
   L["TIP_COLLECTED"]           = "收取于："
+  L["TIP_TO"]                  = "收件人："
+  L["TIP_SENT"]                = "寄出于："
   L["MEMORY_TAKE_ON"]          = "登录 %s 即可收取"
   L["MEMORY_TAKE_HERE"]        = "在邮箱处收取"
   -- s33 foot
@@ -10064,6 +10076,8 @@ if GetLocale() == "zhTW" then
   L["MEMORY_TILE_HERE_DRESS"]  = "在信箱處領取 · Shift+點擊：連結 · Ctrl+點擊：試穿"
   L["TIP_HELD"]                = "曾含："
   L["TIP_COLLECTED"]           = "領取於："
+  L["TIP_TO"]                  = "收件人："
+  L["TIP_SENT"]                = "寄出於："
   L["MEMORY_TAKE_ON"]          = "登入 %s 即可領取"
   L["MEMORY_TAKE_HERE"]        = "在信箱處領取"
   -- s33 foot
