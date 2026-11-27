@@ -2314,8 +2314,8 @@ end
 -- throughout, and only its alpha moves.
 --
 -- One answer at a time, on one lock frame, one line texture, one copy of
--- the words, one reason text and one measuring text made the first time,
--- and one fade on each note made the first time it answers (nothing is
+-- the words, one reason text (on a frame of its own, with its plate) and
+-- one measuring text made the first time, and one fade on each note made the first time it answers (nothing is
 -- built per click, no closure per click). The fades are the client's own
 -- animations; the answer is ended by ONE C_Timer.After of its length, told
 -- from an older one by two counts, so a second click starts it again on
@@ -2542,10 +2542,11 @@ function BV.NoTakeParts(panel)
       if g.SetToFinalAlpha then g:SetToFinalAlpha(true) end
       rule.Grow = g
     end
-    -- The texts stand in the note's own place, in the note's face; the
-    -- note's plate (Theme.OnWindow) is under them already, so they lay
-    -- none of their own. Their ink is for the window, as the note's.
-    -- The words in the accent, set to the note's words at each answer.
+    -- The texts stand in the note's own place, in the note's face, their
+    -- ink for the window, as the note's. The words in the accent, set to
+    -- the note's words at each answer: as wide as the note's own words,
+    -- so the note's plate (Theme.OnWindow), which stays while the note
+    -- fades, is under them already.
     local lit = T.CreateText(rule, "secondary")
     if lit then
       lit:SetJustifyH("CENTER")
@@ -2555,15 +2556,25 @@ function BV.NoTakeParts(panel)
       lit.Fade = BV.FadeOf(lit, BV.NT_LIT_IN, BV.NT_LIT_HOLD, BV.NT_LIT_OUT)
       rule.Lit = lit
     end
-    -- The reason, its words set once.
-    local reason = T.CreateText(rule, "secondary")
+    -- The reason, its words set once. It can be wider than the line it
+    -- stands in for (a short History line, a search's "2 matches"), so it
+    -- lays a plate of its own (Theme.OnWindow), legible at any window
+    -- opacity. Both stand on a frame of their own whose alpha the fade
+    -- moves: the plate, shown and hidden with the words, also fades with
+    -- them, so it never stands without them, nor over them at alpha 0.
+    local why = CreateFrame("Frame", nil, rule)
+    why:EnableMouse(false)
+    why:SetAllPoints(rule)
+    local reason = T.CreateText(why, "secondary")
     if reason then
       reason:SetJustifyH("CENTER")
       reason:SetWordWrap(false)
       reason:SetText(L()["NOTHING_TO_TAKE"])
       T.SetColor(reason, "accent", "window")
       reason:Hide()
-      reason.Fade = BV.FadeOf(reason, BV.NT_WHY_IN, BV.NT_WHY_HOLD, BV.NT_WHY_OUT, BV.NT_WHY_DELAY)
+      if T.OnWindow then T.OnWindow(reason, "window", "CENTER") end
+      reason.Fader = why
+      reason.Fade = BV.FadeOf(why, BV.NT_WHY_IN, BV.NT_WHY_HOLD, BV.NT_WHY_OUT, BV.NT_WHY_DELAY)
       rule.Reason = reason
     end
     -- Where the name stands in the words: measured here, never shown.
@@ -2583,19 +2594,20 @@ function BV.NoTakeParts(panel)
 end
 
 -- text, note: `text` laid over the note, in its place, and its fade played
--- from the start.
+-- from the start, on the text or on the frame it stands on (`Fader`).
 function BV.NoTakeShow(text, note)
   if not text then return end
+  local fader = text.Fader or text
   text:ClearAllPoints()
   text:SetPoint("LEFT", note, "LEFT", 0, 0)
   text:SetPoint("RIGHT", note, "RIGHT", 0, 0)
-  text:SetAlpha(0)
+  fader:SetAlpha(0)
   text:Show()
   if text.Fade then
     text.Fade:Stop()
     text.Fade:Play()
   else
-    text:SetAlpha(1)
+    fader:SetAlpha(1)
   end
 end
 
@@ -2698,6 +2710,7 @@ function BV.NoTakeEnd()
     if reason then
       if reason.Fade then reason.Fade:Stop() end
       if reason:IsShown() then reason:Hide() end
+      if reason.Fader then reason.Fader:SetAlpha(1) end
     end
     if rule:IsShown() then rule:Hide() end
   end
