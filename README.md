@@ -437,7 +437,8 @@ it. **General** comes first: every character's mail and your last 7 days on
 cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds), **Alerts** (Warn
-about expiring mail, **Sound on new mail**, Minimap marker, whose button
+about expiring mail, **Sound on new mail**, **Sound on a sale**, Minimap
+marker, whose button
 opens the Minimap tab at the marker, Chat line at login, Flash on new mail
 and Progress line)
 and **Characters** (Class icons, Character order, Hidden characters). The
@@ -446,7 +447,11 @@ another quiet sound of the game's, or any sound your other addons share
 through LibSharedMedia, such as ElvUI's or a SharedMedia pack's, or
 EllesmereUI's own alert sounds while it is loaded (with a button to hear
 it first; it stays quiet for your own auction house purchases, which the
-game already announces). The options open beside
+game already announces). **Sound on a sale** plays when the auction house
+says one of your auctions has sold, in place of the mail sound: any of the
+same sounds, or Off, and the game's loot coins until you choose (nothing
+while Sound on new mail is Off). With Mail Memory on, the sale's gold
+coming by mail an hour later makes no sound. The options open beside
 whatever opened them: right of the Postbox
 window from its cog, below Mail Memory from its cog (on General), left of the minimap
 from the icon. With **Dock beside game windows** on they stay beside that

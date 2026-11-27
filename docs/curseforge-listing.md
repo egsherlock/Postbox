@@ -52,7 +52,7 @@
 <p>&nbsp;</p>
 <h2 style="text-align:center">A minimap icon that tells you more</h2>
 <p style="text-align:center">A count of what's waiting and a marker when mail is about to expire, in two dozen styles. Off until you turn it on.</p>
-<p style="text-align:center">New mail can flash it and play a sound you choose.</p>
+<p style="text-align:center">New mail can flash it and play a sound you choose, and a sold auction can play a sound of its own.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/icons.gif" width="730" alt="Pointing at minimap icon options while the panel beside them previews each one"></p>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Know where expiring mail goes</h2>

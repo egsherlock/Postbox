@@ -9569,13 +9569,20 @@ function MM.ClosedAt() return closedAt end
 -- last close (the saved record's baseNew) and whether the latest-senders
 -- line has changed since (Arrived's comparison). Eight records made once
 -- and written over in turn; nothing is saved, so a /reload empties it.
+-- The sound's word is MB.NotifyArrival's: yes or no, or why (f88 S01, S06):
+-- "held" while it waits for a sale's notice, then how the wait ended
+-- (log.Resolve: played after it, or a sale's sound took its place);
+-- "after sale", the echo of a notice; "sale lands", quiet for a sale's
+-- gold. A sold notice's line says what MB.NotifySale played. Every word is
+-- a constant string, so a record costs what it did.
 do
   local SIZE = 8
   local ring = {}
   for i = 1, SIZE do ring[i] = { at = 0, bare = false } end
   -- `n`: events written this session. `played`: the event being handled
-  -- played the sound (OnPendingMail, MB.NotifyArrival's answer).
-  local log = { n = 0, played = false }
+  -- played the sound (OnPendingMail, MB.NotifyArrival's answer). `held`:
+  -- the event whose sound is waiting (its `n`), or nil.
+  local log = { n = 0, played = false, held = nil }
   MM.PendingLog = log
 
   -- `bare`: an auction house notice, recorded for its moment only (the
@@ -9585,7 +9592,10 @@ do
     log.n = n
     local e = ring[(n - 1) % SIZE + 1]
     local now = time()
-    e.at, e.verdict, e.played = now, verdict, played and true or false
+    if type(played) ~= "string" then played = played and true or false end
+    e.at, e.verdict, e.played = now, verdict, played
+    -- A sound left waiting: its wait's end is written on this record.
+    if played == "held" then log.held = n end
     e.closed = closedAt > 0 and now - closedAt or nil
     e.loaded = loginAt and now - loginAt or nil
     e.bare = bare and true or false
@@ -9599,8 +9609,18 @@ do
     end
   end
 
+  -- The held event's sound, as its wait ended (MinimapButton's HoldDue
+  -- and MB.NotifySale), on its record while the ring still holds it.
+  function log.Resolve(word)
+    local n = log.held
+    log.held = nil
+    if not n or log.n - n >= SIZE then return end
+    ring[(n - 1) % SIZE + 1].played = word
+  end
+
   local function YesNo(v)
     if v == nil then return "?" end
+    if type(v) == "string" then return v end
     return v and "yes" or "no"
   end
 
@@ -9609,8 +9629,10 @@ do
     local out = {}
     for k = 0, math.min(log.n, SIZE) - 1 do
       local e = ring[(log.n - 1 - k) % SIZE + 1]
-      -- A notice says only when it came.
-      if e.bare then
+      -- A notice says only when it came, and a sold notice what it played.
+      if e.bare and type(e.played) == "string" then
+        out[#out + 1] = string.format("  %s %s | sound %s", date("%H:%M:%S", e.at), tostring(e.verdict), e.played)
+      elseif e.bare then
         out[#out + 1] = string.format("  %s %s", date("%H:%M:%S", e.at), tostring(e.verdict))
       else
       out[#out + 1] = string.format("  %s %s | sound %s | closed %s | loaded %s | unread left %s | senders changed %s",
@@ -9621,6 +9643,38 @@ do
     end
     return out
   end
+end
+
+-- f88 S06: whether a noted sale's gold lands about now, SALE_QUIET either
+-- side of its note's time and SALE_LANDS: the event it raises plays no
+-- sound (its sale's was heard at the notice); the flash and the count are
+-- as for any mail. One pass over this character's notes (2g), and the
+-- newest sale let go past their cap; nothing is built. With Mail Memory off
+-- no sale is noted, and the gold's mail sounds as any mail. A letter that
+-- lands in the same minute is quiet too.
+MM.SALE_QUIET = 60
+function MM.SaleLandsNow(now)
+  local H = ns.Helpers
+  local realm, name = H.PlayerRealm(), H.PlayerName()
+  local watch = realm and name and WatchFor(realm, name, false)
+  if type(watch) ~= "table" then return false end
+  local quiet, lands = MM.SALE_QUIET, MM.SALE_LANDS
+  local pending = watch.pending
+  if type(pending) == "table" then
+    for i = #pending, 1, -1 do
+      local e = pending[i]
+      if e.k == "sold" then
+        local d = (tonumber(e.t) or 0) + lands - now
+        if d <= quiet and d >= -quiet then return true end
+      end
+    end
+  end
+  local way = tonumber(watch.pendingMoreWayAt)
+  if way then
+    local d = way + lands - now
+    if d <= quiet and d >= -quiet then return true end
+  end
+  return false
 end
 
 local function PendingWatch()
@@ -9637,8 +9691,11 @@ local function PendingWatch()
 
   -- An arrival. The minimap icon's sound and flash answer it whether or not
   -- Mail Memory is on to record it: they are alerts, not memory.
+  -- A noted sale's gold landing: quiet (MM.SaleLandsNow).
   local Icon = ns.MinimapButton
-  if Icon and type(Icon.NotifyArrival) == "function" then MM.PendingLog.played = Icon.NotifyArrival() end
+  if Icon and type(Icon.NotifyArrival) == "function" then
+    MM.PendingLog.played = Icon.NotifyArrival(MM.SaleLandsNow(time()) and "landing" or nil)
+  end
 
   lastPendingVerdict = "memory off"
   if not MemoryEnabled() then return end
@@ -9809,7 +9866,11 @@ if bus then
     -- In the pending-mail events' record too, so /postbox debug shows what
     -- the client sent around a notice, in order.
     if notification == E.AuctionSold then
-      MM.PendingLog.Note("sold notice", false, true)
+      -- Sound on a sale, in place of the mail sound (MB.NotifySale).
+      local Icon = ns.MinimapButton
+      local said = false
+      if Icon and type(Icon.NotifySale) == "function" then said = Icon.NotifySale() end
+      MM.PendingLog.Note("sold notice", said, true)
       A.Sold(item, auctionID)
     elseif notification == E.AuctionExpired then
       MM.PendingLog.Note("expired notice", false, true)

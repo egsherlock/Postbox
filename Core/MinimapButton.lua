@@ -58,7 +58,9 @@ local DEFAULTS = {
   -- they are asked for rather than assumed. The sound is a choice
   -- (`alertTone`, MB.ALERT_TONES), deliberately not seeded here: an unset
   -- one is read from the switch it replaced, `alertSound` (on: the mail
-  -- chime), which a seeded default would hide.
+  -- chime), which a seeded default would hide. Sound on a sale (`saleTone`)
+  -- is not seeded either: unset, it is the game's loot coins while that
+  -- sound plays something and Off while it is Off (SaleTone).
   alertFlash = false,
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
   -- When the icon is on the map: "new" while the game says there is unread
@@ -3218,7 +3220,22 @@ MB.TONE_GROUP = {
   soft = "postbox", bell = "postbox", tock = "postbox", rise = "postbox", marimba = "postbox",
   bubble = "postbox", glass = "postbox", notes = "postbox", bump = "postbox",
   chime = "game", page = "game", ping = "game", auction = "game", clock = "game",
+  coins = "game",
 }
+-- Sound on a sale (f88 S01, S02) offers every sound above and one more of
+-- the game's, its own default: the loot coins, the clink of gold. Offered
+-- there only: the mail list dropped it in 1.60 (it is heard all day while
+-- looting, and over mail it says nothing), and a profile that chose it
+-- then still reads as the mail chime (AlertTone). By its SOUNDKIT name on
+-- both clients, its number where the client's table lacks the name.
+MB.SALE_KIT = { coins = { "LOOT_WINDOW_COIN_SOUND", nil, 120 } }
+-- The sale list's order: the mail list's, the coins first of the game's.
+MB.SALE_TONES = {}
+for i = 1, #ALERT_TONES do
+  local id = ALERT_TONES[i]
+  if id == "chime" then MB.SALE_TONES[#MB.SALE_TONES + 1] = "coins" end
+  MB.SALE_TONES[#MB.SALE_TONES + 1] = id
+end
 MB.TONE_CHANNEL = "SFX"
 local LSM_PREFIX = "lsm:"
 MB.LSM_PREFIX = LSM_PREFIX
@@ -3369,7 +3386,7 @@ end
 function MB.PlayTone(tone)
   local file = TONE_FILE[tone]
   if file then return PlayFile(file) end
-  local kit = TONE_KIT[tone]
+  local kit = TONE_KIT[tone] or MB.SALE_KIT[tone]
   if kit then return PlayKit(kit) end
   local path
   if MB.EuiId(tone) then
@@ -3384,26 +3401,86 @@ function MB.PlayTone(tone)
   PlayKit(TONE_KIT.chime)
 end
 
+-- Sound on a sale (f88 S01): `saleTone`, an id as `alertTone`'s or the
+-- coins, "off" stored as itself. Unset, it is the coins while Sound on new
+-- mail plays something and Off while that is Off, so a player who silenced
+-- the mail sound hears nothing new unasked. An id no longer known reads as
+-- the coins: whoever chose one wanted to hear something.
+local function SaleTone(prefs)
+  local tone = prefs.saleTone
+  if tone == nil then return (AlertTone(prefs) == "off") and "off" or "coins" end
+  if tone == "off" or TONE_FILE[tone] or TONE_KIT[tone] or MB.SALE_KIT[tone] then return tone end
+  if MB.SharedName(tone) or MB.EuiId(tone) then return tone end
+  return "coins"
+end
+
+-- A sale, and the mail sound that waits for it (f88 S01). The auction
+-- house's "A buyer has been found" plays Sound on a sale, IN PLACE of Sound
+-- on new mail: the game raises its mail flag around the notice, and the
+-- pending-mail event that it brings is the sale's, not a letter's. Which of
+-- the two comes first is not known, so both orders end the same, one sound:
+--   * the notice first: it plays the sale's sound and opens the echo's
+--     window (lastAlertAt), so the event after it is quiet, as a
+--     purchase's mail is;
+--   * the event first: away from a mailbox the mail sound waits TONE_HOLD
+--     (as the icon's held drop waits MB.HOLD), and a notice inside the wait
+--     takes its place.
+-- The wait is ONE one-shot C_Timer.After per arrival (an arrival opens the
+-- echo's window, so at most one in ALERT_REPEAT), its callback one function
+-- for every arrival, told from an older one by two counts (`armed`,
+-- `fired`); `live` false is a wait a notice has taken. No closure, no
+-- table, nothing between arrivals. The flash is never held. `saleAt`: the
+-- last sale's sound, so a burst of notices (a commodity sold in parts)
+-- plays it once in ALERT_REPEAT; `sale`: the echo's window was opened by a
+-- sale, for /postbox debug's words.
+MB.TONE_HOLD = 0.5
+local Hold = { armed = 0, fired = 0, live = false, saleAt = nil, sale = false }
+
+-- The pending-mail events' record (Core/MailMemory.lua, MM.PendingLog):
+-- the held event's line says how its wait ended.
+local function HoldSaid(word)
+  local memory = ns.MailMemory
+  local log = memory and memory.PendingLog
+  if log and type(log.Resolve) == "function" then log.Resolve(word) end
+end
+
+local function HoldDue()
+  Hold.fired = Hold.fired + 1
+  if Hold.fired ~= Hold.armed or not Hold.live then return end
+  Hold.live = false
+  local tone = AlertTone(Settings())
+  MB.PlayTone(tone)
+  HoldSaid(tone ~= "off" and "yes, after the wait" or "no, Off by then")
+end
+
 -- kind: "purchase" for your own auction house purchase, announced by the
 -- auction house as it completes (Core/MailMemory.lua, OnPurchaseCompleted);
--- nil for any other arrival. A purchase stays quiet: the game has just said
--- so itself, at the auction house the player is standing at. It still opens
--- the echo's window, so the purchase's own mail landing a moment later is
--- quiet too, and it still flashes the icon.
--- -> whether a tone was played (AlertTone is "off" or one that plays), for
--- /postbox debug's list of pending-mail events (Core/MailMemory.lua).
+-- "landing" for an event as a noted sale's gold lands (f88 S06, MailMemory's
+-- MM.SaleLandsNow); nil for any other arrival. A purchase stays quiet: the
+-- game has just said so itself, at the auction house the player is standing
+-- at. A sale's gold landing stays quiet: its sale was heard an hour before.
+-- Both still open the echo's window, so their mail landing a moment later
+-- is quiet too, and both still flash the icon. Any other arrival's sound
+-- waits TONE_HOLD for a sale's notice (above).
+-- -> for /postbox debug's list of pending-mail events (Core/MailMemory.lua):
+-- "held" (the sound waits), false (no sound: Off, a purchase, the echo),
+-- "sale lands" (quiet for that), "after sale" (the echo of a sale's notice).
 function MB.NotifyArrival(kind)
   local now = Now()
   local prefs = Settings()
   local played = false
 
   if not (now and lastAlertAt and now - lastAlertAt < ALERT_REPEAT) then
-    lastAlertAt = now
-    if kind ~= "purchase" then
-      local tone = AlertTone(prefs)
-      MB.PlayTone(tone)
-      played = tone ~= "off"
+    lastAlertAt, Hold.sale = now, false
+    if kind == "landing" then
+      played = "sale lands"
+    elseif kind ~= "purchase" and AlertTone(prefs) ~= "off" then
+      Hold.armed, Hold.live = Hold.armed + 1, true
+      C_Timer.After(MB.TONE_HOLD, HoldDue)
+      played = "held"
     end
+  elseif Hold.sale then
+    played = "after sale"
   end
 
   if prefs.alertFlash and not (now and lastFlashAt and now - lastFlashAt < ALERT_REPEAT) then
@@ -3428,6 +3505,36 @@ FlushFlash = function()
   if PlayFlash(prefs) then lastFlashAt, flashWantedAt = now, nil end
 end
 
+-- The auction house said one of this character's auctions sold (Core/
+-- MailMemory.lua, its AuctionSold notice), wherever the player is: Sound on
+-- a sale, in place of the mail sound waiting for it, and the echo's window
+-- opened, so the pending-mail event that belongs to it is quiet. A second
+-- notice inside ALERT_REPEAT of the last sale's sound plays nothing more.
+-- No flash and no count here: those stay the pending-mail event's, as
+-- they were. -> for /postbox debug: "yes" or "off" (or "again", inside
+-- the window), with ", the mail sound's wait taken" where it took one.
+function MB.NotifySale()
+  local now = Now()
+  local took = Hold.live
+  Hold.live = false
+  lastAlertAt, Hold.sale = now, true
+  local said
+  if now and Hold.saleAt and now - Hold.saleAt < ALERT_REPEAT then
+    said = took and "again, the mail sound's wait taken" or "again"
+  else
+    Hold.saleAt = now
+    local tone = SaleTone(Settings())
+    if tone ~= "off" then MB.PlayTone(tone) end
+    if tone == "off" then
+      said = took and "off, the mail sound's wait taken" or "off"
+    else
+      said = took and "yes, the mail sound's wait taken" or "yes"
+    end
+  end
+  if took then HoldSaid("no, a sale's sound took its place") end
+  return said
+end
+
 -- Sound on new mail (MB.ALERT_TONES). Stored only once chosen, and the old
 -- switch is dropped then: a profile carries across without a write, and
 -- Reset to defaults gives Off.
@@ -3443,6 +3550,20 @@ function MB.SetAlertTone(tone)
   local prefs = Settings()
   prefs.alertTone = (tone ~= "off") and tone or nil
   prefs.alertSound = nil
+end
+
+-- Sound on a sale (SaleTone). Stored once chosen, Off included, since an
+-- unset one follows Sound on new mail; Reset to defaults clears it.
+function MB.GetSaleTone()
+  return SaleTone(Settings())
+end
+
+function MB.SetSaleTone(tone)
+  if tone ~= "off" and not (TONE_FILE[tone] or TONE_KIT[tone] or MB.SALE_KIT[tone] or MB.EuiId(tone)) then
+    local name = MB.SharedName(tone)
+    if not name or name == "" then return end
+  end
+  Settings().saleTone = tone
 end
 
 function MB.GetAlertFlash()

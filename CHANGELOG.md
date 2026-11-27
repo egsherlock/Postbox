@@ -104,6 +104,12 @@
   many went back, or where it stopped and why.
 - **Mail Memory: mail that came since you last looked glows softly** in
   your accent as the window opens, then fades.
+- **Options > General > Alerts: Sound on a sale.** When the auction house
+  says one of your auctions has sold, this plays instead of your Sound on
+  new mail: the game's loot coins until you choose, or nothing while Sound
+  on new mail is Off. It offers every sound Sound on new mail does, and
+  Off. With Mail Memory on, the sale's gold coming by mail an hour later
+  makes no sound.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
   on the icon.
 - **With TradeSkillMaster:** at your first mailbox with TSM loaded, a

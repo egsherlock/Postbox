@@ -5452,12 +5452,14 @@ do
   -- grey while there is nothing to play (State.Tone). The pointer on it
   -- shows the row's own entry.
   local PLAY_W = 22
-  local function PlayClick()
+  local function PlayClick(self)
     local Icon = ns.MinimapButton
-    if Icon and Icon.PlayTone and Icon.GetAlertTone then Icon.PlayTone(Icon.GetAlertTone()) end
+    if Icon and Icon.PlayTone then Icon.PlayTone(State.ToneOf(self.__pbTone)) end
   end
 
-  function Rows.Play(row)
+  -- `which`: whose sound it plays (State.ToneOf): nil Sound on new mail's,
+  -- "sale" Sound on a sale's.
+  function Rows.Play(row, which)
     local T = ns.Theme
     local btn = T.CreateButton(nil, row)
     btn:SetSize(PLAY_W, BUTTON_H)
@@ -5468,6 +5470,7 @@ do
     dd:SetWidth(row.controlW - keyW)
     row.control:SetWidth(row.controlW - keyW)
     btn:SetText("")
+    btn.__pbTone = which
     btn:SetScript("OnClick", PlayClick)
     Wire(btn, row, true)
     local mark = T.Glyph and T.Glyph(ArtHolder(btn), "arrow-right", 8, "OVERLAY") or nil
@@ -7995,24 +7998,37 @@ end
 -- Made again only when what it lists has moved -- the shared or
 -- EllesmereUI sounds' count, or the one not found -- so an open builds
 -- nothing new.
+-- Sound on a sale's (`which` "sale") are the same and one more of the
+-- game's, its own default, the loot coins (MinimapButton's MB.SALE_TONES),
+-- kept apart: each list names its own sound not found.
 local Tones = {
   key = false, items = false,
+  sale = { key = false, items = false },
   NAMES = {
     soft = "OPT_SOUND_SOFT", bell = "OPT_SOUND_BELL", tock = "OPT_SOUND_TOCK",
     rise = "OPT_SOUND_RISE", marimba = "OPT_SOUND_MARIMBA", bubble = "OPT_SOUND_BUBBLE",
     glass = "OPT_SOUND_GLASS", notes = "OPT_SOUND_NOTES", bump = "OPT_SOUND_BUMP",
     chime = "OPT_SOUND_CHIME", page = "OPT_SOUND_PAGE", ping = "OPT_SOUND_PING",
-    auction = "OPT_SOUND_AUCTION", clock = "OPT_SOUND_CLOCK",
+    auction = "OPT_SOUND_AUCTION", clock = "OPT_SOUND_CLOCK", coins = "OPT_SOUND_COINS",
   },
   GROUPS = { { "postbox", "OPT_SOUND_GROUP_POSTBOX" }, { "game", "OPT_SOUND_GROUP_GAME" } },
 }
 
-function State.ToneItems()
+-- The sound a list's row has chosen: Sound on new mail's, or (`which`
+-- "sale") Sound on a sale's.
+function State.ToneOf(which)
+  local Icon = ns.MinimapButton
+  if which == "sale" then return Icon and Icon.GetSaleTone and Icon.GetSaleTone() or "off" end
+  return Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
+end
+
+function State.ToneItems(which)
   local Icon = ns.MinimapButton
   local shared, count
   if Icon and Icon.SharedSounds then shared, count = Icon.SharedSounds() end
   count = count or 0
-  local current = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
+  local current = State.ToneOf(which)
+  local memo = (which == "sale") and Tones.sale or Tones
   local missing = Icon and Icon.SharedName and Icon.SharedName(current) or nil
   if missing and Icon.SharedPresent(current) then missing = nil end
   -- EllesmereUI's own, where it is loaded, and one chosen and gone since.
@@ -8021,10 +8037,10 @@ function State.ToneItems()
   local euiMissing = Icon and Icon.EuiId and Icon.EuiId(current) or nil
   if euiMissing and Icon.EuiPresent(current) then euiMissing = nil end
   local key = count .. "\1" .. (missing or "") .. "\1" .. (euiCount or 0) .. "\1" .. (euiMissing or "")
-  if Tones.items and Tones.key == key then return Tones.items end
+  if memo.items and memo.key == key then return memo.items end
 
   local items = { { id = "off", name = L["OPT_ALERT_OFF"] } }
-  local tones = (Icon and Icon.ALERT_TONES) or {}
+  local tones = (Icon and ((which == "sale") and Icon.SALE_TONES or Icon.ALERT_TONES)) or {}
   local group = (Icon and Icon.TONE_GROUP) or {}
   for g = 1, #Tones.GROUPS do
     local which, heading = Tones.GROUPS[g][1], Tones.GROUPS[g][2]
@@ -8061,28 +8077,35 @@ function State.ToneItems()
   if #items >= first then
     table.insert(items, first, { heading = true, name = L["OPT_SOUND_GROUP_ADDONS"] })
   end
-  Tones.key, Tones.items = key, items
+  memo.key, memo.items = key, items
   return items
 end
 
 -- The sound's play button plays the sound chosen, and has nothing to play
 -- on Off (Rows.Play). The choices are made again where another addon's
 -- sounds have come or gone since the list was made (State.ToneItems).
+-- Both rows: Sound on new mail's, and Sound on a sale's, whose box is
+-- painted again too, since an unset sale sound follows the mail sound's
+-- Off (MinimapButton's SaleTone).
 function State.Tone()
-  local cell = S.toneCell
+  State.ToneRow(S.toneCell, nil)
+  State.ToneRow(S.saleCell, "sale")
+end
+
+function State.ToneRow(cell, which)
   local play = cell and cell.play
   if not play then return end
-  local items = State.ToneItems()
+  local items = State.ToneItems(which)
   if cell.items ~= items then
     cell.items = items
     if cell.dd.SetItems then cell.dd:SetItems(items) end
     -- The search's index lists the new choices when next used.
     S.findIndex = nil
     Rows.PaintDropdown(cell)
+  elseif which == "sale" then
+    Rows.PaintDropdown(cell)
   end
-  local Icon = ns.MinimapButton
-  local tone = Icon and Icon.GetAlertTone and Icon.GetAlertTone() or "off"
-  play:SetEnabled(tone ~= "off")
+  play:SetEnabled(State.ToneOf(which) ~= "off")
   Rows.PaintPlay(cell)
 end
 
@@ -10385,7 +10408,8 @@ end
 -- Warn about first -- the one rule for both expiring-mail warnings, made
 -- from Mail Memory and grey with it (its block). Then Sound on new mail,
 -- chosen from Postbox's own, the game's and other addons' (State.ToneItems)
--- and heard from the button beside it. Then Minimap marker: a row whose
+-- and heard from the button beside it, and under it Sound on a sale, the
+-- same list and the game's loot coins. Then Minimap marker: a row whose
 -- button opens the Minimap tab at the marker that follows Warn about too
 -- (Pages.OpenMarker), live whatever greys here. Last, one row of two: Chat
 -- line at login, the line in chat that follows Warn about (MailMemory.lua,
@@ -10452,6 +10476,26 @@ function Pages.Alerts(col)
   Rows.Play(sound)
   S.toneCell = sound
   S.refresh[#S.refresh + 1] = State.Tone
+
+  -- Sound on a sale, under it (f88 S01): what plays when the auction house
+  -- says one of your auctions sold, in place of the mail sound then
+  -- (MinimapButton's MB.NotifySale). The same list and play button, and
+  -- one more of the game's, the loot coins, its sound until chosen; unset,
+  -- it reads Off while Sound on new mail is Off (MB.GetSaleTone), so the
+  -- mail row's setter paints it again (State.Tone). Reset this tab finds
+  -- it by its getter, as the mail row.
+  local sale = Rows.Dropdown(col, {
+    title = L["OPT_ALERT_SALE_TITLE"], text = L["OPT_ALERT_SALE_DESC"] .. "\n\n" .. L["OPT_ALERT_SALE_MORE"],
+    items = State.ToneItems("sale"),
+    maxListHeight = 21 * 20 + 8,
+    get = function() return State.ToneOf("sale") end,
+    set = function(id)
+      if ns.MinimapButton and ns.MinimapButton.SetSaleTone then ns.MinimapButton.SetSaleTone(id) end
+      State.Tone()
+    end,
+  })
+  Rows.Play(sale, "sale")
+  S.saleCell = sale
 
   -- Where the marker that follows Warn about is set: a row named as the
   -- marker's own row is on the Minimap tab, its button where a dropdown
