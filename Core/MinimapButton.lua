@@ -23,16 +23,22 @@ local _, ns = ...
 --     to the ProjectAzilroka-style collectors that key off names. Do not
 --     "fix" this by naming the frame.
 --
---   * Frame level is minimap + 20: above EllesmereUI's ping-blocker overlay
---     (+10) and ElvUI's click-handler child, level with EllesmereUI's own
---     indicators. Re-asserted on every re-layout because both hosts rebuild
---     the minimap at login and on profile switches.
+--   * Frame level is minimap + MB.ICON_LEVEL (2050), in both modes: above
+--     EllesmereUI's ping-blocker overlay (+10), ElvUI's click-handler child
+--     and the map-pin addons' fixed levels. Re-asserted on every re-layout
+--     because both hosts rebuild the minimap at login and on profile switches.
 -- =====================================================================
 
 ns.MinimapButton = ns.MinimapButton or {}
 local MB = ns.MinimapButton
 
 local L = ns.L
+
+-- The mail icon's level over the minimap's, for our button and for
+-- EllesmereUI's while we dress it. Map-pin addons fix their pins near 2000
+-- (Questie at 2016-2024), which drew over the icon at +20; EllesmereUIMinimap
+-- keeps its clock, zone and FPS text at +2100, which stays on top of it.
+MB.ICON_LEVEL = 2050
 
 local DEFAULTS = {
   enabled  = false,  -- turning it on changes visible UI; that is the user's call
@@ -1581,6 +1587,12 @@ local function ApplyEuiSkin()
                       atlas = icon:GetAtlas(), texture = icon:GetTexture(),
                       alpha = icon:GetAlpha(), grey = icon.IsDesaturated and icon:IsDesaturated() or false }
   end
+  -- Their button stands at our icon's level while dressed (MB.ICON_LEVEL),
+  -- over the map pins. Its own level is kept once, so a re-apply never takes
+  -- the raised one for it; the restore puts it back and forgets it.
+  if euiSkin.saved.level == nil then euiSkin.saved.level = btn:GetFrameLevel() end
+  btn:SetFrameLevel(((_G.Minimap and _G.Minimap:GetFrameLevel()) or 2) + MB.ICON_LEVEL)
+  btn.__pbOverlay:SetFrameLevel(btn:GetFrameLevel() + 2)
 
   local prefs = Settings()
   local spec = ICONS[IconId(prefs.icon)]
@@ -1708,6 +1720,10 @@ RestoreEuiSkin = function(orphaned)
   -- is not left standing for their next layout pass to find. Not for a
   -- button they have replaced, which is theirs to leave where it is.
   if not orphaned then btn:SetShown(MailWaiting() and not EuiHidesMail()) end
+  if saved.level then
+    btn:SetFrameLevel(saved.level)
+    saved.level = nil
+  end
 
   btn._upAtlas, btn._overAtlas = saved.up, saved.over
   local icon = btn._icon
@@ -1868,7 +1884,7 @@ local function Reposition(button)
     if mail then
       button:ClearAllPoints()
       button:SetPoint("CENTER", mail, "CENTER", 0, 0)
-      button:SetFrameLevel((minimap:GetFrameLevel() or 2) + 20)
+      button:SetFrameLevel((minimap:GetFrameLevel() or 2) + MB.ICON_LEVEL)
       return
     end
   end
@@ -1888,7 +1904,7 @@ local function Reposition(button)
 
   button:ClearAllPoints()
   button:SetPoint("CENTER", minimap, "CENTER", x, y)
-  button:SetFrameLevel((minimap:GetFrameLevel() or 2) + 20)
+  button:SetFrameLevel((minimap:GetFrameLevel() or 2) + MB.ICON_LEVEL)
 end
 
 local function AngleFromCursor()
