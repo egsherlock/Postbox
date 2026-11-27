@@ -18,7 +18,8 @@
   the run stops early, the line fades where it stopped; when the words
   beside it say why, it holds a moment in their color first. When a run
   has taken everything the line glows softly and trails away. The words
-  stay.
+  stay. Rather not have it? Untick Progress line (Options > Mail tab >
+  Collecting).
 - **Send tab: attach every stack of one kind.** The small + after
   Attachments lists what is in your bags in the game's own words, under
   three headings: Materials (Cloth, Herb, Metal & Stone and the rest),

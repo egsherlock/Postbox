@@ -14,7 +14,7 @@
 </ul>
 <p>&nbsp;</p>
 <h2 style="text-align:center">Empty your mailbox in one click</h2>
-<p style="text-align:center">All mail takes gold, items and letters in your list's order. Bags are checked first, a thin line under the title bar shows how far it has got, and a run stops cleanly if they fill.</p>
+<p style="text-align:center">All mail takes gold, items and letters in your list's order. Bags are checked first, a thin line under the title bar shows how far it has got (you can turn it off), and a run stops cleanly if they fill.</p>
 <p style="text-align:center">History keeps what you collected and what you sent, for up to a year, searchable by an item's name.</p>
 <p style="text-align:center"><img src="https://raw.githubusercontent.com/egsherlock/Postbox/main/docs/screenshots/collect.gif" width="672" alt="All mail collecting a full inbox"></p>
 <p>&nbsp;</p>

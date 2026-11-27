@@ -92,7 +92,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   collects your picks. C.O.D. mail is never swept. A run of three mails
   or more draws a thin line under the title bar as it goes; if it stops
   early, the line fades where it stopped, holding a moment first in the
-  color of the words beside it when they say why.
+  color of the words beside it when they say why. **Progress line**
+  (Options > Mail tab > Collecting) turns the line off.
 - **Hold Alt** to send back or delete from the list: a return arrow takes
   the read dot's place on every mail that can go back, finished mail keeps
   its x, and auction mail still holding something shows a faded x (it can

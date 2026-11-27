@@ -8805,6 +8805,17 @@ function Pages.mail(col)
   -- What All mail takes, by who sent it: a row whose list ticks the four
   -- kinds (State.TakesRow).
   State.TakesRow(col)
+  -- The progress line while All mail works (MailboxUI, UI.RunLineBegin):
+  -- read at the start of each run; switched off mid-run, the line on
+  -- screen goes at once.
+  Rows.Check(col, {
+    title = L["OPT_RUN_LINE_TITLE"], text = L["OPT_RUN_LINE_DESC"],
+    get = function() return ns.MailboxUI.GetOption("runLine") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("runLine", on)
+      if not on and ns.MailboxUI.RunLineDrop then ns.MailboxUI.RunLineDrop(true) end
+    end,
+  })
   -- Finished mail, a group of its own: where it goes, and the bar over it.
   -- Collecting keeps the rows about a collect run and its History.
   Rows.Group(col, L["OPT_FINISHED_HEADING"])

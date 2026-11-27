@@ -220,6 +220,11 @@ local OPTION_DEFAULTS = {
   -- mailbox closes, and Mail Memory's when its window does
   -- (UI.LetGoListSort). Filters are let go at close either way.
   rememberSort    = true,
+  -- The progress line under the title bar while All mail works through
+  -- three mails or more (section 3b, UI.RunLineBegin). On: it is the 2.1
+  -- feature. Off, no line is made or shown; the words beside it are the
+  -- same either way.
+  runLine         = true,
   -- The Mail tab's list drawn as one bag of items (Core/BagView.lua, the
   -- switch after Sort). Off: the list, as it has always been.
   bagView         = false,
@@ -3701,6 +3706,8 @@ do
   function UI.RunLineBegin(total)
     total = tonumber(total) or 0
     if total < 3 then return end
+    -- Progress line (Options > Mail tab > Collecting) off: no line at all.
+    if not UI.GetOption("runLine") then return end
     local window = UI._frame
     if not window then return end
     if not RL.frame then RL.Make(window) end
