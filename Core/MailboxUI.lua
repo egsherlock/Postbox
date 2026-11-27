@@ -4270,41 +4270,57 @@ function UI.KeepWindowSize(frame)
   store.keptH = floor(max(baseMin, min(max(MAX_HEIGHT, baseMin), height)) + 0.5)
 end
 
--- A grip's hint, `grip` pointed at: Drag; the right-click's line, which
--- says where it goes (reset with nothing kept, your size, or the window's
--- default size, Postbox's, at yours); Shift-right-click. Every grip that
+-- A grip's hint, `grip` pointed at (his f89 F03 pick, "Your size, else
+-- reset"): Drag; the right-click's line, which says where it goes, "your
+-- size (W × H)" while a size is kept and the window stands elsewhere, else
+-- "reset size" (nothing kept, or at it, where a right-click goes to
+-- Postbox's size, so "reset" keeps one meaning); Shift-right-click.
+-- `saved`, the moment after a Shift-right-click kept the size: its last
+-- line says "Saved: W × H" in the accent instead. Nothing remembers it:
+-- the keep's own redraw passes it, and the next redraw comes only from a
+-- right-click (which moves the window) or from the pointer coming back
+-- onto the grip, so it stands until the pointer leaves. Every grip that
 -- keeps a size of the player's own says it through this (the mail window,
--- Mail Memory, Manage Recipients), each with a table of its own, `H`, that
--- holds its three lists, made the first time, and the size's line, made
+-- Mail Memory, Manage Recipients), each with a table of its own, `H`,
+-- that holds its lists, made the first time, and the size's lines, made
 -- again only when its kept size changes. `keptW`/`keptH` are the window's
 -- kept size (nil with nothing kept); `atKept`, whether it stands at it.
 -- Shown only while the pointer is on the grip.
-function UI.ShowGripHint(grip, H, keptW, keptH, atKept)
+function UI.ShowGripHint(grip, H, keptW, keptH, atKept, saved)
   local T = ns.Theme
   if not (grip and H and T and T.ShowHint) then return end
   if grip.IsMouseOver and not grip:IsMouseOver() then return end
   if not H.plain then
     H.plain = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET"), L("GRIP_TIP_KEEP") }
     H.yours = { L("GRIP_TIP_DRAG"), "", L("GRIP_TIP_KEEP") }
-    H.at = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_POSTBOX"), L("GRIP_TIP_KEEP") }
+    H.saved = { L("GRIP_TIP_DRAG"), L("GRIP_TIP_RESET"), "" }
   end
   local lines = H.plain
   if keptW then
-    if atKept then
-      lines = H.at
-    else
-      if H.w ~= keptW or H.h ~= keptH then
-        H.w, H.h = keptW, keptH
-        H.yours[2] = string.format(L("GRIP_TIP_YOURS"), keptW, keptH)
-      end
+    if H.w ~= keptW or H.h ~= keptH then
+      H.w, H.h = keptW, keptH
+      H.yours[2] = string.format(L("GRIP_TIP_YOURS"), keptW, keptH)
+      H.said = string.format(L("GRIP_TIP_SAVED"), keptW, keptH)
+    end
+    if saved then
+      -- The accent as it is now (Theme.GetAccent: the host's, where it
+      -- publishes one); the card is dark on every palette.
+      local r, g, b = 1, 0.82, 0
+      if type(T.GetAccent) == "function" then r, g, b = T.GetAccent() end
+      H.saved[3] = string.format("|cff%02x%02x%02x%s|r", floor(r * 255 + 0.5), floor(g * 255 + 0.5),
+        floor(b * 255 + 0.5), H.said)
+      lines = H.saved
+    elseif not atKept then
       lines = H.yours
     end
   end
   T.ShowHint(grip, lines)
 end
 
--- The mail window's grip's hint (UI.ShowGripHint, on its kept size).
-function UI.GripHint(grip)
+-- The mail window's grip's hint (UI.ShowGripHint, on its kept size);
+-- `saved` is "saved" just after a Shift-right-click kept it, as Mail
+-- Memory's and Manage Recipients' grips pass it.
+function UI.GripHint(grip, saved)
   if not grip then return end
   local H = UI._gripHint
   if not H then
@@ -4312,7 +4328,7 @@ function UI.GripHint(grip)
     UI._gripHint = H
   end
   local keptW, keptH = UI.KeptWindowSize()
-  UI.ShowGripHint(grip, H, keptW, keptH, keptW ~= nil and UI.AtKeptSize(grip:GetParent()))
+  UI.ShowGripHint(grip, H, keptW, keptH, keptW ~= nil and UI.AtKeptSize(grip:GetParent()), saved == "saved")
 end
 
 -- Taint-free: this reads MailFrame's position and writes only our own anchor.
@@ -5769,16 +5785,21 @@ local function BuildFrame()
       local width = max(chosen, MinWindowWidth())
       target:SetSize(width, toKept and keptH or BaseMinHeight())
       UI._state.extraW = width - chosen
-      UI._state.adoptedAtWidth = nil
+      -- A right-click is never a bare click: the height it sets is the
+      -- player's even where it equals the one the press found (the kept
+      -- height on the Send tab with the message box grown), so the box's
+      -- extension is not handed back over it.
+      UI._state.adoptedAtWidth, UI._state.adoptedAtHeight = nil, nil
       OnResizeStop(target)
       UI.GripHint(target.ResizeButton)
     end
 
     -- Shift-right-click on the grip: the window's size as it stands is kept
-    -- as the player's own (UI.KeepWindowSize). Nothing moves.
+    -- as the player's own (UI.KeepWindowSize). Nothing moves; the hint says
+    -- what was saved until the pointer leaves the grip.
     local function OnResizeKeep(target)
       UI.KeepWindowSize(target)
-      UI.GripHint(target.ResizeButton)
+      UI.GripHint(target.ResizeButton, "saved")
     end
 
     -- The drag is free between the bounds. It stepped a row at a time for a

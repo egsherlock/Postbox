@@ -9039,7 +9039,7 @@ function MM.Grip.Keep(frame)
   local w, h = frame:GetWidth() or WINDOW_WIDTH, frame:GetHeight() or RowsHeight(DEFAULT_ROWS)
   store.keptW = math.floor(math.max(WINDOW_WIDTH, math.min(WINDOW_MAX_WIDTH, w)) + 0.5)
   store.keptH = math.floor(math.max(1, h) + 0.5)
-  MM.Grip.Hint(frame.ResizeButton)
+  MM.Grip.Hint(frame.ResizeButton, "saved")
 end
 
 -- Right-click: back to the kept size, or, at it or with nothing kept, the
@@ -9063,8 +9063,10 @@ function MM.Grip.Settle()
 end
 
 -- The grip's hint: the Postbox window's (UI.ShowGripHint), on this
--- window's kept size, its lists in a table of its own.
-function MM.Grip.Hint(grip)
+-- window's kept size, its lists in a table of its own; `saved` is "saved"
+-- just after a Shift-right-click kept it (OnEnter passes its own second
+-- argument here, a boolean).
+function MM.Grip.Hint(grip, saved)
   local UI = ns.MailboxUI
   if not (grip and UI and type(UI.ShowGripHint) == "function") then return end
   local frame = grip:GetParent()
@@ -9075,7 +9077,7 @@ function MM.Grip.Hint(grip)
     MM.Grip.H = H
   end
   UI.ShowGripHint(grip, H, w and math.floor(w + 0.5), h and math.floor(h + 0.5),
-    w ~= nil and MM.Grip.AtKept(frame))
+    w ~= nil and MM.Grip.AtKept(frame), saved == "saved")
 end
 
 local function Build()
