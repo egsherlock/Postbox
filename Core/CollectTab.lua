@@ -8883,6 +8883,11 @@ do
   RV.quiet, RV.quietN, RV.quietHex = {}, 0, nil
   -- The mark 12 units, the read dot's 7 (his pick on f62).
   RV.QUIET_ICON_A, RV.REM_MARK = 0.55, ROW_INDICATOR + 4
+  -- Where the dot leads the row, the mark is wider than the dot and would
+  -- stand against the row's left edge: it moves right by what centres it
+  -- between that edge and the icon, when that is REM_MIN to REM_MAX, and
+  -- by REM_SHIFT otherwise; never onto the icon (a unit kept clear).
+  RV.REM_MIN, RV.REM_MAX, RV.REM_SHIFT = 1, 3, 2
   local QUIET = { "Sender", "Subject", "ColTime", "ColMoney", "ColSlots", "Detail" }
 
   local function Gray(text, hex)
@@ -8922,12 +8927,15 @@ do
     if dot:IsShown() then
       if not mark and T.Glyph then
         mark = T.Glyph(row, "memory", RV.REM_MARK, "ARTWORK")
-        if mark then
-          mark:SetPoint("CENTER", dot, "CENTER", 0, 0)
-          row.RemMark = mark
-        end
+        if mark then row.RemMark = mark end
       end
       if mark then
+        local dx = RV.RemShift(row)
+        if mark.__pbDx ~= dx then
+          mark.__pbDx = dx
+          mark:ClearAllPoints()
+          mark:SetPoint("CENTER", dot, "CENTER", dx, 0)
+        end
         T.SetColor(mark, "textSecondary", T.ROW)
         mark:Show()
       end
@@ -8938,6 +8946,28 @@ do
     end
     if T.RowQuiet then T.RowQuiet(row, true) end
     row._quiet = true
+  end
+
+  -- row -> how far right of the read dot's middle Mail Memory's mark
+  -- stands: 0 where the dot does not lead the row (a bullet before a
+  -- column, the mark has room each side), else centred between the row's
+  -- left edge and the icon (RV.Place's own offsets, RV.Anchor's), or
+  -- REM_SHIFT where that is not REM_MIN to REM_MAX or no icon follows,
+  -- and never so far that it comes within a unit of the icon.
+  function RV.RemShift(row)
+    local M = RV.Marks
+    if not (M and M.Leads and M.Leads(row)) then return 0 end
+    local dot, icon = row.Indicator, row.Icon
+    local dotX = dot.__pbAt == 1 and dot.__pbAtX
+    if not dotX then return 0 end
+    local mid = dotX + (ROW_INDICATOR - 1) / 2
+    local iconX = icon:IsShown() and icon.__pbAt == 1 and icon.__pbAtX
+    if not (iconX and iconX > dotX) then return RV.REM_SHIFT end
+    local dx = iconX / 2 - mid
+    if dx < RV.REM_MIN or dx > RV.REM_MAX then dx = RV.REM_SHIFT end
+    local most = iconX - 1 - RV.REM_MARK / 2 - mid
+    if dx > most then dx = most end
+    return dx > 0 and dx or 0
   end
 
   function RV.Unquiet(row)
