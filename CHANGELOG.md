@@ -186,8 +186,9 @@
   for a mailbox. It includes the mail the game has not listed yet and
   read mail you keep in the box, which only Mail Memory used to count.
 - **Minimap icon: the count is always the plain number** (Count on icon).
-  A long one gets smaller to fit, where it could read 99+, and at a
-  mailbox it follows as you collect.
+  A long one gets smaller to fit, where it could read 99+, every number
+  with as many digits at the same size, and at a mailbox it follows as
+  you collect.
 - **Minimap icon's tooltip:** Waiting to collect is counted as everywhere
   else, and a new line under its senders, Not listed by the game yet,
   counts the mail past the 100 the game lists at a time. Read mail with

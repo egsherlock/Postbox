@@ -680,11 +680,15 @@ end
 -- short form. One or two digits are drawn so. Three or more are drawn a
 -- step smaller (one unit, 9 at 20 px), where they fit: no wider than the
 -- icon's side, or than the ruler "99+" where that is wider (a width only,
--- never shown; it is what three digits were always given). A number wider
--- still steps down a unit at a time until it fits or the font is at its
--- floor, and is drawn whole there. Measured in the font string's own font,
--- once per change of the number or the icon's size: the text is made only
--- then, and the font only when the size or the step does.
+-- never shown; it is what three digits were always given). Every number
+-- with as many digits is drawn at one size, so a count does not change
+-- size as mail comes in (111 and 888 alike): the widest number of that many
+-- digits in this font (its widest digit, repeated) steps down a unit at a
+-- time until it fits or the font is at its floor, and that step is the one
+-- for every number of its length, drawn whole there. The step is measured
+-- once per digit count, icon size and Count size, in the font string's own
+-- font, and kept on it (CountStep); a new number makes only its text, and
+-- sets the font only when the step moves.
 -- Count size (Options > Minimap, under Count on icon) moves the whole rule:
 -- `off` units from the size the icon gives the count (Small a size less,
 -- Normal as above, Large two more), before the floors, which stay. A wide
@@ -712,6 +716,45 @@ local function CountFont(fs, size, step)
   fs:SetFont(path or STANDARD_TEXT_FONT, CountFontSize(size, step, fs.__pbOff), "OUTLINE")
 end
 
+-- fs, size, off, digits -> the step every number of `digits` digits (three
+-- or more) is drawn at, measured the first time that length is shown at
+-- this size and Count size and kept in fs.__pbSteps (emptied with the rest
+-- when the size or Count size moves). Its widest digit is found once in the
+-- step-one font and kept as fs.__pbWide; the widest number of a length is
+-- that digit repeated, made once per length here and never on a paint.
+local COUNT_DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" }
+local function CountStep(fs, size, off, digits)
+  local steps = fs.__pbSteps
+  local step = steps[digits]
+  if step then return step end
+  step = 1
+  CountFont(fs, size, step)
+  -- The ruler's width, measured once in this font and size.
+  local room = fs.__pbRoom
+  if not room then
+    fs:SetText(COUNT_RULER)
+    room = math.max(size, fs:GetStringWidth() or 0)
+    fs.__pbRoom = room
+  end
+  local wide = fs.__pbWide
+  if not wide then
+    local best = -1
+    for i = 1, #COUNT_DIGITS do
+      fs:SetText(COUNT_DIGITS[i])
+      local w = fs:GetStringWidth() or 0
+      if w > best then best, wide = w, COUNT_DIGITS[i] end
+    end
+    fs.__pbWide = wide
+  end
+  fs:SetText(string.rep(wide, digits))
+  while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1, off) < CountFontSize(size, step, off) do
+    step = step + 1
+    CountFont(fs, size, step)
+  end
+  steps[digits] = step
+  return step
+end
+
 -- holder: the frame the count is drawn on; anchor: the icon texture; size:
 -- the icon's side.
 local function PaintCount(holder, anchor, size, n)
@@ -725,13 +768,16 @@ local function PaintCount(holder, anchor, size, n)
     fs:SetDrawLayer("OVERLAY", 7)
     fs:SetJustifyH("RIGHT")
     fs:SetWordWrap(false)
+    fs.__pbSteps = {}
     holder.__pbCount = fs
   end
   local off = MB.COUNT_SIZE_OFF[Settings().countSize] or 0
   if fs.__pbSize ~= size or fs.__pbAnchor ~= anchor or fs.__pbOff ~= off then
     fs.__pbSize, fs.__pbAnchor, fs.__pbOff = size, anchor, off
     -- Measured again, in the font of the new size.
-    fs.__pbN, fs.__pbStep, fs.__pbRoom = nil, nil, nil
+    fs.__pbN, fs.__pbStep, fs.__pbRoom, fs.__pbWide = nil, nil, nil, nil
+    local steps = fs.__pbSteps
+    for k in pairs(steps) do steps[k] = nil end
     fs:SetTextColor(1, 1, 1, 1)
     fs:ClearAllPoints()
     fs:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT",
@@ -740,25 +786,9 @@ local function PaintCount(holder, anchor, size, n)
   if fs.__pbN ~= n then
     fs.__pbN = n
     local text = string.format("%d", n)
-    local step = n >= 100 and 1 or 0
-    CountFont(fs, size, step)
-    if step > 0 then
-      -- The ruler's width, measured once in this font and size: a new
-      -- number writes only itself.
-      local room = fs.__pbRoom
-      if not room then
-        fs:SetText(COUNT_RULER)
-        room = math.max(size, fs:GetStringWidth() or 0)
-        fs.__pbRoom = room
-      end
-      fs:SetText(text)
-      while (fs:GetStringWidth() or 0) > room and CountFontSize(size, step + 1, off) < CountFontSize(size, step, off) do
-        step = step + 1
-        CountFont(fs, size, step)
-      end
-    else
-      fs:SetText(text)
-    end
+    -- One step for every number of a length: 100-999 never differ.
+    CountFont(fs, size, n >= 100 and CountStep(fs, size, off, #text) or 0)
+    fs:SetText(text)
   end
   fs:Show()
 end

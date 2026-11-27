@@ -400,7 +400,8 @@ icon steps aside.
   icon is hidden, the same size and in the same place; **Larger when alone**
   makes it bigger there.
 - **Count on icon** (this character or all; always the plain number, a
-  long one drawn smaller to fit) in a **Count size** of Small, Normal or
+  long one drawn smaller to fit, the same size for every number with as
+  many digits) in a **Count size** of Small, Normal or
   Large, shadow, glow and pulse, with a
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
