@@ -7702,8 +7702,9 @@ local function ActivateRow(row, button)
   -- nothing that reaches a row may collect or open a mail.
   if RV.Arranging(panel) then return end
   -- While Return and Delete show on the rows, held or kept on, a click on
-  -- the row or its icon is its mark's: it returns, a right-click deletes
-  -- finished mail, and nothing collects or opens (RV.Marks.Click).
+  -- the row or its icon is its mark's: it returns, or deletes finished
+  -- mail, and nothing collects or opens; a right-click puts the marks away
+  -- and goes on below as the row's own (RV.Marks.Click).
   if RV.Marks.Click(row, button, index) then return end
 
   -- A modified left-click is a selection gesture, under either mapping and
@@ -7952,7 +7953,8 @@ local function BuildRow(panel)
     GameTooltip:Hide()
   end)
   -- A right-click on it is the row's while Return and Delete show (it
-  -- deletes finished mail, RV.Marks.Click), and nothing on any other day.
+  -- puts them away and opens the mail, RV.Marks.Click), and nothing on any
+  -- other day.
   row.Delete:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   row.Delete:SetScript("OnClick", ns.Guard(function(self, button)
     local parent = self:GetParent()
@@ -9348,18 +9350,23 @@ end
 -- row's left edge to just past the dot where the dot leads the row.
 --
 -- While the marks show, HELD or KEPT ON alike (his idea, f57 A01), the whole
--- row is its mark: a click anywhere on it or its icon returns a mail that
--- can go back, a right-click deletes finished mail, the other button there
--- does nothing, and a row that can do neither does nothing and its tooltip
--- says why. A left click never deletes; nothing collects or opens, the fan
--- does not open, and "Left-click opens a mail" does not swap the two.
--- Shift-click and Ctrl-click do nothing while Alt is held and select while
--- kept on, as before. The row under the pointer says what its click will
--- do before it is made (f57 B01; f82 H02 "neutral"): a row a click returns
--- lies evenly in the accent, its arrow in the row's text ink; finished
--- mail is lit as any pointed row is, with only its x in red, drawn whole
--- and keyed in black on a dark ground; and the tooltip ends "Click:
--- return" or "Right-click: delete" (M.Click, M.Light, M.Hint).
+-- row is its mark: a click anywhere on it or its icon does what its mark
+-- shows (his f89 F02 pick, "mark"), returning a mail that wears the arrow
+-- and deleting finished mail, whose x it wears; a row that can do neither
+-- does nothing and its tooltip says why. No mail wears both: Return needs
+-- something in it, finished mail holds nothing. Nothing collects, the fan
+-- does not open, and "Left-click opens a mail" does not swap anything. A
+-- right-click is the row's own right-click, as with no marks (reading the
+-- mail, or collecting it where that option swaps the verbs), and it puts
+-- the marks away: kept on, the mode ends; held, they stay away until Alt
+-- is let go and pressed again (M.Drop). A right-click never returns or
+-- deletes. Shift-click and Ctrl-click do nothing while Alt is held and
+-- select while kept on, as before. The row under the pointer says what
+-- its click will do before it is made (f57 B01; f82 H02 "neutral"): a row
+-- a click returns lies evenly in the accent, its arrow in the row's text
+-- ink; finished mail is lit as any pointed row is, with only its x in red,
+-- drawn whole and keyed in black on a dark ground; and the tooltip ends
+-- "Click: return" or "Click: delete" (M.Click, M.Light, M.Hint).
 --
 -- Built inside the house rules: the game's MODIFIER_STATE_CHANGED is
 -- registered only while the inbox's list (or the one bag in its place,
@@ -9515,10 +9522,13 @@ do
         w:RegisterEvent("MODIFIER_STATE_CHANGED")
         M.watching = true
         -- A press made before the list came up shows the marks, and is no
-        -- tap.
+        -- tap; unless it is the press a right-click put the marks away
+        -- under (M.Drop), which brings nothing until Alt is let go.
         local alt, ctrl = M.AltDown(false), M.Ctrl()
-        M.held = alt and not ctrl and not M.Typing()
-        M.chord = alt and ctrl
+        local dropped = alt and M.drop == true
+        M.drop = nil
+        M.held = alt and not ctrl and not M.Typing() and not dropped
+        M.chord = alt and (ctrl or dropped)
         M.downAt, M.tapAt, M.ended, M.used = nil, nil, M.held, false
       end
     elseif M.watching then
@@ -9562,7 +9572,7 @@ do
     if not M.Eligible(panel) then return M.Sync(panel) end
     local now = GetTime()
     local alt = M.AltDown(down == 1)
-    if not alt then M.chord = false end
+    if not alt then M.chord, M.drop = false, nil end
     if alt and not M.held and (M.Ctrl() or M.Typing()) then
       M.latched, M.downAt, M.tapAt = false, nil, nil
       if M.Ctrl() then M.chord = true end
@@ -9932,7 +9942,8 @@ do
     if not (T.Glyph and T.GLYPHS and T.GLYPHS["expiry-back"]) then return end
     local b = CreateFrame("Button", nil, row)
     b:SetFrameLevel(row:GetFrameLevel() + 3)
-    b:RegisterForClicks("LeftButtonUp")
+    -- Its right-click is the row's (M.ReturnClick).
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local g = T.Glyph(b, "expiry-back", M.SIZE, "ARTWORK")
     if not g then return end
     b.Glyph = g
@@ -9999,8 +10010,11 @@ do
     GameTooltip:Hide()
   end
 
-  function M.ReturnClick(self)
+  -- A right-click on the arrow is a right-click on its row (M.Click: the
+  -- marks go and the row opens as with none).
+  function M.ReturnClick(self, button)
     local row = self:GetParent()
+    if button == "RightButton" then return ActivateRow(row, button) end
     if not M.Pressed(row) then return end
     return M.ReturnRow(row)
   end
@@ -10030,18 +10044,23 @@ do
 
   -- row, button, index (RV.Acting's) -> true where the marks own a click
   -- on the row or its icon (ActivateRow): while they show, held or kept on.
-  -- A click returns what wears the arrow (the arrow's own return), a
-  -- right-click deletes finished mail (the x's own delete, DeleteOneMail),
-  -- the other button and any row that can do neither do nothing, and
-  -- "Left-click opens a mail" does not swap them. Shift- and Ctrl-click on
-  -- mail not finished go on to select while kept on; held, nothing. A click
-  -- with Alt held uses the marks, so its press is no tap. While the marks
-  -- are still coming in (M.p under 1, the first 150 ms) a click does
-  -- nothing at all, on either button: it neither acts nor collects. A
-  -- press made with the marks showing and released without them (Alt let
-  -- go first), or the other way round (Alt pressed during the click), is
-  -- neither the marks' click nor the row's own: nothing, as on a tile
-  -- (BagView's Alt.Owns).
+  -- A click does what the row's mark shows (his f89 F02 pick): it returns
+  -- what wears the arrow (the arrow's own return) and deletes finished
+  -- mail (the x's own delete, DeleteOneMail, with M.Calm); a row that can
+  -- do neither does nothing, and "Left-click opens a mail" does not swap
+  -- them. A right-click puts the marks away (M.Drop) and is then the row's
+  -- own (false: ActivateRow goes on as with no marks), on every kind of
+  -- row, with or without Shift or Ctrl; it never returns or deletes. Shift-
+  -- and Ctrl-click on mail not finished go on to select while kept on;
+  -- held, nothing. A click with Alt held uses the marks, so its press is
+  -- no tap. While the marks are still coming in (M.p under 1, the first
+  -- 150 ms) a click does nothing at all, on either button: it neither acts
+  -- nor collects nor opens. A press made with the marks showing and
+  -- released without them (Alt let go first), or the other way round (Alt
+  -- pressed during the click), is neither the marks' click nor the row's
+  -- own: nothing, as on a tile (BagView's Alt.Owns). Every click, the
+  -- right one too, acts only on the mail that was under the pointer at
+  -- the press.
   function M.Click(row, button, index)
     local same, pressed, pressOn = M.Pressed(row)
     M.Check()
@@ -10050,6 +10069,11 @@ do
     if not live then return false end
     M.Used()
     if M.p < 1 then return true end
+    if button == "RightButton" then
+      if not same then return true end
+      M.Drop()
+      return false
+    end
     if IsShiftKeyDown() or IsControlKeyDown() then
       return M.held or button ~= "LeftButton" or row.mailDone == true
     end
@@ -10057,12 +10081,32 @@ do
     -- between press and release does nothing.
     if not same then return true end
     if button == "LeftButton" then
-      if row._mkKind == "back" and not row.mailDone then M.ReturnRow(row) end
-    elseif button == "RightButton" and row.mailDone and not M.Calm() then
-      M.actAt = GetTime()
-      DeleteOneMail(row.panel, index, row.fingerprint)
+      if row.mailDone then
+        if not M.Calm() then
+          M.actAt = GetTime()
+          DeleteOneMail(row.panel, index, row.fingerprint)
+        end
+      elseif row._mkKind == "back" then
+        M.ReturnRow(row)
+      end
     end
     return true
+  end
+
+  -- A right-click with the marks showing: they go, at once and without a
+  -- fade's worth of clicks, as Alt let go would take them, and stay away.
+  -- Kept on, the mode ends; held, Alt still down brings nothing back until
+  -- it is let go and pressed again (M.chord, the rule a Ctrl+Alt press
+  -- already keeps; M.drop carries it over the list going away, as the
+  -- reading view the click opens takes it away, and is read once the list
+  -- is back, M.Sync).
+  function M.Drop()
+    local alt = M.AltDown(false)
+    M.held, M.latched = false, false
+    M.downAt, M.tapAt, M.ended, M.used = nil, nil, false, false
+    M.chord = alt
+    M.drop = alt or nil
+    M.Aim(false)
   end
 
   -- Whether a mark's return or delete was sent under CALM ago: a further
@@ -10073,7 +10117,7 @@ do
   end
 
   -- row -> what its click does while the marks show: "back" (a click
-  -- returns it) or "gone" (finished mail: a right-click deletes it); nil
+  -- returns it) or "gone" (finished mail: a click deletes it); nil
   -- where it does neither, or the marks are off.
   function M.Act(row)
     if M.goal ~= 1 or not (row.mailIndex and row.fingerprint) then return nil end
@@ -10092,7 +10136,7 @@ do
   --   ground a look laid under its rows, the accent as its ink, as the
   --   selection's bar takes it); the arrow in the row's primary ink, as
   --   pointed at;
-  -- - finished mail, which only a right-click acts on: no colour of its
+  -- - finished mail, which a click deletes: no colour of its
   --   own. The row's own hover wash laid a second time, through the row's
   --   own paint (Theme.StyleMailRow handed this texture as the stripe, on
   --   a table made with it, M.Wash), so it is whatever the look's pointed
