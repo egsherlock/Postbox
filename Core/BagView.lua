@@ -2546,7 +2546,9 @@ function BV.NoTakeEnd()
   if not note then return end
   if NT.two then BV.StepNote(NT.panel, note, 0) end
   NT.note, NT.panel, NT.on, NT.field, NT.what, NT.two = nil, nil, nil, nil, nil, false
-  Th().SetColor(note, "textSecondary", "window")
+  -- Its resting ink, a step over textSecondary (Theme.FOOT_LIFT).
+  local T = Th()
+  T.SetColorLift(note, "textSecondary", T.FOOT_LIFT, "window")
   local lock, rule = BV.lock, BV.rule
   if lock then
     if lock.Fade then lock.Fade:Stop() end

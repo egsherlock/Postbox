@@ -144,6 +144,8 @@
   mail or tile you click wears a small lock for a moment and the line at
   the foot of the list lights, in the list and in the one-bag view. In
   History the line says "Nothing to take here" under its own words.
+- **Mail tab: the line at the foot of the list is a little brighter** in
+  History and in another character's box, so it reads at a glance.
 - **Mail tab: right-click the History button to leave History**, or
   right-click Received or Sent. You stay on the character you were
   looking at.

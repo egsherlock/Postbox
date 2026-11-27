@@ -2968,6 +2968,11 @@ if SharedTheme then SharedTheme.EvenButtonFonts = Theme.HostFontButton end
 -- to an accent it no longer wears.
 local accentTexts = setmetatable({}, { __mode = "k" })
 
+-- Font strings painted a step brighter than their token (Theme.SetColorLift)
+-- -> how far toward textPrimary. Weak-keyed; any other paint of the string
+-- clears its entry, so the lift lasts exactly as long as that paint does.
+local lifted = setmetatable({}, { __mode = "k" })
+
 -- Tints an existing region: text colour on a font string, vertex colour on a
 -- texture that already has art. Alpha is carried.
 --
@@ -3000,6 +3005,7 @@ end
 -- token's own.
 function Theme.SetColor(region, token, ground)
   if not region then return end
+  if lifted[region] then lifted[region] = nil end
 
   local isText = type(region.SetTextColor) == "function"
   if isText and Grounds.on then
@@ -3028,11 +3034,40 @@ function Theme.SetColor(region, token, ground)
   end
 end
 
+-- A font string a step brighter than `token`: its ink on `ground` (as
+-- Theme.SetColor paints it, the ground remembered the same way) moved
+-- `lift` of the way to textPrimary's ink on that ground. The two inks are
+-- the look's own, so a neutral look stays neutral and no tint comes in;
+-- the palette's repaint (Theme.RepaintTracked) and a later Theme.OnWindow
+-- or Theme.SetGround keep the step. Theme.SetColor, SetTextRGB or SetGrey
+-- on the string ends it. Nothing is made per paint.
+-- The foot line's resting ink (the Mail tab's notes under the list,
+-- CollectTab's AltNote and HistoryNote, BagView's BV.NoTakeEnd): on the
+-- dark palette textSecondary's 0.82 lifted to 0.90 (f87 E05), the same
+-- step between the light palette's two greys.
+Theme.FOOT_LIFT = (0.90 - 0.82) / (1.00 - 0.82)
+
+local function LiftedInk(token, lift, ground)
+  local r, g, b, a = Theme.Ink(token, ground)
+  local pr, pg, pb = Theme.Ink("textPrimary", ground)
+  return r + (pr - r) * lift, g + (pg - g) * lift, b + (pb - b) * lift, a
+end
+
+function Theme.SetColorLift(region, token, lift, ground)
+  if not region or type(region.SetTextColor) ~= "function" then return end
+  if ground then regionGround[region] = ground else ground = regionGround[region] end
+  lifted[region] = lift
+  accentTexts[region] = nil
+  if track then track.tint[region] = token; track.grey[region] = nil end
+  region:SetTextColor(LiftedInk(token, lift, ground))
+end
+
 -- Tints a font string in a colour that is no palette token: a class colour.
 -- It comes off the accent registry, so an accent retune never paints over
 -- it; Theme.SetColor with a token puts the string back on.
 function Theme.SetTextRGB(region, r, g, b, a)
   if not region or type(region.SetTextColor) ~= "function" then return end
+  lifted[region] = nil
   accentTexts[region] = nil
   if track then track.tint[region] = nil; track.grey[region] = nil end
   region:SetTextColor(r, g, b, a or 1)
@@ -3043,6 +3078,7 @@ end
 -- the same rank on a light one (Theme.Grey), and repainted with the palette.
 function Theme.SetGrey(region, v)
   if not region then return end
+  lifted[region] = nil
   if track then track.grey[region] = v; track.tint[region] = nil; accentTexts[region] = nil end
   local g = lightPalette and Theme.Grey(v) or v
   if type(region.SetTextColor) == "function" then
@@ -3355,10 +3391,13 @@ function Theme.RepaintTracked(onlyMoved)
   local skip = onlyMoved and inks
   for region, token in pairs(track.tint) do
     local isText = type(region.SetTextColor) == "function"
-    if not (skip and isText and not Grounds.Moved(token, regionGround[region])) then
-      local ink = isText and inks and InkOf(token, regionGround[region])
+    local lift = isText and lifted[region]
+    if not (skip and isText and not lift and not Grounds.Moved(token, regionGround[region])) then
+      local ink = isText and inks and not lift and InkOf(token, regionGround[region])
       local r, g, b, a
-      if ink then
+      if lift then
+        r, g, b, a = LiftedInk(token, lift, regionGround[region])
+      elseif ink then
         r, g, b, a = ink[1], ink[2], ink[3], ink[4]
       else
         r, g, b, a = ResolveAccentToken(token, isText)
@@ -3469,7 +3508,11 @@ do
       if want and want ~= object then region:SetFontObject(want) end
     end
     local token = track and track.tint[region]
-    if token then Theme.SetColor(region, token, ground) end
+    if token and lifted[region] then
+      Theme.SetColorLift(region, token, lifted[region], ground)
+    elseif token then
+      Theme.SetColor(region, token, ground)
+    end
   end
 
   -- The plate round the words, on the side the text is justified to.
@@ -3560,7 +3603,11 @@ do
       end
     end
     local token = track and track.tint[fs]
-    if token then Theme.SetColor(fs, token, ground) end
+    if token and lifted[fs] then
+      Theme.SetColorLift(fs, token, lifted[fs], ground)
+    elseif token then
+      Theme.SetColor(fs, token, ground)
+    end
     PaintTextPlate(fs, plate)
     return plate
   end
@@ -6410,6 +6457,7 @@ function Theme.SetRowInks(inks)
       if ground ~= "row" then return base.SetColor(region, token, ground) end
       local e = RowInk(token)
       if not (e and region) then return base.SetColor(region, token, nil) end
+      lifted[region] = nil
       if track then track.tint[region] = nil; track.grey[region] = nil end
       if type(region.SetTextColor) == "function" then
         accentTexts[region] = nil

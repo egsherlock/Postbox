@@ -21004,6 +21004,9 @@ function CT.Build(parent)
   panel.HistoryNote:SetWordWrap(false)
   panel.HistoryNote:SetText(ns.Plural("HISTORY_NOTE", HV.Days()))
   panel.HistoryNote:Hide()
+  -- The foot line rests a step over textSecondary (Theme.FOOT_LIFT), as
+  -- AltNote below and BagView's BV.NoTakeEnd put it back.
+  T.SetColorLift(panel.HistoryNote, "textSecondary", T.FOOT_LIFT, "window")
   if T.OnWindow then T.OnWindow(panel.HistoryNote, "window", "CENTER") end
 
   -- The Done view's footer: its one action, full width, where the inbox has
@@ -21032,6 +21035,7 @@ function CT.Build(parent)
   panel.AltNote:SetJustifyH("CENTER")
   panel.AltNote:SetWordWrap(false)
   panel.AltNote:Hide()
+  T.SetColorLift(panel.AltNote, "textSecondary", T.FOOT_LIFT, "window")
   if T.OnWindow then T.OnWindow(panel.AltNote, "window", "CENTER") end
 
 
