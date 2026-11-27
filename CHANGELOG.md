@@ -224,6 +224,9 @@
   comes straight back** away from a mailbox, where the icon and its glow
   could blink out for an instant. When mail is really gone the icon
   leaves half a second later; at a mailbox it follows at once.
+- **Minimap icon: it is drawn above other addons' map pins** (Questie's
+  among them), which could cover it where a pin stood beside it, on
+  Postbox's own icon and on EllesmereUI's minimap.
 - Send tab, Forever: while Blizzard has C.O.D. switched off, the C.O.D.
   box shows a lock and a gray label, and its tooltip says Blizzard has
   turned it off, with the game's own words, instead of letting a C.O.D.
