@@ -8805,17 +8805,6 @@ function Pages.mail(col)
   -- What All mail takes, by who sent it: a row whose list ticks the four
   -- kinds (State.TakesRow).
   State.TakesRow(col)
-  -- The progress line while All mail works (MailboxUI, UI.RunLineBegin):
-  -- read at the start of each run; switched off mid-run, the line on
-  -- screen goes at once.
-  Rows.Check(col, {
-    title = L["OPT_RUN_LINE_TITLE"], text = L["OPT_RUN_LINE_DESC"],
-    get = function() return ns.MailboxUI.GetOption("runLine") end,
-    set = function(on)
-      ns.MailboxUI.SetOption("runLine", on)
-      if not on and ns.MailboxUI.RunLineDrop then ns.MailboxUI.RunLineDrop(true) end
-    end,
-  })
   -- Finished mail, a group of its own: where it goes, and the bar over it.
   -- Collecting keeps the rows about a collect run and its History.
   Rows.Group(col, L["OPT_FINISHED_HEADING"])
@@ -10404,7 +10393,8 @@ end
 -- minimap icon. The pair stands outside Warn about's block, Flash needing
 -- no Mail Memory: Chat line greys for Mail Memory off or Warn about Off
 -- (State.Warnings), Flash with the minimap icon (State.Minimap), each
--- saying what turns it on. Neither the sound nor the flash needs Mail Memory, so the
+-- saying what turns it on. Then Progress line, the mailbox window's own
+-- signal while All mail works. Neither the sound nor the flash needs Mail Memory, so the
 -- heading stays live with it. The inspector shows their words alone, under
 -- General's cards, as every General text.
 function Pages.Alerts(col)
@@ -10496,6 +10486,22 @@ function Pages.Alerts(col)
   S.warnCells = { chat = chat }
   S.flashCell = pair.pair[2]
   Rows.Why(S.flashCell, "OPT_ALERT_FLASH_WHY")
+
+  -- Progress line, last: the line under the mailbox window's title bar
+  -- while All mail works (MailboxUI, UI.RunLineBegin), here since 2.1's
+  -- alphas had it under Mail tab > Collecting, as it is a signal of the
+  -- window's as the flash is the icon's. The same saved value (runLine),
+  -- so nobody's choice moves; Reset this tab finds it here by its getter.
+  -- Read at the start of each run; switched off mid-run, the line on
+  -- screen goes at once.
+  Rows.Check(col, {
+    title = L["OPT_RUN_LINE_TITLE"], text = L["OPT_RUN_LINE_DESC"],
+    get = function() return ns.MailboxUI.GetOption("runLine") end,
+    set = function(on)
+      ns.MailboxUI.SetOption("runLine", on)
+      if not on and ns.MailboxUI.RunLineDrop then ns.MailboxUI.RunLineDrop(true) end
+    end,
+  })
 end
 
 -------------------------------------------------------------

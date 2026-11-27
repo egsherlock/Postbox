@@ -93,7 +93,7 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
   or more draws a thin line under the title bar as it goes; if it stops
   early, the line fades where it stopped, holding a moment first in the
   color of the words beside it when they say why. **Progress line**
-  (Options > Mail tab > Collecting) turns the line off.
+  (Options > General > Alerts) turns the line off.
 - **Hold Alt** to send back or delete from the list: a return arrow takes
   the read dot's place on every mail that can go back, finished mail keeps
   its x, and auction mail still holding something shows a faded x (it can
@@ -438,8 +438,8 @@ cards across the top, with **Mail Memory**, **Character Groups** and
 **Manage Recipients** beside them; under them **Memory and history**
 (Remember mailboxes, Keep History for, History holds), **Alerts** (Warn
 about expiring mail, **Sound on new mail**, Minimap marker, whose button
-opens the Minimap tab at the marker, Chat line at login and Flash on new
-mail)
+opens the Minimap tab at the marker, Chat line at login, Flash on new mail
+and Progress line)
 and **Characters** (Class icons, Character order, Hidden characters). The
 sound is one of nine soft sounds made for Postbox, the mail chime or
 another quiet sound of the game's, or any sound your other addons share

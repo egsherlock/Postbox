@@ -3706,7 +3706,7 @@ do
   function UI.RunLineBegin(total)
     total = tonumber(total) or 0
     if total < 3 then return end
-    -- Progress line (Options > Mail tab > Collecting) off: no line at all.
+    -- Progress line (Options > General > Alerts) off: no line at all.
     if not UI.GetOption("runLine") then return end
     local window = UI._frame
     if not window then return end
