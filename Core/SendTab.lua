@@ -1056,10 +1056,39 @@ local function AbandonPendingSend(panel)
   if panel then SetSendButtonBusy(panel, false) end
 end
 
+-- The window's progress line under the title bar (MailboxUI 3b), for a
+-- press of two mails or more (his f89 F05 answer: from two on Send, as
+-- the mails and their items going is what wants saying; All mail keeps
+-- its three). Begun at the press, stepped as each mail's success arrives
+-- (the count the button and the title bar give), ended when the press
+-- ends: run out to the end and glowing once every mail has gone, faded
+-- where it stands, with nothing said, when it stops short (failed, timed
+-- out, not accepted, C.O.D. ticked mid-run, a late answer after a new
+-- draft, the queue emptied or unattachable). The mailbox closing drops it
+-- with the window's status. It is named "send", so an All mail run going
+-- on meanwhile neither moves it nor is moved by it.
+ST.LINE_FLOOR = 2
+function ST.LineBegin(mails)
+  local UI = ns.MailboxUI
+  if not (UI and UI.RunLineBegin) then return end
+  -- A press begun while the last one's line still runs ends that one.
+  UI.RunLineEnd(nil, nil, nil, nil, nil, "send")
+  UI.RunLineBegin(mails, ST.LINE_FLOOR, "send")
+end
+function ST.LineStep(run)
+  local UI = ns.MailboxUI
+  if run and UI and UI.RunLineStep then UI.RunLineStep(run.index, run.total, "send") end
+end
+function ST.LineEnd()
+  local UI = ns.MailboxUI
+  if UI and UI.RunLineEnd then UI.RunLineEnd(nil, nil, nil, nil, nil, "send") end
+end
+
 -- The draft after the LAST mail of a press has gone: blanked, apart from
 -- the boxes this character has pinned.
 local function SettleDraftAfterSuccess(panel)
   panel._run = nil
+  ST.LineEnd()
   ClearDraftFields(panel)
   -- A pinned box takes its pinned words again (19a), before the line below
   -- reads the draft as it now stands.
@@ -1103,6 +1132,8 @@ local function FinishSend(outcome)
     -- UI.NoteSent).
     local UI = ns.MailboxUI
     if UI and type(UI.NoteSent) == "function" then UI.NoteSent() end
+    -- And the progress line, by the same mail (ST.LineStep).
+    ST.LineStep(panel._run)
     -- The server's answer came late, and the player has written another
     -- mail since: that draft is theirs, and stays (ST.KeepWaiting). The
     -- run that mail began ends with it: what its queue still holds stays
@@ -1110,6 +1141,7 @@ local function FinishSend(outcome)
     if pending.late and not ST.SameDraft(pending) then
       local run = panel._run
       panel._run = nil
+      ST.LineEnd()
       local left = run and #(panel._queue or {}) or 0
       if left > 0 then
         panel._queue = nil
@@ -1127,14 +1159,17 @@ local function FinishSend(outcome)
     SettleDraftAfterSuccess(panel)
   elseif outcome == "timeout" then
     panel._run = nil
+    ST.LineEnd()
     PopupNotice(L["MSG_SEND_TIMEOUT"])
   elseif outcome == "canceled" then
     panel._run = nil
+    ST.LineEnd()
     -- Nothing went wrong and nothing went: Blizzard's question was not
     -- accepted (8c). One plain line, and nothing to dismiss.
     if ns.Print then ns.Print(L["MSG_SEND_NOT_ACCEPTED"]) end
   else
     panel._run = nil
+    ST.LineEnd()
     -- The client already shows its own red error for the underlying reason;
     -- this only tells the user their draft is still there.
     if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
@@ -1924,6 +1959,8 @@ local function DoSendMail(panel, confirmed)
   -- A run of mails counts itself on the button ("Sending 2 of 3...").
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
   SetSendButtonBusy(panel, true)
+  -- And the window's progress line, from two mails (ST.LineBegin).
+  ST.LineBegin(mails)
 
   -- On Forever a hyphenated full name goes as the game spells it (Helpers.MailAddress).
   SendMail(Helpers().MailAddress(toName), subject, body)
@@ -6344,6 +6381,7 @@ ContinueQueue = function(panel, pending)
     -- they stand, for the reason DoSendMail gives for the same press.
     if IsCODArmed(panel) then
       panel._run = nil
+      ST.LineEnd()
       SetSendButtonBusy(panel, false)
       PopupNotice(L["ERR_COD_QUEUE"])
       return
@@ -7538,8 +7576,10 @@ function ST.Reset(panel, reason)
   -- surprise waiting to attach itself.
   panel._queue = nil
   -- Nor does a run of mails the queue was feeding: at the next visit the
-  -- slots are the queue's to fill again (TopUpFromQueue).
+  -- slots are the queue's to fill again (TopUpFromQueue). Its line went
+  -- with the window's status; ended here too, should it still run.
   panel._run = nil
+  ST.LineEnd()
   if ST.AbandonQueuePass then ST.AbandonQueuePass() end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
 

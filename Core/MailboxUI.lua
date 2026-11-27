@@ -3342,6 +3342,9 @@ end
 -- of the run and never a guess. A click on one row, opening a mail and
 -- taking from the reading view are no run and never draw it; a run of one or
 -- two is over before a line could say anything (one comparison, at its start).
+-- A press of Send that posts two mails or more draws it too (SendTab's
+-- ST.LineBegin, his f89 F05 answer), by the mails the server has taken; one
+-- run's line at a time (RunLineBegin's `who`).
 --
 -- Its look is the window's: two units in the accent with a small light on
 -- its leading edge in the Postbox style, EllesmereUI and ElvUI (the accent
@@ -3702,14 +3705,24 @@ do
     end
   end
 
-  -- A run starts on `total` mails.
-  function UI.RunLineBegin(total)
+  -- A run starts on `total` mails. `floor`, the fewest it draws for (nil:
+  -- three, All mail's; a press of Send gives two, his f89 F05 answer, as
+  -- the mails and their items going is what wants saying). `who` names
+  -- the run ("send"; nil is All mail's): the line follows one run at a
+  -- time, and every step and end must name it. All mail and a press of
+  -- Send can overlap (the tabs switch freely while a run goes on), so
+  -- while one run's line is running, a second run draws none rather than
+  -- take the line over with a count that is not the first's; a line
+  -- already ending is taken over.
+  function UI.RunLineBegin(total, floor, who)
     total = tonumber(total) or 0
-    if total < 3 then return end
+    if total < (tonumber(floor) or 3) then return end
+    if RL.phase == "run" and RL.who ~= (who or "mail") then return end
     -- Progress line (Options > General > Alerts) off: no line at all.
     if not UI.GetOption("runLine") then return end
     local window = UI._frame
     if not window then return end
+    RL.who = who or "mail"
     if not RL.frame then RL.Make(window) end
     local f = RL.frame
     -- Where it lies and what it wears: the skin's, else 25 down and 1 in.
@@ -3789,9 +3802,10 @@ do
   end
 
   -- The run has done `done` of its `total` mails (CollectTab, once per mail
-  -- and on each list refresh: the same count twice is one comparison).
-  function UI.RunLineStep(done, total)
-    if RL.phase ~= "run" then return end
+  -- and on each list refresh: the same count twice is one comparison;
+  -- SendTab, once per mail the server takes). `who` as RunLineBegin's.
+  function UI.RunLineStep(done, total, who)
+    if RL.phase ~= "run" or RL.who ~= (who or "mail") then return end
     done, total = tonumber(done) or 0, tonumber(total) or 0
     if total <= 0 then return end
     if done > total then done = total end
@@ -3823,10 +3837,11 @@ do
   -- (incomplete, slots kept free, the mailbox closed), so nothing but the
   -- beat ends the line before another run or outcome. Otherwise a run that
   -- passed every place runs out to the end and glows, and one that did not
-  -- fades where it stands.
-  function UI.RunLineEnd(done, total, said, tone, lasting)
-    if RL.phase ~= "run" then return end
-    if done and total then UI.RunLineStep(done, total) end
+  -- fades where it stands. `who` as RunLineBegin's: another run's end is
+  -- not this line's.
+  function UI.RunLineEnd(done, total, said, tone, lasting, who)
+    if RL.phase ~= "run" or RL.who ~= (who or "mail") then return end
+    if done and total then UI.RunLineStep(done, total, who) end
     local whole = RL.total > 0 and RL.done >= RL.total
     if said then
       if not tone then
