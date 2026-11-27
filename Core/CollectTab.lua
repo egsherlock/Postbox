@@ -4741,7 +4741,7 @@ do
     -- A row remembered past the list names no inbox index: its own.
     if not index then return row.rem ~= nil and RV.RemTip(row) or false end
     local T, L0, H = Th(), L(), Helpers()
-    local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead = GetInboxHeaderInfo(index)
+    local _, _, sender, subject, money, cod, daysLeft, itemCount, wasRead, wasReturned = GetInboxHeaderInfo(index)
     money, cod = tonumber(money) or 0, tonumber(cod) or 0
     local compact = row._compact
     local layout = compact and RV.Layout() or RV.LargeLayout()
@@ -4756,6 +4756,9 @@ do
     local title = pending and RV.PendingShown(index) or RV.TipSubject(subject, row.tipQuantity)
     if not title or title == "" then title = sender or L0["SENDER_UNKNOWN"] end
     T.TipTitle(title)
+    -- A mail of the player's that came back, as Mail Memory's row and the
+    -- reading view say it: the row itself does not.
+    if wasReturned then T.TipLine(T.TipTone("muted", RV.ReturnedTip())) end
 
     -- From: whole, where the row shows less of it -- shortened, cut, or its
     -- column hidden. An auction mail's row says its outcome, and its title
@@ -4802,7 +4805,9 @@ do
     if #buf > 0 then T.TipFact(L0["TIP_HOLDS"], concat(buf)) end
 
     -- The invoice's breakdown, where the row does not draw it: a one-line
-    -- row never does, a two-line row does on its second line. A won
+    -- row never does, a two-line row does on its second line. Here it is
+    -- whole, the sale's price first, as History's and Mail Memory's
+    -- tooltips give it (the row leaves the price out: `saleTotal`). A won
     -- auction's price is on the row wherever its money is, in its short
     -- form: said here, exact, unless the row shows exactly that amount, by
     -- the rule the gold above follows.
@@ -4819,7 +4824,7 @@ do
       for i = 1, #figures do
         local figure = figures[i]
         local amount = invoiceAmounts[figure.field]
-        if amount > 0 and not figure.saleTotal then
+        if amount > 0 then
           local price = invoiceType == "buyer"
           if price or compact or lineCut then
             local text = H.FormatMoney(amount)
@@ -8982,6 +8987,33 @@ do
         when = ns.Plural(m.approx and "ROWS_REM_ABOUT_HOURS" or "ROWS_REM_IN_HOURS", max(1, floor(left / 3600)))
       end
       T.TipFact(L0["ROWS_REM_EXPIRES"], when)
+    end
+    -- Its gold, a won auction's price and a C.O.D., exact, each unless the
+    -- row's money column shows exactly that amount (as RV.RowTip's).
+    local money, price, cod = tonumber(m.money) or 0, tonumber(m.price) or 0, tonumber(m.cod) or 0
+    if money > 0 or price > 0 or cod > 0 then
+      local H = Helpers()
+      local compact = row._compact
+      local onRow = (compact and row.ColMoney:IsShown()) or (not compact and row.Detail.__pbOverflowText == nil)
+      local short = ns.Core.Formatting.FormatMoneyCompact
+      if money > 0 then
+        local text = H.FormatMoney(money)
+        if not (onRow and row.tipMoney == "earned" and short(money, compact) == text) then
+          T.TipFact(L0["LABEL_GOLD"], T.TipTone("positive", text))
+        end
+      end
+      if price > 0 then
+        local text = H.FormatMoney(price)
+        if not (onRow and row.tipMoney == "spent" and short(price, compact) == text) then
+          T.TipFact(L0["LABEL_PURCHASE"], T.TipTone("negative", text))
+        end
+      end
+      if cod > 0 then
+        local text = H.FormatMoney(cod)
+        if not (onRow and row.tipMoney == "cod" and short(cod, compact) == text) then
+          T.TipFact(L0["LABEL_COD"], T.TipTone("negative", text))
+        end
+      end
     end
     T.TipHint(L0["ROWS_REM_HINT_WAIT"])
     T.TipHint(L0["ROWS_REM_HINT_ASK"])
