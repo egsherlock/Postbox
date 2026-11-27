@@ -1019,14 +1019,16 @@ local function SendButtonCaption(panel)
   return L["BTN_SEND_MAIL"]
 end
 
-local function SetSendButtonBusy(panel, busy)
+-- `ahead`: between two mails of a run, the mail about to go is named (as
+-- Q.HoldButton names it while a pass fills it), one past the one just sent.
+local function SetSendButtonBusy(panel, busy, ahead)
   local button = panel and panel.FillButton
   if not button then return end
   if busy then
     if button.Disable then button:Disable() end
     local run = panel._run
     if run and run.total > 1 then
-      button:SetText(L("BTN_SEND_RUN_PENDING", run.index, run.total))
+      button:SetText(L("BTN_SEND_RUN_PENDING", math.min(run.index + (ahead and 1 or 0), run.total), run.total))
     else
       button:SetText(L["BTN_SEND_MAIL_PENDING"])
     end
@@ -1089,6 +1091,9 @@ end
 local function SettleDraftAfterSuccess(panel)
   panel._run = nil
   ST.LineEnd()
+  -- The press is over: the button is the player's again (it stayed busy
+  -- between the run's mails, FinishSend).
+  SetSendButtonBusy(panel, false)
   ClearDraftFields(panel)
   -- A pinned box takes its pinned words again (19a), before the line below
   -- reads the draft as it now stands.
@@ -1115,7 +1120,12 @@ local function FinishSend(outcome)
   pendingSend = nil
 
   local panel = pending.panel
-  SetSendButtonBusy(panel, false)
+  -- A mail the server took hands the button back only once the press is
+  -- over (SettleDraftAfterSuccess, and every way a run stops short below
+  -- and in ContinueQueue): between two of a run's mails it stays busy,
+  -- naming the mail about to go, so no click or Ctrl+Enter can start a
+  -- second press there (DoSendMail refuses one too).
+  if outcome ~= "success" then SetSendButtonBusy(panel, false) end
 
   if outcome == "success" then
     -- History is written here and nowhere else: a recipient the server refused
@@ -1142,6 +1152,7 @@ local function FinishSend(outcome)
       local run = panel._run
       panel._run = nil
       ST.LineEnd()
+      SetSendButtonBusy(panel, false)
       local left = run and #(panel._queue or {}) or 0
       if left > 0 then
         panel._queue = nil
@@ -1155,7 +1166,10 @@ local function FinishSend(outcome)
     end
     -- Attachments still queued: the next mail goes out from here and the
     -- draft stands until the last one has. ContinueQueue settles it itself.
-    if ContinueQueue(panel, pending) then return end
+    if ContinueQueue(panel, pending) then
+      SetSendButtonBusy(panel, true, true)
+      return
+    end
     SettleDraftAfterSuccess(panel)
   elseif outcome == "timeout" then
     panel._run = nil
@@ -1818,6 +1832,11 @@ local function DoSendMail(panel, confirmed)
   -- post the draft a second time. Nothing is asked and nothing is said; the
   -- button already reads as sending.
   if pendingSend then return end
+  -- Nor between two mails of a run (panel._run, from the press until the
+  -- run ends or stops short): the next mail is the run's to send
+  -- (ContinueQueue), and the button stays busy meanwhile. Ctrl+Enter, or
+  -- the accept of a question asked before, does nothing there.
+  if panel._run then return end
   -- Nor while the queue is moving items into the slots (section 18a). The
   -- pass has them until it has finished, waiting on the client's question
   -- or on the moment before it, and a send now would post the slots half
@@ -5986,6 +6005,11 @@ function Q.HoldButton(panel)
     else
       button:SetText(SendButtonCaption(panel))
     end
+  elseif panel._run then
+    -- Between two mails of a run, no pass waiting: the run's busy face
+    -- stands (FinishSend keeps it until the run ends or stops short).
+    Q.held = false
+    return SetSendButtonBusy(panel, true, true)
   else
     if Q.held and button.Enable then button:Enable() end
     button:SetText(SendButtonCaption(panel))
@@ -6384,6 +6408,17 @@ ContinueQueue = function(panel, pending)
       ST.LineEnd()
       SetSendButtonBusy(panel, false)
       PopupNotice(L["ERR_COD_QUEUE"])
+      return
+    end
+
+    -- A pass already waiting would never call this run's (Q.FillFromQueue):
+    -- the run ends here with the queue as it stands, and the button is
+    -- handed back rather than left busy. (Nothing starts one between a
+    -- run's mails, TopUpFromQueue; this is the net.)
+    if Q.fillState then
+      panel._run = nil
+      ST.LineEnd()
+      SetSendButtonBusy(panel, false)
       return
     end
 
