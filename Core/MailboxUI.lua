@@ -5838,7 +5838,7 @@ local function BuildFrame()
       -- gives every tab an `__activeBg` texture they can hide.
       tab.tabId = id
       if theme.StyleTab then theme.StyleTab(tab) end
-      tab:SetScript("OnClick", function() UI.SelectTab(id) end)
+      tab:SetScript("OnClick", ns.Guard(function() UI.SelectTab(id) end))
       frame.TabButtons[id] = tab
     end
   end

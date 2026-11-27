@@ -1760,9 +1760,9 @@ local function EnsureDialog(key, accept, cancel)
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,
-    OnAccept = function(_, data)
+    OnAccept = ns.Guard(function(_, data)
       if type(data) == "table" and type(data.onConfirm) == "function" then data.onConfirm() end
-    end,
+    end),
   }
   return true
 end
@@ -7813,9 +7813,9 @@ local function BuildRow(panel)
   row.IconHit = CreateFrame("Button", nil, row)
   row.IconHit:SetAllPoints(row.Icon)
   row.IconHit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  row.IconHit:SetScript("OnClick", function(self, button)
+  row.IconHit:SetScript("OnClick", ns.Guard(function(self, button)
     ActivateRow(self:GetParent(), button)
-  end)
+  end))
   row.IconHit:SetScript("OnEnter", function(self)
     local owner = self:GetParent()
     -- Moving onto a child that takes the mouse fires the ROW's OnLeave, so the
@@ -7947,7 +7947,7 @@ local function BuildRow(panel)
   -- A right-click on it is the row's while Return and Delete show (it
   -- deletes finished mail, RV.Marks.Click), and nothing on any other day.
   row.Delete:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  row.Delete:SetScript("OnClick", function(self, button)
+  row.Delete:SetScript("OnClick", ns.Guard(function(self, button)
     local parent = self:GetParent()
     if button == "RightButton" then
       if RV.Marks.goal == 1 then ActivateRow(parent, button) end
@@ -7974,7 +7974,7 @@ local function BuildRow(panel)
       marks.actAt = GetTime()
     end
     DeleteOneMail(parent.panel, index, parent.fingerprint)
-  end)
+  end))
 
   -- The stuck marker: this mail's attachments were refused by the server
   -- earlier in this visit. Never shown for a mail that merely HAS attachments --
@@ -8009,7 +8009,7 @@ local function BuildRow(panel)
   T.SetColor(row.Warning, "warning")
   row.Warning:Hide()
 
-  row:SetScript("OnClick", function(self, button) ActivateRow(self, button) end)
+  row:SetScript("OnClick", ns.Guard(function(self, button) ActivateRow(self, button) end))
 
   -- The row's tooltip is built on hover, from the mail as it is now
   -- (RV.RowTip, "Mail rows :: the tooltip").
@@ -9873,7 +9873,7 @@ do
     b:Hide()
     b:SetScript("OnEnter", M.ReturnEnter)
     b:SetScript("OnLeave", M.ReturnLeave)
-    b:SetScript("OnClick", M.ReturnClick)
+    b:SetScript("OnClick", ns.Guard(M.ReturnClick))
     b:SetScript("OnMouseDown", M.PartDown)
     b.__pbTipRow = row
     row.Return = b
@@ -10280,7 +10280,7 @@ do
     key:RegisterForClicks("LeftButtonUp")
     key:SetScript("OnEnter", M.KeyEnter)
     key:SetScript("OnLeave", M.KeyLeave)
-    key:SetScript("OnClick", M.KeyClick)
+    key:SetScript("OnClick", ns.Guard(M.KeyClick))
     -- The row's two marks: the arrow (its art for the ground, M.PaintKey)
     -- and the x's own art.
     local arrow = T.Glyph and T.Glyph(key, "expiry-back", M.SIZE, "ARTWORK")
@@ -11088,7 +11088,7 @@ function HV.BuildHistoryRow(panel)
   -- on the row's icon and the line at the foot lit (HV.RowClick). A Button
   -- hears the left button only, so a right-click is still nothing.
   row._panel = panel
-  row:SetScript("OnClick", HV.RowClick)
+  row:SetScript("OnClick", ns.Guard(HV.RowClick))
   return row
 end
 
@@ -16509,7 +16509,7 @@ local function BuildDetailSlot(detail, i)
     end
   end)
   slot:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  slot:SetScript("OnClick", function(self) TakeOneAttachment(detail, self) end)
+  slot:SetScript("OnClick", ns.Guard(function(self) TakeOneAttachment(detail, self) end))
   slot:Hide()
 
   return slot
@@ -16753,7 +16753,7 @@ local function BuildDetail(panel)
     GameTooltip:Show()
   end)
   money:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  money:SetScript("OnClick", function()
+  money:SetScript("OnClick", ns.Guard(function()
     local index = RV.Acting(detail)
     if not index then return end
     -- A modified click is never the plain click's take, as on the item tiles
@@ -16787,7 +16787,7 @@ local function BuildDetail(panel)
       end
       RequestRefresh(panel)
     end, detail._history, detail.fingerprint, detail._stamp)
-  end)
+  end))
   money:Hide()
   detail.MoneySlot = money
 
@@ -16822,7 +16822,7 @@ local function BuildDetail(panel)
     end
   end)
 
-  detail.Collect:SetScript("OnClick", function()
+  detail.Collect:SetScript("OnClick", ns.Guard(function()
     local index = RV.Acting(detail)
     if not index then return end
     detail:Hide()
@@ -16836,9 +16836,9 @@ local function BuildDetail(panel)
       skipFetch = detail._bodyFetched and true or false,
       history = detail._history,
     })
-  end)
+  end))
 
-  detail.Reply:SetScript("OnClick", function()
+  detail.Reply:SetScript("OnClick", ns.Guard(function()
     -- Verified like the rest: this reads a sender off an index, and addressing a
     -- reply to whoever slid into that slot is the one way this button can be
     -- quietly wrong.
@@ -16847,9 +16847,9 @@ local function BuildDetail(panel)
     local _, _, sender = GetInboxHeaderInfo(index)
     detail:Hide()
     CT.RequestReply(sender, detail.Subject:GetText() or "")
-  end)
+  end))
 
-  detail.Return:SetScript("OnClick", function()
+  detail.Return:SetScript("OnClick", ns.Guard(function()
     -- Verified: returning a mail is irreversible and reindexes the inbox, so it
     -- may only ever be aimed at an index that still names this mail.
     local index = RV.Acting(detail)
@@ -16860,9 +16860,9 @@ local function BuildDetail(panel)
     -- Followed from the view's binding, and checked again right before the
     -- command goes (Mail.ReturnMail): the same mail, holding what it held.
     RV.ReturnOne(panel, index, fingerprint, stamp, item)
-  end)
+  end))
 
-  detail.Delete:SetScript("OnClick", function()
+  detail.Delete:SetScript("OnClick", ns.Guard(function()
     local index = RV.Acting(detail)
     if not index then return end
     -- Grayed where the game will not delete it, and asked again here.
@@ -16905,7 +16905,7 @@ local function BuildDetail(panel)
     end
     RV.DeleteWatch.Open(fingerprint)
     DeleteOneMail(panel, index, fingerprint, stamp)
-  end)
+  end))
   -- Grayed, its pointer says why (the row's faded x's words): the title in
   -- the third gray, then the reason. Hooked, so a skin's own scripts on
   -- the button stay.
@@ -17913,15 +17913,15 @@ function RV.GridButton(panel, id)
   button:SetText(button.caption)
   if id == "alts" then button.tip = L()["CAT_ALTS_TIP"] end
   if id == "other" then button.tip = L()["CAT_OTHER_TIP"] end
-  button:SetScript("OnClick", function(self) RV.GridClick(panel, self.gridId) end)
+  button:SetScript("OnClick", ns.Guard(function(self) RV.GridClick(panel, self.gridId) end))
   button:SetScript("OnEnter", function(self) RV.GridTip(panel, self) end)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
   -- The right-click rides on the mouse-up, which a button greyed at 0 still
   -- gets and its click does not: a group with nothing to collect right now
   -- is still one to edit. Those two buttons say so on hover when greyed too.
-  button:HookScript("OnMouseUp", function(self, mouse)
+  button:HookScript("OnMouseUp", ns.Guard(function(self, mouse)
     if mouse == "RightButton" and self:IsMouseOver() then RV.GridEdit(panel, self.gridId) end
-  end)
+  end))
   if (spec or id == "alts") and button.SetMotionScriptsWhileDisabled then
     button:SetMotionScriptsWhileDisabled(true)
   end
@@ -18993,10 +18993,10 @@ local function BuildGrid(panel)
   primary.caption = labels.all or "all"
   primary.gridId = "all"
   primary:SetText(primary.caption)
-  primary:SetScript("OnClick", function()
+  primary:SetScript("OnClick", ns.Guard(function()
     if panel._gridArranging then return end
     StartCategoryRun(panel, "all")
-  end)
+  end))
   primary:SetScript("OnEnter", function(self) RV.GridTip(panel, self) end)
   primary:SetScript("OnLeave", function() GameTooltip:Hide() end)
   panel._gridButtons[1] = primary
@@ -19894,9 +19894,9 @@ function RV.BuildBar(panel, parent, foot)
   f.Delete:EnableMouse(false)
   f.__live = false
   -- Nothing is deleted from the list while its columns are being arranged.
-  f.Delete:SetScript("OnClick", function()
+  f.Delete:SetScript("OnClick", ns.Guard(function()
     if not RV.Arranging(panel) then DeleteAllDone(panel) end
-  end)
+  end))
   f.Delete:SetScript("OnEnter", function(self)
     self.__hot = true
     Th().SetColor(self.Text, "negative")
@@ -20170,7 +20170,7 @@ do
     T.ApplySlot(tile)
     tile:SetScript("OnEnter", Fan.TileEnter)
     tile:SetScript("OnLeave", Fan.TileLeave)
-    tile:SetScript("OnClick", Fan.TileClick)
+    tile:SetScript("OnClick", ns.Guard(Fan.TileClick))
     Fan.tiles[i] = tile
     return tile
   end
@@ -21013,7 +21013,7 @@ function CT.Build(parent)
   panel.DoneFooter:SetPoint("TOPRIGHT", panel.Footer, "TOPRIGHT", 0, 0)
   panel.DoneFooter:SetHeight(GRID_PRIMARY_HEIGHT)
   panel.DoneFooter:SetText(L()["BTN_DELETE_ALL_DONE"])
-  panel.DoneFooter:SetScript("OnClick", function() DeleteAllDone(panel) end)
+  panel.DoneFooter:SetScript("OnClick", ns.Guard(function() DeleteAllDone(panel) end))
   panel.DoneFooter:SetScript("OnEnter", function(self)
     local T2 = Th()
     T2.TipBegin(self)

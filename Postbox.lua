@@ -548,6 +548,12 @@ end
 --     handlers, and the few places that pcall a step and pass what it threw
 --     to the game's handler -- the error is noted here first (ns.NoteError),
 --     then passed on exactly as before.
+--   * The clicks on Postbox's own buttons that do real work (a collect, a
+--     take, a return or delete and its question's Accept, the Send button,
+--     the attachment slots) run through ns.Guard (section 5a): an error in
+--     one is noted here, then handed to the game's handler where it was
+--     raised, as the game would have handed it. So a report has those even
+--     with the game's error display off and no BugSack.
 --   * The rest of Postbox's errors reach the game's handler on their own.
 --     Where BugSack's grabber keeps them, the report reads its list for the
 --     ones naming Postbox when it is built (section 6, BugGrabberLines);
@@ -618,16 +624,85 @@ end
 --
 -- Level 4 is the catch that called this: RecordError 1, pcall 2, NoteError
 -- 3. Not a tail call, so this frame stays on the stack and the count holds.
-local function NoteError(err)
+-- `skip`: levels past the catch to start at (ns.Guard's handler, 1: the
+-- stack is still standing there, so it starts where the error was raised).
+local function NoteError(err, skip)
   local text
   if type(issecretvalue) == "function" and issecretvalue(err) then
     text = "(an error whose message the game keeps secret)"
   else
     text = ShortenPath(tostring(err))
   end
-  pcall(RecordError, text, 4)
+  pcall(RecordError, text, 4 + (skip or 0))
 end
 ns.NoteError = NoteError
+
+-------------------------------------------------------------
+-- 5a. Guarded clicks
+--
+-- ns.Guard(fn) -> a script for one of Postbox's own frames that runs fn and,
+-- if fn raises, notes the error (NoteError) and hands it to the game's
+-- handler -- BugSack's where it is installed -- from xpcall's handler,
+-- where the error was raised and the stack still stands, as the game hands
+-- a script's error itself and as Blizzard's own xpcall(f, CallErrorHandler)
+-- does. Nothing is swallowed: the game's handler sees each error once, and
+-- the click after it runs as any other. What fn returns is returned.
+--
+-- For Postbox's own scripts only, set where they are made. Never a frame,
+-- script or function of the game's (COMBAT_TAINT.md): the guard changes no
+-- one's taint, it only stands between a Postbox click and its own code.
+--
+-- Nothing per call: no table, no closure, no string. One wrapper per
+-- function, made where the script is set and shared by every frame that
+-- sets the same function (a list's rows share one).
+-------------------------------------------------------------
+do
+  -- WoW's xpcall hands a call's arguments on to the function; stock Lua
+  -- 5.1's drops them. Asked once, here. A client whose xpcall drops them
+  -- gets each handler unwrapped, working exactly as before and reported as
+  -- before, only not noted: a wrapper that put the arguments aside instead
+  -- would have to choose how many a script is given, and a click must never
+  -- lose one to be watched.
+  local function Echo(a) return a end
+  local probed, ran, echoed = pcall(xpcall, Echo, Echo, 1)
+  local passesArgs = probed and ran == true and echoed == 1
+
+  -- The game's handler raising inside this one would have Lua call this
+  -- again for that error, and again; once is enough, so the second is let
+  -- through. Cleared as the guarded call returns.
+  local catching = false
+
+  -- xpcall's message handler. A tail call into the game's handler, as
+  -- CallErrorHandler's, so the stack it reads is the one it would read with
+  -- Blizzard's own guard.
+  local function Caught(err)
+    if catching then return err end
+    catching = true
+    NoteError(err, 1)
+    local handler = type(geterrorhandler) == "function" and geterrorhandler() or nil
+    if type(handler) == "function" then return handler(err) end
+    return err
+  end
+
+  local function Settle(ok, ...)
+    catching = false
+    if ok then return ... end
+  end
+
+  -- fn -> its wrapper. Weak both ways: an entry goes with the frames that
+  -- held its wrapper.
+  local made = setmetatable({}, { __mode = "kv" })
+
+  function ns.Guard(fn)
+    if not passesArgs or type(fn) ~= "function" then return fn end
+    local guarded = made[fn]
+    if not guarded then
+      guarded = function(...) return Settle(xpcall(fn, Caught, ...)) end
+      made[fn] = guarded
+    end
+    return guarded
+  end
+end
 
 -- The event bus pcalls its handlers and logs what they threw, and event
 -- handlers are where a mail addon does most of its work. This is what the

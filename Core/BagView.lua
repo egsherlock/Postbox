@@ -669,7 +669,7 @@ function BV.Tile(i)
   tile.__pbTipRow = tile
   tile:SetScript("OnEnter", BV.TileEnter)
   tile:SetScript("OnLeave", BV.TileLeave)
-  tile:SetScript("OnClick", BV.TileClick)
+  tile:SetScript("OnClick", ns.Guard(BV.TileClick))
   -- What was under the pointer at the press, for a return's click (7).
   tile:SetScript("OnMouseDown", BV.Alt.Down)
   BV.tiles[i] = tile
@@ -1354,7 +1354,7 @@ function BV.PlaceSwitch(panel)
         cell:SetText("#")
       end
       cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-      cell:SetScript("OnClick", BV.SwitchClick)
+      cell:SetScript("OnClick", ns.Guard(BV.SwitchClick))
       cell:HookScript("OnEnter", BV.SwitchEnter)
       cell:HookScript("OnLeave", BV.SwitchLeave)
       T.JoinCell(wrap, cell)
@@ -1888,7 +1888,7 @@ function Many.Build()
   take:SetSize(Many.TAKE_W, cell)
   take:SetPoint("TOPLEFT", Many.More, "TOPRIGHT", 6, 0)
   take:SetText(L()["BAG_MANY_TAKE"])
-  take:SetScript("OnClick", Many.Take)
+  take:SetScript("OnClick", ns.Guard(Many.Take))
   Many.TakeButton = take
   Many.Sub = T.CreateText(box, "secondary")
   Many.Sub:SetPoint("TOPLEFT", box, "TOPLEFT", 8, -33)

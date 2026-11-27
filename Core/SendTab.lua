@@ -355,9 +355,9 @@ local function PopupConfirm(message, acceptLabel, onConfirm)
         timeout = 0,
         whileDead = true,
         hideOnEscape = true,
-        OnAccept = function(_, data)
+        OnAccept = ns.Guard(function(_, data)
           if type(data) == "table" and type(data.onConfirm) == "function" then data.onConfirm() end
-        end,
+        end),
       }
     end
     StaticPopup_Show(key, text, nil, { onConfirm = onConfirm })
@@ -2999,7 +2999,7 @@ local function AcquireRow(picker, index)
   row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   row:SetScript("OnEnter", RowEnter)
   row:SetScript("OnLeave", RowLeave)
-  row:SetScript("OnClick", RowClick)
+  row:SetScript("OnClick", ns.Guard(RowClick))
   -- Its tooltip and its star's follow the name the row shows after each
   -- pass (Theme.TipFollow).
   row.__pbTipRow, row.StarButton.__pbTipRow = row, row
@@ -4494,7 +4494,7 @@ local function CreateSuggestionPopup(panel)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnEnter", SuggestionEnter)
     btn:SetScript("OnLeave", SuggestionLeave)
-    btn:SetScript("OnClick", SuggestionClick)
+    btn:SetScript("OnClick", ns.Guard(SuggestionClick))
     btn:Hide()
     sf.buttons[i] = btn
   end
@@ -8364,7 +8364,7 @@ function ST.RefreshQueueStrip(panel)
         highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
         highlight:SetBlendMode("ADD")
         icon:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        icon:SetScript("OnClick", function(self, mouseButton)
+        icon:SetScript("OnClick", ns.Guard(function(self, mouseButton)
           -- Shift links and Ctrl tries on, as on an attached slot; a plain
           -- left-click does nothing here.
           if mouseButton == "LeftButton" then
@@ -8379,7 +8379,7 @@ function ST.RefreshQueueStrip(panel)
             GameTooltip:Hide()
             if RefreshQueueLabel then RefreshQueueLabel(panel) end
           end
-        end)
+        end))
         icon:SetScript("OnEnter", function(self)
           local entry = panel._queue and panel._queue[self.index]
           if not entry then return end
@@ -8458,7 +8458,7 @@ local function BuildAttachmentArea(panel)
   -- while a send or a queue pass is in flight -- the slots then belong to
   -- the mail the server is holding. Highest slot first: the client compacts
   -- the rest as each one empties.
-  panel.AttachHit:SetScript("OnMouseUp", function(self, mouseButton)
+  panel.AttachHit:SetScript("OnMouseUp", ns.Guard(function(self, mouseButton)
     if mouseButton ~= "RightButton" or not self:IsMouseOver() then return end
     if pendingSend or ST.QueuePassActive() or type(ClickSendMailItemButton) ~= "function" then return end
     panel._queue = nil
@@ -8470,7 +8470,7 @@ local function BuildAttachmentArea(panel)
     Invalidate(panel, "slots")
     Invalidate(panel, "bags")
     Invalidate(panel, "cost")
-  end)
+  end))
   -- At the caption's end, the key that attaches every stack of one kind of
   -- material (section 18b).
   ST.Kind.Build(panel, area, label)
@@ -8537,12 +8537,12 @@ local function BuildAttachmentArea(panel)
   -- RIGHT-click forgets the queue, as right-click on a slot returns its
   -- item to the bags: the same button means "take it back" in both places.
   queueButton:RegisterForClicks("RightButtonUp")
-  queueButton:SetScript("OnClick", function(_, mouseButton)
+  queueButton:SetScript("OnClick", ns.Guard(function(_, mouseButton)
     if mouseButton ~= "RightButton" then return end
     panel._queue = nil
     GameTooltip:Hide()
     if RefreshQueueLabel then RefreshQueueLabel(panel) end
-  end)
+  end))
   queueButton:Hide()
   panel.QueueLabel = queueButton
 
@@ -8599,8 +8599,8 @@ local function BuildAttachmentArea(panel)
     local slot = CreateAttachmentSlot(area, i)
     slot:SetScript("OnEnter", SlotEnter)
     slot:SetScript("OnLeave", SlotLeave)
-    slot:SetScript("OnClick", SlotClick)
-    slot:SetScript("OnReceiveDrag", SlotReceiveDrag)
+    slot:SetScript("OnClick", ns.Guard(SlotClick))
+    slot:SetScript("OnReceiveDrag", ns.Guard(SlotReceiveDrag))
     panel.ItemSlots[i] = slot
   end
 end
@@ -8709,7 +8709,7 @@ local function BuildSendControls(panel)
   button:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -M.inset, M.inset)
   button:SetText(L["BTN_SEND_MAIL"])
   if Theme.StyleButton then Theme.StyleButton(button, { fontRole = "normal" }) end
-  button:SetScript("OnClick", function() DoSendMail(panel) end)
+  button:SetScript("OnClick", ns.Guard(function() DoSendMail(panel) end))
   panel.FillButton = button
   -- Ctrl+Enter at its right end, while the option is on (8b).
   ST.BuildSendHint(button)

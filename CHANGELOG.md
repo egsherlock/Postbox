@@ -119,10 +119,11 @@
 ### Improved
 
 - **Report a bug lists only Postbox's own errors.** Postbox no longer
-  watches every addon's errors: it notes the ones it catches itself and,
-  with BugSack installed, picks its own out of BugSack's list when you
-  make a report. Other addons' errors reach BugSack or the game exactly as
-  before.
+  watches every addon's errors: it notes the ones it catches itself, now
+  including any in its main clicks (collect, return, delete, Send), so a
+  report has them even with the game's error display off and no BugSack.
+  With BugSack installed, it also picks its own out of BugSack's list.
+  Other addons' errors reach BugSack or the game exactly as before.
 - **The mailbox window, Mail Memory and Manage Recipients can each keep a
   size of your own.** Shift-right-click a window's resize grip (bottom
   right) to keep the size it is now; a right-click then goes back to your
