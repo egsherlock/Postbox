@@ -11240,66 +11240,75 @@ function HV.MoneyOnRow(row, kind, amount)
   return ns.Core.Formatting.FormatMoneyCompact(amount, true) == Helpers().FormatMoney(amount)
 end
 
--- row -> the tooltip of a History row, in the mail rows' format (RV.RowTip):
--- the subject; From, where the row shows less of the sender; Held, what came
--- out of it where the row does not say all of it -- the stacks past the
--- first, or the first cut short -- and the gold; the C.O.D. paid and a won
--- auction's price; each amount unless the row shows exactly that; Collected,
--- the day and the time; then what the letter said, kept because the mail
--- itself may be gone. A History row takes nothing on a click (the lock
--- answers it, HV.RowClick): no hint.
+-- items -> one line per stack a History entry kept (`it`), as the Mail
+-- tab's icon lists a mail's (RV.ItemLine): its icon, its name in its
+-- quality's colour with the crafting mark its link's name carries, its
+-- count. Received and Sent alike; nothing for none.
+function HV.TipStacks(items)
+  local n = items and #items or 0
+  if n == 0 then return end
+  local iconOf = C_Item and C_Item.GetItemIconByID
+  local qualityOf = C_Item and C_Item.GetItemQualityByID
+  for i = 1, n do
+    local link = items[i].l
+    local itemName = type(link) == "string" and link:match("%[(.-)%]") or nil
+    local icon = (type(iconOf) == "function" and link) and iconOf(link) or nil
+    local quality = (itemName and type(qualityOf) == "function") and qualityOf(link) or nil
+    RV.ItemLine(icon or "Interface\\Icons\\INV_Misc_QuestionMark", itemName, quality, nil, items[i].n)
+  end
+end
+
+-- label, t -> a History tooltip's time fact: the day, as the player's own
+-- choice of date writes it (the day and the month's name, in the
+-- language's order, where the row says an age), and the time.
+function HV.TipTime(label, t)
+  t = tonumber(t)
+  if not t or type(date) ~= "function" then return end
+  local style = HV.AgeStyle()
+  if not HV.DATE_KEYS[style] then style = (GetLocale() == "enUS") and "date_md" or "date_dm" end
+  Th().TipFact(label, HV.DateText(t, style, time()) .. " " .. date("%H:%M", t))
+end
+
+-- row -> the tooltip of a History row, in the mail rows' format (RV.RowTip).
+-- History is the record, so it repeats who and what the mail held whatever
+-- the row shows: the subject; From, the sender whole; every stack, a line
+-- each (HV.TipStacks); Held, the gold, exact; a sold auction's Sale,
+-- Deposit and AH fee where its invoice was kept (`dp`, `ct`); the C.O.D.
+-- paid and a won auction's price, each unless the row shows exactly that;
+-- Collected, the day and the time; then what the letter said, kept because
+-- the mail itself may be gone. A History row takes nothing on a click (the
+-- lock answers it, HV.RowClick): no hint.
 function HV.RowTip(row)
   local entry = row.entry
   if not entry then return false end
   if row.sentRow then return HV.SentRowTip(row) end
   local T, L0, H = Th(), L(), Helpers()
-  local layout = HV.Layout()
   local named = (entry.s ~= "" and entry.s) or nil
   T.TipBegin(row)
   T.TipTitle((entry.sub and entry.sub ~= "") and entry.sub or named or L0["SENDER_UNKNOWN"])
-  -- An auction's row says its outcome; on Forever the tooltip says which
-  -- of its three houses (RV.RowTip).
-  if named and (not layout.shown.sender or row.tipShort or row.Sender.__pbOverflowText
-      or (ns.IsForever and AUCTION_OUTCOME[entry.k])) then
-    T.TipFact(L0["TIP_FROM"], RV.TipSender(named, row.tipRealm))
-  end
-
-  local buf = RV.tipHolds
-  Clear(buf)
-  local items = entry.it
-  local n = items and #items or 0
-  if n > 1 or (n == 1 and (not layout.shown.subject or row.Subject.__pbOverflowText)) then
-    local qualityOf = C_Item and C_Item.GetItemQualityByID
-    for i = 1, min(n, RV.TIP_ITEMS) do
-      local link = items[i].l
-      local name = type(link) == "string" and link:match("%[(.-)%]") or nil
-      local quality = (name and type(qualityOf) == "function") and qualityOf(link) or nil
-      RV.TipItem(buf, name, quality, nil, items[i].n)
-    end
-    RV.TipMore(buf, n - RV.TIP_ITEMS)
-  end
+  if named then T.TipFact(L0["TIP_FROM"], RV.TipSender(named, row.tipRealm)) end
+  HV.TipStacks(entry.it)
   local m, c, p = entry.m or 0, entry.c or 0, entry.p or 0
-  if m > 0 and not HV.MoneyOnRow(row, "earned", m) then
-    if #buf > 0 then buf[#buf + 1] = " \194\183 " end
-    buf[#buf + 1] = T.TipTone("positive", H.FormatMoney(m))
+  if m > 0 then T.TipFact(L0["TIP_HELD"], T.TipTone("positive", H.FormatMoney(m))) end
+  -- A sale's breakdown, from its invoice as it was kept when the gold was
+  -- taken: the deposit that came back and the auction house's cut, so the
+  -- price it sold for is the gold less the one plus the other. A sale
+  -- recorded before these were kept has neither and reads as before.
+  if entry.k == "sold" and m > 0 then
+    local dp, ct = tonumber(entry.dp) or 0, tonumber(entry.ct) or 0
+    if dp > 0 or ct > 0 then
+      T.TipFact(L0["LABEL_SALE"], H.FormatMoney(m - dp + ct))
+      if dp > 0 then T.TipFact(L0["LABEL_DEPOSIT"], H.FormatMoney(dp)) end
+      if ct > 0 then T.TipFact(L0["LABEL_AH_COMMISSION"], H.FormatMoney(ct)) end
+    end
   end
-  if #buf > 0 then T.TipFact(L0["TIP_HELD"], concat(buf)) end
   if c > 0 and not HV.MoneyOnRow(row, "cod", c) then
     T.TipFact(L0["LABEL_COD"], T.TipTone("negative", H.FormatMoney(c)))
   end
   if p > 0 and not HV.MoneyOnRow(row, "spent", p) then
     T.TipFact(L0["LABEL_PURCHASE"], T.TipTone("negative", H.FormatMoney(p)))
   end
-
-  -- The day, as the player's own choice of date writes it (the day and
-  -- the month's name, in the language's order, where the row says an age),
-  -- and the time.
-  local t = tonumber(entry.t)
-  if t and type(date) == "function" then
-    local style = HV.AgeStyle()
-    if not HV.DATE_KEYS[style] then style = (GetLocale() == "enUS") and "date_md" or "date_dm" end
-    T.TipFact(L0["TIP_COLLECTED"], HV.DateText(t, style, time()) .. " " .. date("%H:%M", t))
-  end
+  HV.TipTime(L0["TIP_COLLECTED"], entry.t)
   RV.TipWhy(entry.k)
 
   if type(entry.b) == "string" and entry.b ~= "" then
