@@ -9367,11 +9367,13 @@ do
     -- that row's ground.
     WASH = 0.26, X_NEED = 3.0,
     -- The marks chip (f63 A01 "both"): its width, its glyphs' centres from
-    -- its left and the x's size. The line, kept on: its height, the glow
-    -- under it, the glow's alpha, its level over the list, and where a look
-    -- sinks the list under a rim (the Blizzard style), the rim's depth.
+    -- its left and the x's size. The line, kept on (f89 F01 "Soft"): its
+    -- width and alpha, the glow inside it and the glow's alpha at the line,
+    -- its level over the list, and where a look sinks the list under a rim
+    -- (the Blizzard style), the rim's depth. Along the list's top, and on
+    -- all four edges of the one bag in its place, at the one weight.
     CHIP_W = 39, CHIP_ARROW = 12.5, CHIP_X = 27.5, CHIP_XS = 9,
-    LINE_H = 2, GLOW_H = 10, GLOW_A = 0.16, LINE_LEVEL = 9, RIM = 3,
+    LINE_H = 1, LINE_A = 0.8, GLOW_H = 6, GLOW_A = 0.10, LINE_LEVEL = 9, RIM = 3,
     lit = nil, c1 = nil, c2 = nil,
     held = false, latched = false, goal = 0, p = 0, chord = false,
     downAt = nil, tapAt = nil, ended = false, used = false,
@@ -10364,9 +10366,76 @@ do
 
   -- The list's line, kept on: the accent's mark tone along the list's top
   -- inside its edge (inside the rim, where a look sinks the list under
-  -- one), over the rows, a glow under it fading to nothing; on a frame of
-  -- its own that takes no pointer, so the list, its rows and every click
-  -- stay as they were. Made the first time it shows; painted each time.
+  -- one), over the rows, a glow inside it fading to nothing; where the one
+  -- bag stands in the list's place (BagView 7), the same line and glow on
+  -- all four of its edges, so the bag reads as framed and the list's top
+  -- matches it as the two swap. On a frame of its own that takes no
+  -- pointer, so the list, its rows and every click stay as they were.
+  -- Made the first time it shows; painted each time.
+  -- line, side ("TOP" | "BOTTOM" | "LEFT" | "RIGHT"): that edge's line and
+  -- its glow, inward from it. The sides run between the top and the foot,
+  -- so no two lines cross.
+  function M.Edge(line, side)
+    local rule = line:CreateTexture(nil, "ARTWORK")
+    rule:SetColorTexture(1, 1, 1, 1)
+    local glow = line:CreateTexture(nil, "ARTWORK")
+    glow:SetColorTexture(1, 1, 1, 1)
+    local h, g = M.LINE_H, M.GLOW_H
+    if side == "TOP" or side == "BOTTOM" then
+      local s = side == "TOP" and -1 or 1
+      rule:SetPoint(side .. "LEFT", line, side .. "LEFT", 0, 0)
+      rule:SetPoint(side .. "RIGHT", line, side .. "RIGHT", 0, 0)
+      rule:SetHeight(h)
+      glow:SetPoint(side .. "LEFT", rule, side .. "LEFT", 0, s * h)
+      glow:SetPoint(side .. "RIGHT", rule, side .. "RIGHT", 0, s * h)
+      glow:SetHeight(g)
+    else
+      local s = side == "LEFT" and 1 or -1
+      rule:SetPoint("TOP" .. side, line, "TOP" .. side, 0, -h)
+      rule:SetPoint("BOTTOM" .. side, line, "BOTTOM" .. side, 0, h)
+      rule:SetWidth(h)
+      glow:SetPoint("TOP" .. side, rule, "TOP" .. side, s * h, 0)
+      glow:SetPoint("BOTTOM" .. side, rule, "BOTTOM" .. side, s * h, 0)
+      glow:SetWidth(g)
+    end
+    rule.__pbSide, glow.__pbSide = side, side
+    return rule, glow
+  end
+
+  -- The edges, in the accent's mark tone: the line at LINE_A, the glow
+  -- GLOW_A at the line fading to nothing inward (a gradient's first colour
+  -- is the bottom's, VERTICAL, or the left's, HORIZONTAL).
+  function M.PaintEdge(rule, glow, r, g, b)
+    rule:SetColorTexture(r, g, b, M.LINE_A)
+    local c1, c2 = M.c1, M.c2
+    if not c1 then
+      glow:SetColorTexture(r, g, b, M.GLOW_A / 2)
+      return
+    end
+    glow:SetColorTexture(1, 1, 1, 1)
+    local side = glow.__pbSide
+    if side == "TOP" then
+      glow:SetGradient("VERTICAL", c1, c2)
+    elseif side == "BOTTOM" then
+      glow:SetGradient("VERTICAL", c2, c1)
+    elseif side == "LEFT" then
+      glow:SetGradient("HORIZONTAL", c2, c1)
+    else
+      glow:SetGradient("HORIZONTAL", c1, c2)
+    end
+  end
+
+  -- line, area, bag: the frame over `area`, inside its edge (or its rim);
+  -- the foot and the sides only on the bag.
+  function M.LineOn(line, area, bag)
+    local inset = area.__pbBlizzBevel and M.RIM or 1
+    line:ClearAllPoints()
+    line:SetPoint("TOPLEFT", area, "TOPLEFT", inset, -inset)
+    line:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -inset, inset)
+    local sides = line.Sides
+    for i = 1, #sides do sides[i]:SetShown(bag) end
+  end
+
   function M.Line(on)
     local panel = M.panel
     local line = panel and panel._mkLine
@@ -10377,54 +10446,43 @@ do
     local area = panel and panel.MailListArea
     if not area then return end
     -- Along the top of whichever shows: the list, or the one bag in its
-    -- place (BagView 7), the line moved over as the two swap.
+    -- place (BagView 7), all round the bag, the line moved over as the two
+    -- swap.
     local BV = ns.BagView
-    if BV and BV.Alt and BV.Alt.Shows(panel) then area = BV.area end
+    local bag = BV and BV.Alt and BV.Alt.Shows(panel) and true or false
+    if bag then area = BV.area end
     local T = Th()
     if line and line:GetParent() ~= area then
       line:SetParent(area)
       line:SetFrameLevel(area:GetFrameLevel() + M.LINE_LEVEL)
-      local inset = area.__pbBlizzBevel and M.RIM or 1
-      line:ClearAllPoints()
-      line:SetPoint("TOPLEFT", area, "TOPLEFT", inset, -inset)
-      line:SetPoint("TOPRIGHT", area, "TOPRIGHT", -inset, -inset)
+      M.LineOn(line, area, bag)
     end
     if not line then
       line = CreateFrame("Frame", nil, area)
       line:SetFrameLevel(area:GetFrameLevel() + M.LINE_LEVEL)
-      local inset = area.__pbBlizzBevel and M.RIM or 1
-      line:SetPoint("TOPLEFT", area, "TOPLEFT", inset, -inset)
-      line:SetPoint("TOPRIGHT", area, "TOPRIGHT", -inset, -inset)
-      line:SetHeight(M.LINE_H + M.GLOW_H)
-      local rule = line:CreateTexture(nil, "ARTWORK")
-      rule:SetColorTexture(1, 1, 1, 1)
-      rule:SetPoint("TOPLEFT", line, "TOPLEFT", 0, 0)
-      rule:SetPoint("TOPRIGHT", line, "TOPRIGHT", 0, 0)
-      rule:SetHeight(M.LINE_H)
-      local glow = line:CreateTexture(nil, "ARTWORK")
-      glow:SetColorTexture(1, 1, 1, 1)
-      glow:SetPoint("TOPLEFT", rule, "BOTTOMLEFT", 0, 0)
-      glow:SetPoint("TOPRIGHT", rule, "BOTTOMRIGHT", 0, 0)
-      glow:SetHeight(M.GLOW_H)
+      local rule, glow = M.Edge(line, "TOP")
       line.Rule, line.Glow = rule, glow
+      -- The foot and the sides, rule and glow each.
+      local sides = {}
+      sides[1], sides[2] = M.Edge(line, "BOTTOM")
+      sides[3], sides[4] = M.Edge(line, "LEFT")
+      sides[5], sides[6] = M.Edge(line, "RIGHT")
+      line.Sides = sides
+      M.LineOn(line, area, bag)
       line:Hide()
       panel._mkLine = line
       M.Grads(glow)
     end
     if line:IsShown() then return end
     local r, g, b = T.GetAccentTone("mark")
-    line.Rule:SetColorTexture(r, g, b, 1)
-    local glow = line.Glow
     local c1, c2 = M.c1, M.c2
     if c1 then
-      -- VERTICAL: the first colour is the foot's.
-      glow:SetColorTexture(1, 1, 1, 1)
       c1:SetRGBA(r, g, b, 0)
       c2:SetRGBA(r, g, b, M.GLOW_A)
-      glow:SetGradient("VERTICAL", c1, c2)
-    else
-      glow:SetColorTexture(r, g, b, M.GLOW_A / 2)
     end
+    M.PaintEdge(line.Rule, line.Glow, r, g, b)
+    local sides = line.Sides
+    for i = 1, #sides, 2 do M.PaintEdge(sides[i], sides[i + 1], r, g, b) end
     line:SetAlpha(M.p)
     line:Show()
   end
