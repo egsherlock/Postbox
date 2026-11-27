@@ -2279,52 +2279,64 @@ end
 -- A plain click where nothing can be taken (another character's box, its
 -- History or this character's, a search of every character) takes nothing,
 -- in the bag and in the list alike, and is answered on the thing clicked
--- and at the foot, for about a second:
+-- and at the foot, for about two seconds, every fade eased in and out:
 --   * a small white lock (Phosphor's lock-simple, Theme.GLYPHS lock-16 on a
 --     tile, lock-12 on a row's icon) over the tile or the icon, which is
---     darkened under it, fading in (0.10 s), held (0.60 s), eased out
---     (0.40 s). White on the darkened art, with a black copy a unit under
---     it, so it reads on a pale icon and on any window opacity;
---   * the line at the foot in its bright ink, and in the accent a line
---     drawn out from the middle under its words (0.15 s), held, faded with
---     the lock. Where the line does not say why nothing was taken (History,
---     the matches of a search of every character), it says so while lit on
---     a second line under it (NOTHING_TO_TAKE): the line's own words, whole
---     and unchanged, step up half a line (NT_STEP) in the slot they stand
---     in, the reason stands a line (NT_UNDER) under them, lit as they are,
---     and the accent line goes under the reason. When the light ends both
---     are put back. Another character's box says why already
---     ("Log in on ... to collect it"): one line there, as before.
--- No chat line, no sound, no gray band over the line.
+--     darkened under it: in 0.25 s, held 0.9 s, out 0.8 s. White on the
+--     darkened art, with a black copy a unit under it, so it reads on a
+--     pale icon and on any window opacity;
+--   * the line at the foot answers in the accent, in its own place. Where
+--     its words say why already (another character's box, "Log in on ...
+--     to collect it"), they turn the accent (f91 F01): a copy of them in
+--     the accent (`Lit`) fades in over the line as the line fades out
+--     under it (0.3 s), held 0.85 s, and back (0.8 s); the character's
+--     name keeps its class color, and under the name alone a thin accent
+--     line grows from its middle (0.45 s) and fades with the words. The
+--     name is found in the words as the language put it, measured once
+--     per text; no name found, no line. Where the words do not say why
+--     (History, the matches of a search of every character, another
+--     character's History), "Nothing to take here" (NOTHING_TO_TAKE)
+--     stands in their place in the accent while they step aside (f91 F02):
+--     they fade out (0.25 s), the reason fades in (0.2 s on, 0.3 s), held,
+--     out (0.3 s), and the words come back (by 1.83 s). Nothing is added
+--     under the line and nothing moves.
+-- No chat line, no sound, no gray band over the line. The line's own ink
+-- is never changed: it rests a step over textSecondary (Theme.FOOT_LIFT)
+-- throughout, and only its alpha moves.
 --
--- One answer at a time, on one lock frame, one line texture and one reason
--- text made the first time (nothing is built per click, no closure per
--- click). The fades are the client's own animations; the answer is ended
--- by ONE C_Timer.After of its length, told from an older one by two counts,
--- so a second click starts it again on the thing newly clicked (the old one
--- put back at once) and only the last timer ends it. The tab, the window or
--- the mailbox hidden, the window resized, the view changed, the list
--- scrolled or bound again under it: it ends there, everything as it was.
--- Nothing runs between answers.
+-- One answer at a time, on one lock frame, one line texture, one copy of
+-- the words, one reason text and one measuring text made the first time,
+-- and one fade on each note made the first time it answers (nothing is
+-- built per click, no closure per click). The fades are the client's own
+-- animations; the answer is ended by ONE C_Timer.After of its length, told
+-- from an older one by two counts, so a second click starts it again on
+-- the thing newly clicked (the old one put back at once) and only the last
+-- timer ends it. The tab, the window or the mailbox hidden, the window
+-- resized, the view changed, the list scrolled or bound again under it: it
+-- ends there, everything as it was. Nothing runs between answers.
 -------------------------------------------------------------
-BV.NT_IN, BV.NT_HOLD, BV.NT_OUT = 0.10, 0.60, 0.40
+-- The lock: in, held, out.
+BV.NT_IN, BV.NT_HOLD, BV.NT_OUT = 0.25, 0.9, 0.8
 -- The darkening under the lock; the black copy's alpha under the glyph.
 BV.NT_DIM, BV.NT_SHADE = 0.58, 0.9
--- The accent line: drawn out in NT_GROW, NT_RULE_H tall, its top NT_RULE_Y
--- under the words' middle (3 under their baseline), NT_RULE_PAD wider than
--- the words each side.
-BV.NT_GROW, BV.NT_RULE_H, BV.NT_RULE_Y, BV.NT_RULE_PAD = 0.15, 2, 9, 4
--- The two lines (f79): the words' middle NT_STEP over the slot's middle,
--- the reason's middle NT_UNDER under the words' (a line of the 13 note).
--- In the 26 slot the pair spans it to its edges, the accent line's top
--- NT_RULE_Y under the reason's middle, 3 into the gap or margin under it.
-BV.NT_STEP, BV.NT_UNDER = 7, 14
+-- The words in the accent: in, held, out (the line under them the other
+-- way round on the same timing).
+BV.NT_LIT_IN, BV.NT_LIT_HOLD, BV.NT_LIT_OUT = 0.3, 0.85, 0.8
+-- The line under the name: grown from its middle in NT_GROW, NT_RULE_H
+-- tall, its top NT_RULE_Y under the words' middle (3 under their
+-- baseline), NT_RULE_PAD wider than the name each side; it fades out with
+-- the words.
+BV.NT_GROW, BV.NT_RULE_H, BV.NT_RULE_Y, BV.NT_RULE_PAD = 0.45, 2, 9, 2
+-- Where the words do not say why: they fade out in NT_AWAY and are back
+-- NT_BACK after NT_AWAY_HOLD more; the reason fades in NT_WHY_IN after
+-- NT_WHY_DELAY, held NT_WHY_HOLD, out in NT_WHY_OUT.
+BV.NT_AWAY, BV.NT_AWAY_HOLD, BV.NT_BACK = 0.25, 1.13, 0.45
+BV.NT_WHY_DELAY, BV.NT_WHY_IN, BV.NT_WHY_HOLD, BV.NT_WHY_OUT = 0.2, 0.3, 0.6, 0.3
 -- What is lit: the note, the panel, the frame clicked and which of its
 -- fields says what it shows (a tile's `kind`, a box row's `mail`, a History
--- row's `entry`), and that thing; the two timer counts; whether the reason
--- stands under the words (`two`) and half the slot's height then (`half`);
--- the footer's size at the click.
-BV.NT = { armed = 0, fired = 0, two = false, fw = 0, fh = 0 }
+-- row's `entry`), and that thing; the two timer counts; the footer's size
+-- at the click.
+BV.NT = { armed = 0, fired = 0, fw = 0, fh = 0 }
 
 -- panel -> the note standing in All mail's place, if one is.
 function BV.Note(panel)
@@ -2337,31 +2349,25 @@ end
 
 -- The notes' words are set here (CollectTab's AV.Build and the History
 -- view): `why` where they do not say why nothing can be taken here, so a
--- lit line says it under them. Set while lit, the line keeps its light;
--- its words are never changed for the answer.
-function BV.SetNote(note, text, why)
+-- lit line says it in their place; `name`, the character's name exactly as
+-- it stands in `text` (its class color included), where the words name
+-- whose box it is, so a lit line underlines it. Set while lit, the line
+-- keeps its light with the new words; its words are never changed for the
+-- answer.
+function BV.SetNote(note, text, why, name)
   if not note then return end
-  note.__pbWhy = why and true or nil
-  note:SetText(text)
-  if BV.NT.note == note then BV.PlaceRule(note) end
-end
-
--- panel, note, up: the note's middle `up` over its slot's middle, where
--- CollectTab's RV.PlaceStack last stood it (its `placed` offset; the slot
--- as tall as the stack has it while the note stands in it, kept from the
--- click, as a view without notes has a taller one); 0 puts it back exactly
--- there. Anchored as PlaceStack anchors it, so its next placing replaces
--- this one. False where the stack has not placed the note.
-function BV.StepNote(panel, note, up)
-  local s, footer = panel and panel._stack, panel and panel.Footer
+  why = why and true or nil
   local NT = BV.NT
-  if up ~= 0 then NT.half = s and s.h.all and s.h.all / 2 end
-  local y, half = s and s.placed.all, NT.half
-  if not (y and half and footer) then return false end
-  local inset, mid = Th().Metrics.inset, -(y + half) + up
-  note:SetPoint("LEFT", footer, "TOPLEFT", inset, mid)
-  note:SetPoint("RIGHT", footer, "TOPRIGHT", -inset, mid)
-  return true
+  -- Lit the other way (the view changed under the light): it ends.
+  if NT.note == note and note.__pbWhy ~= why then BV.NoTakeEnd() end
+  note.__pbWhy = why
+  note.__pbName = name
+  note:SetText(text)
+  if NT.note == note and not why then
+    local lit = BV.rule and BV.rule.Lit
+    if lit then lit:SetText(text) end
+    BV.PlaceRule(note)
+  end
 end
 
 -- The room the note's words have: the footer's width, inset each side as
@@ -2373,19 +2379,107 @@ function BV.NoteRoom(note)
   return (w or 0) - 2 * Th().Metrics.inset
 end
 
--- The accent line under the note's words, or under the reason while it
--- stands under them, as wide as those words are (never wider than the
--- note) and NT_RULE_PAD more each side, centred under them.
-function BV.PlaceRule(note)
-  local rule = BV.rule
-  if not rule then return end
-  local w = Th().TextWidth(BV.NT.two and rule.Reason or note)
+-- note -> where its name stands in its words: the middle's offset from the
+-- note's middle (the words are centred) and the name's width; nil where no
+-- name is set, the name is not in the words, or the words do not fit the
+-- room they have now (cut short, the name may be too). Measured on the
+-- measuring text (the note's face) the first time a text is asked about
+-- and kept on the note until its words change, so a repaint or a second
+-- click measures nothing.
+function BV.NameSpot(note)
+  local text = note:GetText()
+  if note.__pbSpotOf ~= text then
+    note.__pbSpotOf, note.__pbSpotX, note.__pbSpotW, note.__pbSpotFull = text, 0, 0, 0
+    local name, meas = note.__pbName, BV.rule and BV.rule.Meas
+    local s = meas and type(text) == "string" and type(name) == "string" and name ~= ""
+      and string.find(text, name, 1, true)
+    if s then
+      local T = Th()
+      meas:SetText(text)
+      local full = T.TextWidth(meas)
+      meas:SetText(name)
+      local w = T.TextWidth(meas)
+      local before = 0
+      if s > 1 then
+        meas:SetText(string.sub(text, 1, s - 1))
+        before = T.TextWidth(meas)
+      end
+      meas:SetText("")
+      if w > 0 and full > 0 then
+        note.__pbSpotX, note.__pbSpotW, note.__pbSpotFull = before + w / 2 - full / 2, w, full
+      end
+    end
+  end
+  local full = note.__pbSpotFull
+  if full <= 0 then return nil end
   local room = BV.NoteRoom(note)
-  if room > 0 and w > room then w = room end
-  rule.Tex:SetWidth(w + 2 * BV.NT_RULE_PAD)
+  if room > 0 and full > room then return nil end
+  return note.__pbSpotX, note.__pbSpotW
 end
 
--- The lock and the line, made the first time anything is answered.
+-- The accent line under the name, as wide as the name and NT_RULE_PAD more
+-- each side, centred under it. Hidden, and false, where no name is found.
+function BV.PlaceRule(note)
+  local rule = BV.rule
+  if not rule then return false end
+  local tex = rule.Tex
+  local x, w = BV.NameSpot(note)
+  if not x then
+    if rule.Grow then rule.Grow:Stop() end
+    if tex:IsShown() then tex:Hide() end
+    return false
+  end
+  tex:ClearAllPoints()
+  tex:SetPoint("TOP", note, "CENTER", x, -BV.NT_RULE_Y)
+  tex:SetWidth(w + 2 * BV.NT_RULE_PAD)
+  tex:Show()
+  return true
+end
+
+-- An Alpha animation on `group`: from, to, delay, duration, order, eased
+-- in and out.
+function BV.FadeStep(group, from, to, delay, duration, order)
+  local a = group:CreateAnimation("Alpha")
+  a:SetFromAlpha(from)
+  a:SetToAlpha(to)
+  a:SetStartDelay(delay)
+  a:SetDuration(duration)
+  a:SetSmoothing("IN_OUT")
+  a:SetOrder(order)
+  return a
+end
+
+-- region, in, hold, out [, delay]: a fade in, held, out, ending hidden
+-- (alpha 0). The lock's, the accent words' and the reason's.
+function BV.FadeOf(region, fadeIn, hold, fadeOut, delay)
+  if type(region.CreateAnimationGroup) ~= "function" then return nil end
+  local fade = region:CreateAnimationGroup()
+  BV.FadeStep(fade, 0, 1, delay or 0, fadeIn, 1)
+  BV.FadeStep(fade, 1, 0, hold, fadeOut, 2)
+  if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
+  return fade
+end
+
+-- note -> its fade out and back, made the first time it answers: the line
+-- steps aside for the accent copy or the reason. The timing is set per
+-- answer (BV.NoTake), on the same two animations.
+function BV.NoteFade(note)
+  local fade = note.__pbFade
+  if fade ~= nil then return fade or nil end
+  if type(note.CreateAnimationGroup) ~= "function" then
+    note.__pbFade = false
+    return nil
+  end
+  fade = note:CreateAnimationGroup()
+  fade.Away = BV.FadeStep(fade, 1, 0, 0, BV.NT_AWAY, 1)
+  fade.Back = BV.FadeStep(fade, 0, 1, BV.NT_AWAY_HOLD, BV.NT_BACK, 2)
+  if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
+  note.__pbFade = fade
+  return fade
+end
+
+-- The lock, the line and the texts, made the first time anything is
+-- answered.
 function BV.NoTakeParts(panel)
   local T = Th()
   local lock = BV.lock
@@ -2407,7 +2501,7 @@ function BV.NoTakeParts(panel)
       lock.Glyph:SetVertexColor(1, 1, 1, 1)
       lock.Glyph:SetPoint("CENTER", lock, "CENTER", 0, 0)
     end
-    lock.Fade = BV.FadeOf(lock)
+    lock.Fade = BV.FadeOf(lock, BV.NT_IN, BV.NT_HOLD, BV.NT_OUT)
     lock:SetScript("OnHide", BV.NoTakeEnd)
     lock:Hide()
     BV.lock = lock
@@ -2419,6 +2513,7 @@ function BV.NoTakeParts(panel)
     rule:SetAllPoints(panel.Footer)
     rule.Tex = rule:CreateTexture(nil, "ARTWORK")
     rule.Tex:SetHeight(BV.NT_RULE_H)
+    rule.Tex:Hide()
     if type(rule.Tex.CreateAnimationGroup) == "function" then
       local g = rule.Tex:CreateAnimationGroup()
       local grow = g:CreateAnimation("Scale")
@@ -2431,28 +2526,43 @@ function BV.NoTakeParts(panel)
       end
       if grow.SetOrigin then grow:SetOrigin("CENTER", 0, 0) end
       grow:SetDuration(BV.NT_GROW)
-      grow:SetSmoothing("OUT")
+      grow:SetSmoothing("IN_OUT")
       grow:SetOrder(1)
-      local out = g:CreateAnimation("Alpha")
-      out:SetFromAlpha(1)
-      out:SetToAlpha(0)
-      out:SetStartDelay(BV.NT_IN + BV.NT_HOLD)
-      out:SetDuration(BV.NT_OUT)
-      out:SetSmoothing("OUT")
-      out:SetOrder(1)
+      -- Out with the words, from the start of the answer.
+      BV.FadeStep(g, 1, 0, BV.NT_LIT_IN + BV.NT_LIT_HOLD, BV.NT_LIT_OUT, 1)
       if g.SetToFinalAlpha then g:SetToFinalAlpha(true) end
       rule.Grow = g
     end
-    -- The reason's line, in the note's face, lit; its words set once.
+    -- The texts stand in the note's own place, in the note's face; the
+    -- note's plate (Theme.OnWindow) is under them already, so they lay
+    -- none of their own. Their ink is for the window, as the note's.
+    -- The words in the accent, set to the note's words at each answer.
+    local lit = T.CreateText(rule, "secondary")
+    if lit then
+      lit:SetJustifyH("CENTER")
+      lit:SetWordWrap(false)
+      T.SetColor(lit, "accent", "window")
+      lit:Hide()
+      lit.Fade = BV.FadeOf(lit, BV.NT_LIT_IN, BV.NT_LIT_HOLD, BV.NT_LIT_OUT)
+      rule.Lit = lit
+    end
+    -- The reason, its words set once.
     local reason = T.CreateText(rule, "secondary")
     if reason then
       reason:SetJustifyH("CENTER")
       reason:SetWordWrap(false)
       reason:SetText(L()["NOTHING_TO_TAKE"])
-      T.SetColor(reason, "textPrimary", "window")
+      T.SetColor(reason, "accent", "window")
       reason:Hide()
-      if T.OnWindow then T.OnWindow(reason, "window", "CENTER") end
+      reason.Fade = BV.FadeOf(reason, BV.NT_WHY_IN, BV.NT_WHY_HOLD, BV.NT_WHY_OUT, BV.NT_WHY_DELAY)
       rule.Reason = reason
+    end
+    -- Where the name stands in the words: measured here, never shown.
+    local meas = T.CreateText(rule, "secondary")
+    if meas then
+      meas:SetWordWrap(false)
+      meas:Hide()
+      rule.Meas = meas
     end
     rule:SetScript("OnHide", BV.NoTakeEnd)
     -- The window resized (the footer is the rule frame's size): it ends.
@@ -2463,24 +2573,21 @@ function BV.NoTakeParts(panel)
   return lock, rule
 end
 
--- In at once, held, eased out: the lock's fade.
-function BV.FadeOf(frame)
-  if type(frame.CreateAnimationGroup) ~= "function" then return nil end
-  local fade = frame:CreateAnimationGroup()
-  local up = fade:CreateAnimation("Alpha")
-  up:SetFromAlpha(0)
-  up:SetToAlpha(1)
-  up:SetDuration(BV.NT_IN)
-  up:SetOrder(1)
-  local down = fade:CreateAnimation("Alpha")
-  down:SetFromAlpha(1)
-  down:SetToAlpha(0)
-  down:SetStartDelay(BV.NT_HOLD)
-  down:SetDuration(BV.NT_OUT)
-  down:SetSmoothing("OUT")
-  down:SetOrder(2)
-  if fade.SetToFinalAlpha then fade:SetToFinalAlpha(true) end
-  return fade
+-- text, note: `text` laid over the note, in its place, and its fade played
+-- from the start.
+function BV.NoTakeShow(text, note)
+  if not text then return end
+  text:ClearAllPoints()
+  text:SetPoint("LEFT", note, "LEFT", 0, 0)
+  text:SetPoint("RIGHT", note, "RIGHT", 0, 0)
+  text:SetAlpha(0)
+  text:Show()
+  if text.Fade then
+    text.Fade:Stop()
+    text.Fade:Play()
+  else
+    text:SetAlpha(1)
+  end
 end
 
 -- panel, owner, region, size, field: a click on `owner` (a tile, a row)
@@ -2509,43 +2616,60 @@ function BV.NoTake(panel, owner, region, size, field)
     lock.Fade:Play()
   end
 
-  -- Where the line does not say why: its words up half a line, the reason
-  -- under them, the accent line under the reason.
-  local reason = rule.Reason
-  NT.two = (note.__pbWhy and reason and BV.StepNote(panel, note, BV.NT_STEP)) and true or false
-  if NT.two then
-    reason:ClearAllPoints()
-    reason:SetPoint("LEFT", note, "LEFT", 0, -BV.NT_UNDER)
-    reason:SetPoint("RIGHT", note, "RIGHT", 0, -BV.NT_UNDER)
-    reason:Show()
-  elseif reason and reason:IsShown() then
-    reason:Hide()
+  -- The line steps aside for the answer standing in its place: the
+  -- reason where its words do not say why, else its words in the accent,
+  -- the name underlined.
+  local fade = BV.NoteFade(note)
+  local why = note.__pbWhy and rule.Reason
+  if fade then
+    fade:Stop()
+    if why then
+      fade.Away:SetDuration(BV.NT_AWAY)
+      fade.Back:SetStartDelay(BV.NT_AWAY_HOLD)
+      fade.Back:SetDuration(BV.NT_BACK)
+    else
+      fade.Away:SetDuration(BV.NT_LIT_IN)
+      fade.Back:SetStartDelay(BV.NT_LIT_HOLD)
+      fade.Back:SetDuration(BV.NT_LIT_OUT)
+    end
   end
-  T.SetColor(note, "textPrimary", "window")
-  local tex = rule.Tex
-  T.FillColor(tex, "accent")
-  tex:ClearAllPoints()
-  tex:SetPoint("TOP", NT.two and reason or note, "CENTER", 0, -BV.NT_RULE_Y)
-  BV.PlaceRule(note)
   NT.fw, NT.fh = panel.Footer:GetWidth() or 0, panel.Footer:GetHeight() or 0
   rule:Show()
-  if rule.Grow then
-    rule.Grow:Stop()
-    rule.Grow:Play()
+  if why then
+    BV.NoTakeShow(rule.Reason, note)
+  else
+    local lit = rule.Lit
+    if lit then
+      lit:SetText(note:GetText())
+      BV.NoTakeShow(lit, note)
+    end
+    if BV.PlaceRule(note) then
+      T.FillColor(rule.Tex, "accent")
+      -- Whole for the grow, whatever the last answer's fade left.
+      rule.Tex:SetAlpha(1)
+      if rule.Grow then
+        rule.Grow:Stop()
+        rule.Grow:Play()
+      end
+    end
   end
+  -- The note steps aside only where something stands in its place.
+  if fade and (why or rule.Lit) then fade:Play() end
 
   NT.armed = NT.armed + 1
   C_Timer.After(BV.NT_IN + BV.NT_HOLD + BV.NT_OUT, BV.NoTakeDue)
 end
 
--- The answer is over: the words where they were, in their own ink, the
--- reason, the lock and the line put away.
+-- The answer is over: the line whole, in its own ink, the texts, the lock
+-- and the line under the name put away.
 function BV.NoTakeEnd()
   local NT = BV.NT
   local note = NT.note
   if not note then return end
-  if NT.two then BV.StepNote(NT.panel, note, 0) end
-  NT.note, NT.panel, NT.on, NT.field, NT.what, NT.two = nil, nil, nil, nil, nil, false
+  NT.note, NT.panel, NT.on, NT.field, NT.what = nil, nil, nil, nil, nil
+  local fade = note.__pbFade
+  if fade then fade:Stop() end
+  note:SetAlpha(1)
   -- Its resting ink, a step over textSecondary (Theme.FOOT_LIFT).
   local T = Th()
   T.SetColorLift(note, "textSecondary", T.FOOT_LIFT, "window")
@@ -2556,7 +2680,16 @@ function BV.NoTakeEnd()
   end
   if rule then
     if rule.Grow then rule.Grow:Stop() end
-    if rule.Reason and rule.Reason:IsShown() then rule.Reason:Hide() end
+    if rule.Tex:IsShown() then rule.Tex:Hide() end
+    local lit, reason = rule.Lit, rule.Reason
+    if lit then
+      if lit.Fade then lit.Fade:Stop() end
+      if lit:IsShown() then lit:Hide() end
+    end
+    if reason then
+      if reason.Fade then reason.Fade:Stop() end
+      if reason:IsShown() then reason:Hide() end
+    end
     if rule:IsShown() then rule:Hide() end
   end
 end

@@ -7576,7 +7576,7 @@ function AV.Build(panel, query)
 
   -- The note where the sweeps stand: whose box and when it was seen, and
   -- where to go to collect it; or what a search of every box found.
-  local note, why
+  local note, why, name
   if info.matched and panel._searchAll and query ~= "" then
     -- A count says nothing of where to collect: lit, the line says it.
     why = true
@@ -7593,14 +7593,16 @@ function AV.Build(panel, query)
       note = note .. "  " .. ns.Plural("MEMORY_ON_CHARACTERS", chars)
     end
   elseif who and info.snapshot then
-    -- The name inked for the window the note stands on (Theme.OnWindow).
-    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), Memory.ClassName(who.realm, who.name, true, "window"))
+    -- The name inked for the window the note stands on (Theme.OnWindow);
+    -- handed on as it stands in the words, so a lit line underlines it.
+    name = Memory.ClassName(who.realm, who.name, true, "window")
+    note = L()("ALT_NOTE", Memory.AgeText(info.snapshot), name)
   else
     note = Memory.SeenText(info.snapshot)
   end
   -- Through the bag's setter, which keeps a lit line lit (BV.SetNote).
   local Bag = ns.BagView
-  if Bag and Bag.SetNote then Bag.SetNote(panel.AltNote, note, why) else panel.AltNote:SetText(note) end
+  if Bag and Bag.SetNote then Bag.SetNote(panel.AltNote, note, why, name) else panel.AltNote:SetText(note) end
   return earned, spent, #rows
 end
 
