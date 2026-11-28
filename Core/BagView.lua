@@ -2228,7 +2228,13 @@ function BV.GoBox(panel, realm, name)
   Parts().AV.OpenHeader(panel, realm, name)
 end
 
--- A click on a tile. Right: its mails. Modified left: the game's item
+-- Whether the game's split modifier (Shift, unless rebound) is held.
+function BV.SplitHeld()
+  if type(IsModifiedClick) == "function" then return IsModifiedClick("SPLITSTACK") and true or false end
+  return type(IsShiftKeyDown) == "function" and IsShiftKeyDown() and true or false
+end
+
+-- A click on a tile. Right: its mails; Shift-right, how many. Modified left: the game's item
 -- rules (Shift links, Ctrl tries on), never the plain click's take. Plain
 -- left: every stack of the item as one run, at a mailbox, on a tile that
 -- can be taken, while the bag is drawn from the inbox as it stands; a
@@ -2242,7 +2248,12 @@ function BV.TileClick(tile, button)
   local P = Parts()
   local RV, CT, M = P.RV, ns.CollectTab, Mail()
   if button == "RightButton" then
-    if not RV.Modified() then BV.ShowMails(panel, kind) end
+    if not RV.Modified() then BV.ShowMails(panel, kind) return end
+    -- The game's split gesture (Shift) on the right button asks how many
+    -- straight away, where the left one would (BV.Many.May), and never
+    -- links: so "how many" is there with a chat box open too. Ctrl and Alt
+    -- right-clicks are nothing, as before.
+    if BV.SplitHeld() and BV.Many.May(kind) then BV.Many.Open(kind) end
     return
   end
   if button ~= "LeftButton" then return end
@@ -2255,13 +2266,7 @@ function BV.TileClick(tile, button)
     -- It had nowhere to put a link: the game's split gesture (Shift) on a
     -- tile in two mails or more that can be taken here asks how many, as
     -- its bags do of a stack. Anything else is nothing, as before.
-    local split
-    if type(IsModifiedClick) == "function" then
-      split = IsModifiedClick("SPLITSTACK")
-    else
-      split = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
-    end
-    if split and BV.Many.May(kind) then BV.Many.Open(kind) end
+    if BV.SplitHeld() and BV.Many.May(kind) then BV.Many.Open(kind) end
     return
   end
   -- In a search of every box a tile goes to its character's box, as its
