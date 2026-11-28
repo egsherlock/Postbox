@@ -797,6 +797,15 @@ function ST.RefreshAttachmentSlots(panel)
   -- up to the client's limit: 6 boxes at 0-5 attached, 7 once the row fills,
   -- ... 12 once 11 are attached.
   local visible = min(K.SEND_SLOT_COUNT, max(K.SEND_SLOTS_PER_ROW, highest + 1))
+  -- What the attachments ask for, which a press of several mails holds
+  -- (ST.HoldBegin).
+  panel._attachBoxes = visible
+  -- Through a press of several mails the boxes shown at the press stand:
+  -- the slots empty and refill in place between mails, so the window keeps
+  -- its height until the press ends (and, after its last mail, until the
+  -- pointer leaves Send: ST.HoldSettle).
+  local held = panel._runBoxes
+  if held and held > visible then visible = held end
   for i = 1, K.SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
     if slot then slot:SetShown(i <= visible) end
@@ -1086,11 +1095,43 @@ function ST.LineEnd()
   if UI and UI.RunLineEnd then UI.RunLineEnd(nil, nil, nil, nil, nil, "send") end
 end
 
+-- The slot rows through a press of several mails (his f93 S01 pick, "Hold
+-- until you move off Send"). The boxes shown at the press stand until the
+-- press ends (panel._runBoxes, read by RefreshAttachmentSlots), so the
+-- window neither drops a row nor grows it back between two mails. They go,
+-- with one refresh, wherever the run ends: the last mail's settle, and
+-- every way it stops short (each beside its ST.LineEnd). After the last
+-- mail, with the pointer still on Send, they stay until it leaves the
+-- button (the OnLeave hooked in BuildSendControls), the tab hides or the
+-- next press begins, so nothing moves under the pointer. No timer.
+function ST.HoldBegin(panel, mails)
+  panel._holdLeave = nil
+  panel._runBoxes = (mails > 1) and panel._attachBoxes or nil
+end
+-- Lets the boxes go. `quiet`: the caller refreshes the slots itself.
+function ST.HoldEnd(panel, quiet)
+  if not (panel and panel._runBoxes) then return end
+  panel._runBoxes, panel._holdLeave = nil, nil
+  if not quiet then Invalidate(panel, "slots") end
+end
+-- The last mail's settle (`last`), or a run settled short of it.
+function ST.HoldSettle(panel, last)
+  if not panel._runBoxes then return end
+  local button = panel.FillButton
+  if last and panel:IsShown() and button and button:IsMouseOver() then
+    panel._holdLeave = true
+    return
+  end
+  ST.HoldEnd(panel)
+end
+
 -- The draft after the LAST mail of a press has gone: blanked, apart from
--- the boxes this character has pinned.
-local function SettleDraftAfterSuccess(panel)
+-- the boxes this character has pinned. `last`: the press's own last mail
+-- (FinishSend), rather than a run settled short of it (ContinueQueue).
+local function SettleDraftAfterSuccess(panel, last)
   panel._run = nil
   ST.LineEnd()
+  ST.HoldSettle(panel, last)
   -- The press is over: the button is the player's again (it stayed busy
   -- between the run's mails, FinishSend).
   SetSendButtonBusy(panel, false)
@@ -1152,6 +1193,7 @@ local function FinishSend(outcome)
       local run = panel._run
       panel._run = nil
       ST.LineEnd()
+      ST.HoldEnd(panel, true)
       SetSendButtonBusy(panel, false)
       local left = run and #(panel._queue or {}) or 0
       if left > 0 then
@@ -1170,20 +1212,23 @@ local function FinishSend(outcome)
       SetSendButtonBusy(panel, true, true)
       return
     end
-    SettleDraftAfterSuccess(panel)
+    SettleDraftAfterSuccess(panel, true)
   elseif outcome == "timeout" then
     panel._run = nil
     ST.LineEnd()
+    ST.HoldEnd(panel, true)
     PopupNotice(L["MSG_SEND_TIMEOUT"])
   elseif outcome == "canceled" then
     panel._run = nil
     ST.LineEnd()
+    ST.HoldEnd(panel, true)
     -- Nothing went wrong and nothing went: Blizzard's question was not
     -- accepted (8c). One plain line, and nothing to dismiss.
     if ns.Print then ns.Print(L["MSG_SEND_NOT_ACCEPTED"]) end
   else
     panel._run = nil
     ST.LineEnd()
+    ST.HoldEnd(panel, true)
     -- The client already shows its own red error for the underlying reason;
     -- this only tells the user their draft is still there.
     if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
@@ -1977,6 +2022,10 @@ local function DoSendMail(panel, confirmed)
   pendingSend.record = ST.SentSnapshot(toName, subject, gold, cod and totalCopper or 0)
   -- A run of mails counts itself on the button ("Sending 2 of 3...").
   panel._run = (mails > 1) and { index = 1, total = mails } or nil
+  -- Its slot rows stand until it ends (ST.HoldBegin); the last press's,
+  -- still held for a pointer on Send, go first.
+  if panel._holdLeave then ST.HoldEnd(panel) end
+  ST.HoldBegin(panel, mails)
   SetSendButtonBusy(panel, true)
   -- And the window's progress line, from two mails (ST.LineBegin).
   ST.LineBegin(mails)
@@ -6406,6 +6455,7 @@ ContinueQueue = function(panel, pending)
     if IsCODArmed(panel) then
       panel._run = nil
       ST.LineEnd()
+      ST.HoldEnd(panel)
       SetSendButtonBusy(panel, false)
       PopupNotice(L["ERR_COD_QUEUE"])
       return
@@ -6418,6 +6468,7 @@ ContinueQueue = function(panel, pending)
     if Q.fillState then
       panel._run = nil
       ST.LineEnd()
+      ST.HoldEnd(panel)
       SetSendButtonBusy(panel, false)
       return
     end
@@ -7615,6 +7666,8 @@ function ST.Reset(panel, reason)
   -- with the window's status; ended here too, should it still run.
   panel._run = nil
   ST.LineEnd()
+  -- And the rows it held (ST.HoldEnd): the refresh below draws them.
+  ST.HoldEnd(panel, true)
   if ST.AbandonQueuePass then ST.AbandonQueuePass() end
   if RefreshQueueLabel then RefreshQueueLabel(panel) end
 
@@ -8786,6 +8839,9 @@ local function BuildSendControls(panel)
   if Theme.StyleButton then Theme.StyleButton(button, { fontRole = "normal" }) end
   button:SetScript("OnClick", ns.Guard(function() DoSendMail(panel) end))
   panel.FillButton = button
+  -- The pointer leaving it lets go of the rows a press's last mail left
+  -- held under it (ST.HoldSettle). Hooked once, here.
+  button:HookScript("OnLeave", function() if panel._holdLeave then ST.HoldEnd(panel) end end)
   -- Ctrl+Enter at its right end, while the option is on (8b).
   ST.BuildSendHint(button)
 
@@ -8957,6 +9013,10 @@ local function InstallEvents(panel)
 
   panel:SetScript("OnHide", function(self)
     for i = 1, #VISIBILITY_EVENTS do self:UnregisterEvent(VISIBILITY_EVENTS[i]) end
+    -- Rows a press's last mail left held for the pointer on Send go with
+    -- the tab (ST.HoldSettle); OnShow draws the slots afresh. A run still
+    -- going keeps its own.
+    if self._holdLeave then ST.HoldEnd(self, true) end
 
     CloseOtherLists(self)
     ST.LeaveSendTab()
