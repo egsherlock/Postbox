@@ -32,6 +32,14 @@
 > its own. No attribute, no table write, no manager call. §4 has the source lines, what it
 > does and does not cover, and the one thing only the game can confirm.
 >
+> **With docking off, the same width the other way (2026-11-28).** The invisible
+> `MailFrame` stood at the game's 338 in the left slot, so a window opened beside the
+> mailbox (the character sheet) landed 370 units right of where it would with no mailbox,
+> beside an empty space. With docking off Postbox now makes it 1 unit wide, by the same
+> setter under the same combat rule, and keeps it so between visits (never before the
+> session's first mailbox). The window lands at 49 instead of 16; the 33 left are the
+> manager's own spacing (32) and the 1. §4 has the numbers.
+>
 > **Correction to an earlier note here.** `FrameScriptObject:CanBeAccessedInContext` and
 > `HasAccessConstraints` (12.1; absent on live 12.0.7) are **not** the taint probe this
 > header once hoped for.
@@ -178,7 +186,7 @@ All in `Core/MailboxUI.lua` unless noted. Postbox’s whole design = hide the na
 | `MailFrame:SetAlpha(0)` | `HideNativeMailFrame` | every open | **yes** (confirmed culprit) | no — runs always |
 | `frame:SetPoint("TOPLEFT", MailFrame, ...)` | `DockToSlot` (grid positioning) | open | **no** — anchoring *our* frame to MailFrame only reads MailFrame; does not taint it | n/a |
 | `hooksecurefunc(MailFrame, "SetAlpha", …)` | `HideNativeMailFrame` (once, first open) | first open | **no** new taint — a secure post-hook; the original runs untouched and the hook runs after it. The frame is already tainted by the `SetAlpha(0)` above, and the hook's own re-zero is that same write again | no — a `SetAlpha` on a protected frame is not a combat-protected call |
-| `MailFrame:SetWidth(w)` | `SyncSlotWidth` (section 4), from `ApplyWindowLayout`, the drag's start, `OnMailClosed` | docked open, a resize's end, a scale change, the docking switch; given back at undock, drag and close | the same class of write as `SetAlpha(0)`: a widget setter, no Lua value stored, nothing of the manager's run. See "The room beside the window" below | **yes, skipped**: `SetWidth` is `IsProtectedFunction`, so in combat nothing is written either way and the width stands until the next layout out of combat |
+| `MailFrame:SetWidth(w)` | `SyncSlotWidth` (section 4), from `ApplyWindowLayout`, the drag's start, `OnMailClosed` | docked open, a resize's end, a scale change, the docking switch; given back at undock, drag and close. With docking off: 1 unit, from the session's first mailbox open (or the switch turned off after it) and kept between visits; given back when docking is turned on (the docked rule then applies) and on a visit Postbox steps aside from (`UI.StepsAside`) | the same class of write as `SetAlpha(0)`: a widget setter, no Lua value stored, nothing of the manager's run. See "The room beside the window" below | **yes, skipped**: `SetWidth` is `IsProtectedFunction`, so in combat nothing is written either way and the width stands until the next layout out of combat |
 
 **Removed by §7 fix #3** (kept here because the reasoning matters if anyone reinstates them):
 
@@ -194,16 +202,17 @@ Notes:
   The "window opens where the mailbox is / snaps after resize" behavior is this.
 - **Grid space-reservation is gone** (removed for GitHub issue 5, see the table
   above). Postbox writes nothing to the panel layout: no attribute, no call into
-  the manager. The writes to a Blizzard frame left are `MailFrame:SetAlpha(0)` and,
-  while docked, `MailFrame:SetWidth`. `SetAlpha(0)` taints `MailFrame` alone: the
+  the manager. The writes to a Blizzard frame left are `MailFrame:SetAlpha(0)` and
+  `MailFrame:SetWidth` (Postbox's width while docked, 1 unit with docking off). `SetAlpha(0)` taints `MailFrame` alone: the
   panel manager never reads `MailFrame`'s alpha, it stores and moves the frame by
   reference, and after the mailbox closes `MailFrame` sits in no panel slot. That is
   why the issue's reporter could keep it and still use the bank. The width is the
   subject of the next note. `MailboxUI.lua` consults `InCombatLockdown()` in one
   place, to skip the width write in combat. Since 2026-11-12 one thing waits for
   `PLAYER_REGEN_ENABLED`: when that write was skipped while it would have changed
-  something (the mailbox open and docked, or a width Postbox set still to be given
-  back: an undock, a drag off the slot or a close in combat), Postbox listens for it
+  something (the mailbox open and docked, a width Postbox set still to be given
+  back: an undock, a drag off the slot or a close in combat, or with docking off the
+  1-unit width not yet set), Postbox listens for it
   on its own event bus, and at combat's end syncs the width once as things then
   stand (`UI.SyncAfterCombat`, the same `MailFrame:SetWidth`, or the width given
   back) and stops listening. No attribute, no panel-manager call, nothing written in
@@ -267,6 +276,48 @@ Notes:
     sense it has always had here: no Blizzard function, table, attribute or script is
     replaced, hooked or called. It is bent in the way `SetAlpha(0)` already bends it:
     a second widget setter on the frame itself.
+  - *With docking off (2026-11-28).* The window is Postbox's own and the game's windows
+    should open as if the mailbox were not there. Read against wow-ui-source `live`
+    12.1.5 (70961) and `forever` 1.60.1 (71139), same code on both: with no left panel a
+    "left"-area window such as the character sheet (`UIPanelWindows`, `area = "left"`,
+    no `xoffset`) goes to the left slot at `LEFT_OFFSET + xoffset` = 16
+    (`UIParentPanelManager.lua:634`, Forever `:644`); with `MailFrame` there it is pushed
+    to the center slot at `centerOffset + xoffset + PANEl_SPACING_X`
+    (`:635`/`:679`, Forever `:645`/`:689`), `centerOffset = 16 + GetUIPanelWidth(MailFrame)`.
+    The constants are `UIPanelLayoutFrame` attributes (`Shared/UIPanelLayoutFrame.lua`:
+    `LEFT_OFFSET = 16`, `PANEl_SPACING_X = 32`), written by nothing outside the manager
+    on either client. In UIParent units, at `MailFrame` scale 1: mailbox closed, 16;
+    docking off until now, 16 + 338 + 32 = 386; now 16 + 1 + 32 = 49. The 32 cannot go
+    without writing the manager's layout attribute or a `UIPanelWindows` entry, and 0
+    would save one unit at the cost of a frame with no width. So with docking off,
+    `SyncSlotWidth` sets 1 from the session's first mailbox open (never before it: §2)
+    and keeps it between visits, so a window already open at a later open, which the
+    manager lays out in `MailFrame_Show` before Postbox's open runs, finds it narrow
+    too. At the session's first undocked visit such a window keeps the gap until it is
+    next laid out; one opened during that visit has none. The true width is kept
+    (`slotNativeW`) and given back when docking is turned on (the docked rule then
+    widens from it) and on a visit Postbox steps aside from on Forever
+    (`UI.StepsAside`, a controller player's visit in Blizzard's own mailbox), the one
+    path where the game's mail frame is used instead of Postbox's window; elsewhere it
+    stays at alpha 0 (the TSM notice and the options preview never show it). Docking on
+    is unchanged: a headless run of both versions against a stub `MailFrame` and a copy
+    of the manager's formula gives identical widths, writes and combat syncs in twelve
+    docked scenarios.
+  - *What reads a 1-unit `MailFrame`.* On retail `InboxFrame` and `SendMailFrame` have
+    fixed sizes (384×512, anchored `TOPLEFT`) and keep them; on Forever both are anchored
+    `TOPLEFT` + `BOTTOMRIGHT` and become 1 wide, as they become Postbox's width while
+    docked. The template's children anchored to both edges (`TitleContainer`, `Inset`,
+    `NineSlice`, the `Bg`) get a negative extent and draw nothing, at alpha 0 anyway. The
+    one Lua read of a width it reaches is `SendMailFrame_Update` on Forever
+    (`MailFrame.lua:1376`): `areax = SendMailFrame:GetWidth() - 14` then divides by
+    `ATTACHMENTS_PER_ROW_SEND - 1` (6), a constant, and places the attachment buttons,
+    which Postbox never shows; nothing divides by a width. No `OnSizeChanged` anywhere in
+    `Blizzard_MailFrame` or the template chain on either client (Forever's gamepad
+    `FrameGlow`/jump hints and page indicators included). `MailFrame_OnLoad` reads the
+    width once, at load. Forever's `OpenMailFrame` (anchored to `MailFrame`'s right edge)
+    moves with it and is never shown by Postbox. *Only the game can confirm* that a
+    1-unit frame draws and lays out as read here, and the taint log as for the docked
+    width.
 - **Postbox stepping aside instead (assessed, not built).** After a panel is shown
   beside the mailbox, read where it went (`GetUIPanel("center")`) and narrow or move
   Postbox's own window. Forever's manager fires `EventRegistry`
@@ -365,6 +416,7 @@ addon's error runs no Postbox code.
 | Gutting the grid reservation entirely | Reverted — it’s a wanted, working feature; deleting it was the wrong call. |
 | **Removing the grid reservation, for good** (2026-11-11) | GitHub issue 5 showed the cost the earlier revert did not know: the write taints the panel manager, not only `MailFrame`, and breaks other windows **out of combat** (the Forever bank). A layout nicety does not outweigh another window failing. **Kept.** Docking stays (`DockToSlot`). |
 | **The room back through `MailFrame`'s own width** (2026-11-11) | `MailFrame:SetWidth` to Postbox's width while docked, given back at close; the manager measures the frame when no attribute is set and leaves the room in its own pass. No attribute, no manager call. **Kept**, pending the in-game taint log (§4). |
+| **No room with docking off, through the same width** (2026-11-28) | With docking off the game's 338 left an empty space beside the floating window. `MailFrame:SetWidth(1)` from the session's first open, kept between visits, given back when docking is turned on and on a visit Postbox steps aside from; the gap left is the manager's own 32 plus 1. Docking on unchanged (headless, identical in twelve scenarios). **Kept**, pending the in-game taint log and a look at a 1-unit frame on both clients (§4). |
 
 The committed state (`e8f6999`) keeps every feature and all the *partial* combat
 guards above; it accepts the residual log noise.
@@ -573,7 +625,8 @@ doing either way — it is a prerequisite for both routes.
 > (GitHub issue 5), so Postbox never writes the panel layout, and docking is
 > Postbox anchoring its own frame plus, out of combat, `MailFrame`'s own width set to
 > Postbox's, which the manager reads in its own secure pass to leave the room beside the
-> window (§4; confirmed clean only once the game's taint log says so). The close side is fully taint-free (§7 #3,
+> window; with docking off that width is 1, so no room is left (§4; confirmed clean only
+> once the game's taint log says so). The close side is fully taint-free (§7 #3,
 > implemented). The remaining routes for the alpha write are a secure snippet
 > (finicky — fights the interaction-manager fade), covering it with our own frame, or
 > replacing the globals `MailFrame_Show`/`MailFrame_Hide` before the first mailbox so
