@@ -40,7 +40,9 @@
   bags are checked first, Keep bag slots free is kept, C.O.D. asks
   first), and only that item leaves a mail that holds other things.
   Shift-click asks how many when the item is in several mails (with a
-  chat box open it links the item, as ever); right-click shows the mails
+  chat box open it links the item, as ever), and Shift-right-click asks
+  how many too, chat box or not, as splitting a stack in your bags does;
+  right-click shows the mails
   that hold it, and the bag is back when you clear the search; Ctrl-click
   tries it on. A C.O.D. mail has one tile for each item it holds, and a
   click asks once, with the mail's price, before anything is paid.
@@ -115,6 +117,20 @@
   makes no sound.
 - **Options > Minimap: Count size** (Small, Normal, Large) for the count
   on the icon.
+- **Minimap icon: with no mail it stays on the map, small and gray.** A
+  new **Stays** setting (Options > Minimap > With no mail): Small and gray
+  (the default), Full size and gray (what Always was) or Hidden. It is
+  still one click from Mail Memory and one right-click from the options,
+  lifts a little when you point at it, and grows softly to full size when
+  mail comes, its color warming in just after.
+- **Options > Minimap: grouped by what is happening.** With mail (Full
+  size for, Glow, Glow color), With no mail (Stays), the expiring mail
+  marker, then the icon's own look and place. When to show is now **Full
+  size for**, and Always has moved to Stays.
+- **Minimap icon: the expiring-mail marker never moves, and no longer
+  colors the icon.** While the marker shows, the icon stays full size and
+  gray, so the marker sits exactly where you put it. Color and glow now
+  mean new mail for this character, nothing else.
 - **With TradeSkillMaster:** at your first mailbox with TSM loaded, a
   small notice says once that TSM has a mail window of its own and how to
   keep just one (click "WOW UI" on TSM's window, once), that Postbox has
@@ -127,6 +143,12 @@
 
 ### Improved
 
+- **Send tab: the window holds still while a press sends several mails.**
+  The slots empty and refill in place, and after the last mail the window
+  settles once you move the pointer off Send.
+- **Send tab: no longer asks before mailing items to your own
+  characters.** A press of several mails to one of your characters goes
+  when you press Send; gold, and any other name, still ask first.
 - **Report a bug lists only Postbox's own errors.** Postbox no longer
   watches every addon's errors: it notes the ones it catches itself, now
   including any in its main clicks (collect, return, delete, Send), so a
@@ -246,6 +268,11 @@
 
 ### Fixed
 
+- **Options > Window, "Dock beside game windows" off: the game's windows
+  no longer open beside an empty space.** The character sheet and the
+  other windows open at the left of the screen, a small step from where
+  they stand with no mailbox, instead of past the room the game's own
+  mailbox would take. Docked, nothing changes.
 - **Minimap icon: it stays put when the game's new-mail flag drops and
   comes straight back** away from a mailbox, where the icon and its glow
   could blink out for an instant. When mail is really gone the icon

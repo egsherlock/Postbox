@@ -145,8 +145,8 @@ instead, or be deleted the moment Postbox empties it (**Finished mail**,
 - **One bag:** the pouch button after Sort shows the list on screen as
   a bag: one tile for each kind of item with its total, gold first. A
   click takes every stack of that item as one collect run and leaves the
-  rest of each mail; Shift-click asks how many (with a chat box open it
-  links the item), right-click lists its mails and the bag is back when
+  rest of each mail; Shift-click or Shift-right-click asks how many (with
+  a chat box open Shift-click links the item), right-click lists its mails and the bag is back when
   you clear the search. A C.O.D. mail has one tile for each item and asks
   once before anything is paid; unread letters with nothing attached have
   a line under the tiles (one letter opens on a click). It follows a search, the sort and the filters,
@@ -342,7 +342,8 @@ Most mail, Name or Last played.
   hour, and whether a cross-realm send can carry what's attached. It advises;
   it never blocks.
 - **Past twelve items**, right-clicks keep queuing; one press sends the rest
-  as further mails to the same person, after one confirmation. Right-click
+  as further mails to the same person, after one confirmation (none for
+  your own characters unless gold goes too). Right-click
   "Attachments" clears them all.
 - **Every stack at once:** Alt-right-click a bag item and every stack of
   it is attached. The small + after "Attachments" does the same for a
@@ -388,10 +389,12 @@ lists.
 Optional, and off until you turn it on; while it's on, the game's own mail
 icon steps aside.
 
-- **When to show:** New since last visit (mail that came since you last
-  opened this character's mailbox; it needs Remember mailboxes), New mail,
-  Mail on any character, or Always (resting in gray until something
-  arrives).
+- **Full size for:** New since last visit (mail that came since you last
+  opened this character's mailbox; it needs Remember mailboxes), New mail
+  or Mail on any character: in color for new mail here, gray for mail
+  anywhere else. **Stays** (with no mail): Small and gray, so the icon
+  waits on the map and grows when mail comes, Full size and gray, or
+  Hidden.
 - **Expiring mail:** a small marker, red unless you pick another color, when
   mail on any character is about to be deleted or sent back. **Minimap
   marker** (Options > Minimap > Expiring mail marker) switches it on, and
@@ -399,9 +402,10 @@ icon steps aside.
   Choose its shape (dot, ring,
   square, bar, "!" or a triangle that fits its spot), put it on any corner,
   side or the center of the icon, and nudge it a pixel at a time with
-  **Offset X** and **Offset Y**. On **Always** it stays on the map while the
-  icon is hidden, the same size and in the same place; **Larger when alone**
-  makes it bigger there.
+  **Offset X** and **Offset Y**. While it shows, the icon stays full size,
+  so the marker never moves. With Stays on Hidden and Minimap marker on
+  **Always** it stays on the map on its own, the same size and in the same
+  place; **Larger when alone** makes it bigger there.
 - **Count on icon** (this character or all; always the plain number, a
   long one drawn smaller to fit, the same size for every number with as
   many digits) in a **Count size** of Small, Normal or
@@ -409,8 +413,8 @@ icon steps aside.
   **Glow color** of gold, your accent, your class color, white or any color
   you pick. **Flash on new mail** (Options > General) swells a
   halo in that color when mail arrives.
-- **The Minimap tab** reads in four groups (When it shows, with Position and
-  Lock position, Icon, Glow, Expiring mail marker). Its preview draws the icon large beside a copy at
+- **The Minimap tab** reads in four groups (With mail, With no mail,
+  Expiring mail marker, Icon, with Position and Lock position). Its preview draws the icon large beside a copy at
   its real size, wearing every setting; settings with choices show them
   side by side, and a grayed-out setting says what turns it on. What needs
   Mail Memory (Mail on any character, Count on icon, the marker) is grayed
@@ -461,7 +465,8 @@ window as it moves or resizes, so you can watch a setting reshape it; drag
 them and they stay where you put them. The mail window itself opens beside
 the game's other windows while **Dock beside game windows** (Options >
 Window) is on, and goes back there at the next mailbox if you drag it
-away; switch it off and it stays wherever you leave it. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
+away; switch it off and it remembers its position, stays wherever you
+leave it, and the game's windows no longer make room for it. **Reset to defaults** opens a menu below it: **Reset this tab**, **Reset
 settings** (your recipients, groups, Mail Memory and History are kept) or
 **Reset everything**, each saying what it clears before it asks. **What's
 new?** in the footer shows the last three releases. It never opens by
