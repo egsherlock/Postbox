@@ -1867,6 +1867,27 @@ do
   end
 end
 
+-- Whether a press goes without its question (his f93 S02 pick, "Not for
+-- your own characters"): items alone, no gold and no C.O.D., to a name
+-- Postbox knows as one of the player's own characters (MailRules'
+-- knownOwnCharacter: the saved alts and the client's account list, by the
+-- exact name), not the character sending, with no warning standing for
+-- it: neither a rule's (another realm out of reach, another ruleset, half
+-- a name) nor the server's refusal of the last send to it (ST.refusal).
+-- Anything else is asked about as before. Asked once per press.
+function ST.OwnPress(panel, toName, gold, cod, attachments)
+  if gold > 0 or cod then return false end
+  local MR = ns.MailRules
+  if type(MR) ~= "table" or type(MR.Inspect) ~= "function" then return false end
+  local refusal = ST.refusal
+  if refusal and refusal.panel == panel and refusal.to == panel.ToBox:GetText() then return false end
+  local queue = panel._queue
+  local out = MR.Inspect(toName, { items = attachments + (queue and #queue or 0), money = 0, cod = false })
+  if not (out and out.knownOwnCharacter) or out.isSelf then return false end
+  local note = out.guidance
+  return not (note and note.severity == MR.WARN)
+end
+
 -- `confirmed` is set only by a confirmation's own accept: the press as its
 -- question named it -- how many mails, the gold leaving, the recipient --
 -- and whether C.O.D. was checked when it was asked.
@@ -1933,15 +1954,18 @@ local function DoSendMail(panel, confirmed)
   -- another recipient, C.O.D. checked or unchecked -- is asked about again,
   -- and one that no longer has a question of its own is not sent on an
   -- answer to a different one.
+  -- Items alone to one of the player's own characters are not asked about
+  -- (ST.OwnPress, his f93 S02 pick).
+  local asks = (mails > 1 or gold > 0) and not ST.OwnPress(panel, toName, gold, cod, attachments)
   if confirmed and (confirmed.mails ~= mails or confirmed.gold ~= gold
       or confirmed.to ~= toName or confirmed.cod ~= cod) then
     confirmed = nil
-    if mails <= 1 and gold <= 0 then
+    if not asks then
       if ns.Print then ns.Print(L["MSG_SEND_FAILED"]) end
       return
     end
   end
-  if not confirmed and (mails > 1 or gold > 0) then
+  if not confirmed and asks then
     local answer = { mails = mails, gold = gold, to = toName, cod = cod }
     local fmt = ns.Core.Formatting.FormatMoneyIcons
     -- The coins for the question's text, the game's dialog font (RV.Coins).
