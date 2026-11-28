@@ -195,7 +195,7 @@ L["GRID_TOGGLE_TITLE"]         = "Dock beside game windows"
 -- option does, then a blank line, then the detail (ns.Summary, above). The
 -- tooltip says the sentence; the options panel's side panel says it all. A
 -- tooltip that runs to a paragraph is a tooltip nobody finishes.
-L["GRID_TOGGLE_DESC"]          = "Postbox opens beside the game's other windows, and windows you open beside it make room for it.\n\nDragged away, it goes back there at the next mailbox. Off, it stays wherever you leave it."
+L["GRID_TOGGLE_DESC"]          = "On: Postbox opens beside the game's other windows, like one of them, and they make room for it. Dragged away, it goes back there at the next mailbox.\n\nOff: Postbox remembers its position. It opens wherever you left it, and the game's windows open as if it were not there."
 L["OPT_GROUP_CHARACTERS"]      = "Characters"
 L["OPT_CHARACTER_ORDER_TITLE"] = "Character order"
 L["OPT_CHARACTER_ORDER_DESC"]  = "The order of the character list the Inbox button opens, on the Mail tab and in Mail Memory.\n\nThe character you are playing is always first."
@@ -2836,7 +2836,7 @@ if GetLocale() == "frFR" then
   -- Complement de traduction
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Ancrer à côté des fenêtres du jeu"
-  L["GRID_TOGGLE_DESC"]          = "Postbox s'ouvre parmi les autres fenêtres du jeu, et celles que tu ouvres à côté lui laissent la place.\n\nDéplacé, il y revient à la prochaine boîte aux lettres. Désactivé, il reste là où tu le laisses."
+  L["GRID_TOGGLE_DESC"]          = "Activé : Postbox s'ouvre à côté des autres fenêtres du jeu, comme l'une d'elles, et elles lui laissent la place. Déplacé, il y revient à la prochaine boîte aux lettres.\n\nDésactivé : Postbox retient sa position. Il s'ouvre là où tu l'as laissé, et les fenêtres du jeu s'ouvrent comme s'il n'était pas là."
   L["OPT_GROUP_CHARACTERS"]      = "Personnages"
   L["OPT_CHARACTER_ORDER_TITLE"] = "Ordre des personnages"
   L["OPT_CHARACTER_ORDER_DESC"]  = "L'ordre de la liste des personnages qu'ouvre le bouton Boîte, dans l'onglet Courrier et dans Mémoire du courrier.\n\nLe personnage que tu joues est toujours en premier."
@@ -4155,7 +4155,7 @@ if GetLocale() == "deDE" then
   -- Ergaenzte Uebersetzungen
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Neben Spielfenstern andocken"
-  L["GRID_TOGGLE_DESC"]          = "Postbox öffnet sich neben den anderen Fenstern des Spiels, und Fenster, die du daneben öffnest, machen ihm Platz.\n\nVerschoben, kehrt es beim nächsten Briefkasten dorthin zurück. Aus, bleibt es, wo du es hinstellst."
+  L["GRID_TOGGLE_DESC"]          = "An: Postbox öffnet sich neben den anderen Fenstern des Spiels, wie eines von ihnen, und sie machen ihm Platz. Verschoben, kehrt es beim nächsten Briefkasten dorthin zurück.\n\nAus: Postbox merkt sich seine Position. Es öffnet sich dort, wo du es gelassen hast, und die Fenster des Spiels öffnen sich, als wäre es nicht da."
   L["OPT_GROUP_CHARACTERS"]      = "Charaktere"
   L["OPT_CHARACTER_ORDER_TITLE"] = "Charakterreihenfolge"
   L["OPT_CHARACTER_ORDER_DESC"]  = "Die Reihenfolge der Charakterliste, die die Schaltfläche Posteingang öffnet, im Reiter Post und im Postgedächtnis.\n\nDer Charakter, den du spielst, steht immer oben."
@@ -5598,7 +5598,7 @@ if esLocale == "esES" or esLocale == "esMX" then
   -- Traducciones anadidas
   L["FRAME_TITLE"]               = "Postbox"
   L["GRID_TOGGLE_TITLE"]         = "Acoplar junto a las ventanas del juego"
-  L["GRID_TOGGLE_DESC"]          = "Postbox se abre junto a las demás ventanas del juego, y las que abras a su lado le dejan sitio.\n\nSi lo mueves, vuelve allí en el próximo buzón. Desactivado, se queda donde lo dejes."
+  L["GRID_TOGGLE_DESC"]          = "Activado: Postbox se abre junto a las demás ventanas del juego, como una más, y ellas le dejan sitio. Si lo mueves, vuelve allí en el próximo buzón.\n\nDesactivado: Postbox recuerda su posición. Se abre donde lo dejaste, y las ventanas del juego se abren como si no estuviera."
   L["OPT_GROUP_CHARACTERS"]      = "Personajes"
   L["OPT_CHARACTER_ORDER_TITLE"] = "Orden de personajes"
   L["OPT_CHARACTER_ORDER_DESC"]  = "El orden de la lista de personajes que abre el botón Buzón, en la pestaña Correo y en Memoria del correo.\n\nEl personaje con el que juegas siempre va primero."
@@ -7105,7 +7105,7 @@ L["MINIMAP_TOGGLE_OFF"]        = "Значок почты у миникарты:
 
 -- Дополненные переводы
 L["GRID_TOGGLE_TITLE"]         = "Пристыковка к окнам игры"
-L["GRID_TOGGLE_DESC"]          = "Postbox открывается рядом с другими окнами игры, а окна, открытые рядом с ним, оставляют ему место.\n\nЕсли его передвинуть, у следующего ящика он вернётся туда. Выключено — остаётся там, где вы его оставили."
+L["GRID_TOGGLE_DESC"]          = "Вкл.: Postbox открывается рядом с другими окнами игры, как одно из них, и они оставляют ему место. Если его передвинуть, у следующего ящика он вернётся туда.\n\nВыкл.: Postbox запоминает своё положение. Он открывается там, где вы его оставили, а окна игры открываются так, будто его нет."
 L["OPT_GROUP_CHARACTERS"]      = "Персонажи"
 L["OPT_CHARACTER_ORDER_TITLE"] = "Порядок персонажей"
 L["OPT_CHARACTER_ORDER_DESC"]  = "Порядок в списке персонажей, который открывает кнопка «Входящие», на вкладке «Почта» и в «Памяти почты».\n\nПерсонаж, за которого вы играете, всегда первый."
@@ -7634,7 +7634,7 @@ if GetLocale() == "zhCN" then
   L["GRIP_TIP_DRAG"]           = "拖动：调整大小"
   L["GRIP_TIP_RESET"]          = "右键：重置大小"
   L["GRID_TOGGLE_TITLE"]       = "停靠在游戏窗口旁"
-  L["GRID_TOGGLE_DESC"]        = "Postbox 在游戏其他窗口旁打开，在它旁边打开的窗口会为它让出位置。\n\n拖走后，下次打开邮箱时它会回到那里。关闭后，它会停留在你放置的位置。"
+  L["GRID_TOGGLE_DESC"]        = "开启：Postbox 在游戏其他窗口旁打开，就像其中之一，它们会为它让出位置。拖走后，下次打开邮箱时它会回到那里。\n\n关闭：Postbox 会记住它的位置。它在你上次放置的地方打开，游戏窗口的打开方式就像它不存在一样。"
   L["OPT_GROUP_CHARACTERS"]    = "角色"
   L["OPT_CHARACTER_ORDER_TITLE"] = "角色顺序"
   L["OPT_CHARACTER_ORDER_DESC"] = "“收件箱”按钮打开的角色列表的排列顺序，包括“收件”标签页和“邮件记忆”。\n\n你正在玩的角色总是排在最前。"
@@ -9054,7 +9054,7 @@ if GetLocale() == "zhTW" then
   L["GRIP_TIP_DRAG"]           = "拖曳：調整大小"
   L["GRIP_TIP_RESET"]          = "右鍵：重設大小"
   L["GRID_TOGGLE_TITLE"]       = "停靠在遊戲視窗旁"
-  L["GRID_TOGGLE_DESC"]        = "Postbox 在遊戲其他視窗旁開啟，在它旁邊開啟的視窗會為它讓出位置。\n\n拖走後，下次開啟信箱時它會回到那裡。關閉後，它會停留在你放置的位置。"
+  L["GRID_TOGGLE_DESC"]        = "開啟：Postbox 在遊戲其他視窗旁開啟，就像其中之一，它們會為它讓出位置。拖走後，下次開啟信箱時它會回到那裡。\n\n關閉：Postbox 會記住它的位置。它在你上次放置的地方開啟，遊戲視窗的開啟方式就像它不存在一樣。"
   L["OPT_GROUP_CHARACTERS"]    = "角色"
   L["OPT_CHARACTER_ORDER_TITLE"] = "角色順序"
   L["OPT_CHARACTER_ORDER_DESC"] = "「收件匣」按鈕開啟的角色清單的排列順序，包括「收件」分頁與「郵件記憶」。\n\n你正在玩的角色總是排在最前。"

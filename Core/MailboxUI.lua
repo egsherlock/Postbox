@@ -43,8 +43,10 @@ UI._state = UI._state or {
   extraH         = 0,         -- transient height added for a second attachment row
   bodyH          = 0,         -- transient height added for a message that outgrew its box
   extraW         = 0,         -- transient width lent while the Mail tab's top row needs more
-  -- slotNativeW / slotSetW: MailFrame's width before Postbox widened it, and
-  -- the width Postbox gave it; nil while it holds none (section 4).
+  -- slotNativeW / slotSetW: MailFrame's width before Postbox first changed
+  -- it, and the width Postbox gave it; nil while it holds none (section 4).
+  -- mailSeen: a mailbox has opened in Postbox's window this session; nil
+  -- until then, so nothing is written to MailFrame before the first open.
 }
 
 -------------------------------------------------------------
@@ -2596,8 +2598,9 @@ function UI.StepsAside()
   if not ok or current ~= types.Gamepad then return false end
   st.aside = true
   if alphaHooked and MailFrame and type(MailFrame.SetAlpha) == "function" then MailFrame:SetAlpha(1) end
-  -- And its own width, should a close in combat have left it Postbox's
-  -- (section 4): with no mailbox open the layout pass does only that.
+  -- And its own width, should a close in combat have left it Postbox's, or
+  -- docking off have kept it narrow (section 4): with no mailbox open the
+  -- layout pass does only that.
   UI.ApplyWindowLayout()
   return true
 end
@@ -3906,7 +3909,10 @@ end
 -- width instead: while docked, the invisible frame is as wide as Postbox
 -- (SyncSlotWidth), and the manager, which measures a panel by its frame
 -- when no width attribute is set, places the next window beside it clear of
--- Postbox the next time it lays out on its own. COMBAT_TAINT.md section 4.
+-- Postbox the next time it lays out on its own. With docking off the same
+-- width is made as narrow as a frame can be, so the game's windows open
+-- where they would with no mailbox at all, bar the manager's own spacing.
+-- COMBAT_TAINT.md section 4.
 --
 -- SIZE. The minimum height is DERIVED, never chosen: it is the shell's own
 -- chrome plus whatever the tab panels say they need right now. BOTH screens
@@ -4372,30 +4378,50 @@ end
 -- called or written; the one write is the frame's width, a widget setter
 -- like the SetAlpha(0) in section 2. COMBAT_TAINT.md section 4.
 --
--- Undocked, dragged off the slot, at the close and with docking off, the
--- width goes back to what it was before the first write -- unless something
--- else has resized MailFrame since, whose width is then left alone. SetWidth
--- is a protected call on a protected frame, so in combat nothing is written
--- either way: the width stays as it stands until combat ends. Whenever a
--- write is skipped that would have changed something -- a docked window's
--- width, or one Postbox set that is still to be given back (an undock, a
--- drag off the slot or a close in combat) -- PLAYER_REGEN_ENABLED is
--- listened for, on Postbox's own bus, and only until it comes
--- (UI.SyncAfterCombat), which syncs the width once, either way.
--- Writes only on a change of half a unit or more.
+-- With docking on, dragged off the slot and at the close, the width goes
+-- back to what it was before the first write -- unless something else has
+-- resized MailFrame since, whose width is then left alone.
+--
+-- With docking off, the window is its own and the game's windows should
+-- open as if no mailbox were there: the manager puts one beside the mailbox
+-- at LEFT_OFFSET + MailFrame's width + PANEl_SPACING_X (16 + w + 32; with
+-- no mailbox, at 16). So the invisible frame is made SLOT_NARROW_W wide,
+-- the least that keeps it a rect, and the gap left is 33 units: the 32 of
+-- spacing is the manager's own layout attribute, which Postbox never
+-- writes. The width is kept narrow between visits, so a window already open
+-- when the mailbox opens, which the manager lays out before Postbox's open
+-- runs, finds it narrow from the session's second visit on. Nothing is
+-- written before the first (`mailSeen`), and a visit Postbox steps aside
+-- from (UI.StepsAside), where the player uses the game's own mailbox,
+-- gets the width back. Turning docking on hands over to the docked rule,
+-- which widens from the true width kept in slotNativeW.
+--
+-- SetWidth is a protected call on a protected frame, so in combat nothing
+-- is written either way: the width stays as it stands until combat ends.
+-- Whenever a write is skipped that would have changed something -- a docked
+-- window's width, one Postbox set that is still to be given back (an
+-- undock, a drag off the slot or a close in combat), or the narrow width
+-- not yet set -- PLAYER_REGEN_ENABLED is listened for, on Postbox's own
+-- bus, and only until it comes (UI.SyncAfterCombat), which syncs the width
+-- once, either way. Writes only on a change of half a unit or more.
+local SLOT_NARROW_W = 1
 local function SyncSlotWidth()
   local native = MailFrame
   if not (native and type(native.SetWidth) == "function" and type(native.GetWidth) == "function") then return end
+  local st = UI._state
+  local narrow = st.mailSeen and not st.aside and not UI.GetOption("gridDock")
   if type(InCombatLockdown) == "function" and InCombatLockdown() then
-    if (ShouldDock() or UI._state.slotNativeW ~= nil) and not UI._state.regenSync then
+    local held = st.slotNativeW ~= nil
+    if (ShouldDock() or (held and not (narrow and st.slotSetW == SLOT_NARROW_W)) or (narrow and not held))
+        and not st.regenSync then
       local bus = ns.Events
-      if bus and bus.Register("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) then UI._state.regenSync = true end
+      if bus and bus.Register("PLAYER_REGEN_ENABLED", UI.SyncAfterCombat) then st.regenSync = true end
     end
     return
   end
   local current = native:GetWidth()
   if type(current) ~= "number" or (type(issecretvalue) == "function" and issecretvalue(current)) then return end
-  local st, frame = UI._state, UI._frame
+  local frame = UI._frame
   local want
   if ShouldDock() and not st.preview and frame and frame:IsShown() then
     -- In MailFrame's units: under a window scale Postbox's are its own.
@@ -4417,6 +4443,15 @@ local function SyncSlotWidth()
       current = want
     end
     st.slotSetW = current
+  elseif narrow then
+    local base = st.slotNativeW
+    if base == nil or (st.slotSetW and math.abs(current - st.slotSetW) >= 0.5) then base = current end
+    st.slotNativeW = base
+    if math.abs(current - SLOT_NARROW_W) >= 0.5 then
+      native:SetWidth(SLOT_NARROW_W)
+      current = SLOT_NARROW_W
+    end
+    st.slotSetW = current
   elseif st.slotNativeW ~= nil then
     if st.slotSetW and math.abs(current - st.slotSetW) < 0.5
         and math.abs(current - st.slotNativeW) >= 0.5 then
@@ -4428,7 +4463,8 @@ end
 
 -- Combat over, after a width skipped in it: the listener goes, and the
 -- width is synced once as things stand now -- Postbox's width while the
--- mailbox is open and docked, else the width given back. Nothing of
+-- mailbox is open and docked, the narrow one with docking off, else the
+-- width given back. Nothing of
 -- Blizzard's panel layout is called (COMBAT_TAINT.md section 4).
 function UI.SyncAfterCombat()
   UI._state.regenSync = nil
@@ -4442,7 +4478,8 @@ function UI.ApplyWindowLayout()
   if not frame then return end
 
   -- First, and also with no mailbox open: the closing path and the docking
-  -- switch arrive here with none, and both give MailFrame its width back.
+  -- switch arrive here with none, and both give MailFrame its width back
+  -- (or, with docking off, keep it narrow).
   SyncSlotWidth()
 
   -- Only while a mail session is live. Every caller is inside one except the
@@ -6036,6 +6073,8 @@ local function OnMailShow()
   local mark = perf and type(perf.Open) == "function" and perf.Open() or nil
 
   UI._state.mailboxOpen = true
+  -- From here on MailFrame's width may be Postbox's to keep (section 4).
+  UI._state.mailSeen = true
   -- The inbox always reads empty between MAIL_SHOW and the first
   -- MAIL_INBOX_UPDATE; anything that would treat "empty" as a fact about the
   -- mailbox must wait until this flips (see UpdateStatusSummary's erasure).
@@ -6169,14 +6208,14 @@ local function OnMailClosed()
   UI._state.visible = false
   -- MailFrame's own width back (section 4), when SetAttachmentRows above
   -- has not already given it: now out of combat, in combat at the next
-  -- layout out of it.
+  -- layout out of it. With docking off it stays narrow for the next visit.
   SyncSlotWidth()
   UI.ClearStatus()
   if wasTest then UI.TestMailChanged() end
   if perf and type(perf.CloseEnd) == "function" then perf.CloseEnd() end
 
   -- MailFrame is otherwise deliberately not touched here: beyond its width
-  -- above, nothing. Blizzard's own secure hide runs
+  -- above (given back, or kept narrow), nothing. Blizzard's own secure hide runs
   -- from the interaction manager and puts the frame away for us, so restoring
   -- its alpha and hiding it were two more writes to a protected frame in aid of
   -- a "tidy default state" nothing reads -- and making it visible in order to
