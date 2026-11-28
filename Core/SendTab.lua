@@ -805,6 +805,15 @@ function ST.RefreshAttachmentSlots(panel)
   -- its height until the press ends (and, after its last mail, until the
   -- pointer leaves Send: ST.HoldSettle).
   local held = panel._runBoxes
+  -- A net under the button's OnLeave: rows left held for a pointer on Send
+  -- go at the first refresh that finds the pointer elsewhere.
+  if held and panel._holdLeave then
+    local button = panel.FillButton
+    if not (button and button:IsMouseOver()) then
+      ST.HoldEnd(panel, true)
+      held = nil
+    end
+  end
   if held and held > visible then visible = held end
   for i = 1, K.SEND_SLOT_COUNT do
     local slot = panel.ItemSlots[i]
