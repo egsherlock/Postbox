@@ -3653,11 +3653,12 @@ do
   -- two; Custom's, in either, the colour picked, or, with none yet, the
   -- colour the picker opens on). Anchor answers with the icon at G.ANCHOR
   -- in a three by three grid, the marker at each of its nine spots, the
-  -- centre in the middle, each row's names under it. When to show answers with
-  -- a grid: a column for each choice, a strip of ground for each situation
-  -- that tells them apart -- no mail anywhere, mail on another character,
-  -- new mail here -- and in each cell what the map shows then: nothing, the
-  -- icon resting in gray, or the icon lit. Every marker is the map's own
+  -- centre in the middle, each row's names under it. Full size for and
+  -- Stays answer with a grid: a column for each choice, a strip of ground
+  -- for each situation that tells them apart -- no mail anywhere, mail on
+  -- another character, new mail here -- and in each cell what the map shows
+  -- then, by the other of the two as set: nothing, the icon small and gray,
+  -- the icon full size in gray, or the icon lit. Every marker is the map's own
   -- (MinimapButton.PaintMark) and so is the count (PaintCount): the same
   -- shapes and sizes, in whole screen pixels, on the same art's box. A
   -- figure whose marker reaches past its top or its foot (half off the
@@ -3682,12 +3683,13 @@ do
   -- The number the icon wears here while Count on icon is on.
   local MM = { COUNT = { me = 3, all = 12 } }
   -- Each answer's choices, in MinimapButton's order, and their names.
-  -- Anchor's in reading order, as its grid stands. When to show's grid
-  -- has three columns, the room for three captions: New since last visit
-  -- (the fourth here) stands in New mail's column while it is the choice,
-  -- the two showing the same in the grid's three situations.
+  -- Anchor's in reading order, as its grid stands. Full size for's grid has
+  -- two columns: New since last visit (the third here) stands in New mail's
+  -- column while it is the choice, the two showing the same in the grid's
+  -- three situations. Stays' grid has a column for each of its three.
   MM.IDS = {
-    show = { "new", "any", "always", "since" },
+    show = { "new", "any", "since" },
+    rest = { "small", "full", "hide" },
     marker = { "dot", "ring", "square", "bar", "exclamation", "triangle" },
     corner = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "CENTER", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" },
     color = { "red", "gold", "accent", "class", "white", "custom" },
@@ -3695,7 +3697,8 @@ do
     large = { "off", "on" },
   }
   MM.CAPS = {
-    show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_ALWAYS", "OPT_MINIMAP_SHOW_SINCE" },
+    show = { "OPT_MINIMAP_SHOW_NEW", "OPT_MINIMAP_SHOW_ANY", "OPT_MINIMAP_SHOW_SINCE" },
+    rest = { "OPT_MINIMAP_REST_SMALL", "OPT_MINIMAP_REST_FULL", "OPT_MINIMAP_REST_HIDE" },
     marker = { "OPT_MINIMAP_MARKER_DOT", "OPT_MINIMAP_MARKER_RING", "OPT_MINIMAP_MARKER_SQUARE",
       "OPT_MINIMAP_MARKER_BAR", "OPT_MINIMAP_MARKER_EXCLAMATION", "OPT_MINIMAP_MARKER_TRIANGLE" },
     corner = { "OPT_MINIMAP_ANCHOR_TL", "OPT_MINIMAP_ANCHOR_T", "OPT_MINIMAP_ANCHOR_TR", "OPT_MINIMAP_ANCHOR_L",
@@ -3711,7 +3714,7 @@ do
   -- The grid's situations, top down.
   MM.ROWS = { "OPT_MINIMAP_GRID_NONE", "OPT_MINIMAP_GRID_OTHER", "OPT_MINIMAP_GRID_HERE" }
   -- Each answer's current choice.
-  MM.GET = { show = "GetShowWhen", marker = "GetMarker", corner = "GetMarkerCorner",
+  MM.GET = { show = "GetShowWhen", rest = "GetRest", marker = "GetMarker", corner = "GetMarkerCorner",
     color = "GetMarkerColor", glow = "GetGlowColor", large = "GetMarkerLarge" }
   -- The answers drawn in two rows (three, or as many as are offered, over
   -- the rest), and Custom's: offered only where the client has the colour
@@ -3848,14 +3851,20 @@ do
     ox = 0, oy = 0, color = "red", count = 0 }
 
   -- `look`: "lit" (new mail: full colour, the glow), "rest" (nothing new:
-  -- gray, a step back, no glow) or "alone" (the marker in its place, the
-  -- icon's art hidden). The icon's own parts as MinimapButton draws them
-  -- (ApplyLook): glow 2.2 times the icon, shadow 1.8 and a unit down. `y`,
-  -- the figure's middle above the strip's (0 unless given).
+  -- gray, a step back, no glow), "small" (Stays' Small and gray: the art
+  -- at its resting share, gray, over its light ground) or "alone" (the
+  -- marker in its place, the icon's art hidden). The icon's own parts as
+  -- MinimapButton draws them (ApplyLook): glow 2.2 times the icon, shadow
+  -- 1.8 and a unit down. `y`, the figure's middle above the strip's (0
+  -- unless given).
   local function PaintFigure(fig, Icon, look, size, x, y)
     local P = FIG
     local spec, icon, glow, pulse = P.spec, fig.Icon, fig.Glow, fig.Pulse
-    local rest, alone = look == "rest", look == "alone"
+    local small = look == "small"
+    local rest, alone = look == "rest" or small, look == "alone"
+    -- Small: the art and its shadow at the map's resting share, in whole
+    -- units (MinimapButton.RestScale).
+    local k = small and (Icon.RestScale and Icon.RestScale(size, Icon.REST_SCALE or 0.6) or 0.6) or 1
     local large = alone and P.large
     -- A marker that reaches past the icon's top or foot: the two centred
     -- as one. Both by the art's box (`spec.box`), as on the map.
@@ -3867,13 +3876,14 @@ do
     fig:SetPoint("CENTER", fig:GetParent(), "LEFT", x, (y or 0) - spill / 2)
     fig:SetSize(size, size)
     if spec.atlas then icon:SetAtlas(spec.atlas) else icon:SetTexture(spec.texture) end
-    icon:SetSize(size, size * (spec.aspect or 1))
+    icon:SetSize(size * k, size * (spec.aspect or 1) * k)
     icon:SetVertexColor(1, 1, 1)
     icon:SetDesaturated(rest or not P.on)
-    icon:SetAlpha(rest and (Icon.REST_ALPHA or 0.65) or 1)
+    icon:SetAlpha((small and (Icon.REST_SMALL_ALPHA or 0.7)) or (rest and (Icon.REST_ALPHA or 0.65)) or 1)
     icon:SetShown(not alone)
-    fig.Shadow:SetSize(size * 1.8, size * 1.8)
-    fig.Shadow:SetShown(P.shadowOn and not alone)
+    fig.Shadow:SetSize(size * 1.8 * k, size * 1.8 * k)
+    fig.Shadow:SetAlpha(small and (Icon.REST_SHADOW_ALPHA or 0.45) or 0.9)
+    fig.Shadow:SetShown((P.shadowOn or small) and not alone)
     glow:SetSize(size * 2.2, size * 2.2)
     if P.glowOn and not (rest or alone) then
       glow:SetVertexColor(P.gr, P.gg, P.gb)
@@ -3888,7 +3898,7 @@ do
       pulse:Stop()
       glow:Hide()
     end
-    if Icon.PaintCount then Icon.PaintCount(fig, icon, size, (not alone) and P.count or 0) end
+    if Icon.PaintCount then Icon.PaintCount(fig, icon, size, (not (alone or small)) and P.count or 0) end
     if Icon.PaintMark then
       Icon.PaintMark(fig, icon, size, alone or P.mark, P.shape, P.corner, large, P.ox, P.oy, P.color, spec.box)
     end
@@ -3902,13 +3912,14 @@ do
   end
 
   -- What the grid shows for situation `row` (1 no mail anywhere, 2 mail on
-  -- another character, 3 new mail here) under When to show `id`: nil for
-  -- nothing, else the look -- MinimapButton's own rule (Evaluate). New
-  -- since last visit, as New mail: up only for mail here, new mail being
-  -- mail come since the mailbox was last opened.
-  local function GridLook(row, id)
+  -- another character, 3 new mail here) under Full size for `show` and
+  -- Stays `rest`: nil for nothing, else the look -- MinimapButton's own
+  -- rule (Evaluate). New since last visit, as New mail: up only for mail
+  -- here, new mail being mail come since the mailbox was last opened.
+  local function GridLook(row, show, rest)
     if row == 3 then return "lit" end
-    if id == "always" or (row == 2 and id == "any") then return "rest" end
+    if rest == "full" or (row == 2 and show == "any") then return "rest" end
+    if rest == "small" then return "small" end
     return nil
   end
 
@@ -4052,13 +4063,18 @@ do
         local x = math.floor(G.AT_ACTUAL * CTX_W + 0.5)
         PaintFigure(strip.figs[2], Icon, "lit", (Icon.GetDrawnSize or Icon.GetIconSize)(), x)
         PaintCaption(f, caps[1], x, capY, keys[1], false, on)
-      elseif mode == "show" then
+      elseif mode == "show" or mode == "rest" then
         -- The grid, its foot on the captions; plain icons, the count and
-        -- the marker left to the drawings that are about them.
+        -- the marker left to the drawings that are about them. Each column
+        -- one choice of the row pointed at, the other row as set: Full size
+        -- for's two columns (New mail's, or New since last visit's while it
+        -- is chosen, MM.IDS.show) by Stays, Stays' three by Full size for.
         P.mark, P.count = false, 0
-        -- New mail's column, or New since last visit's while it is chosen
-        -- (MM.IDS.show).
-        local first = (current == "since") and 4 or 1
+        local show = Icon.GetShowWhen and Icon.GetShowWhen() or "new"
+        local rest = Icon.GetRest and Icon.GetRest() or "small"
+        local cols = (mode == "show") and 2 or 3
+        local at = (cols == 2) and MM.HALVES or MM.THIRDS
+        local first = (mode == "show" and current == "since") and 3 or 1
         local labelH = S.mmLabelH or 12
         local y = -4 - (stageH - GridHeight())
         for r = 1, 3 do
@@ -4071,16 +4087,18 @@ do
           y = y - labelH - G.LABEL_GAP
           local strip = strips[r]
           PlaceStrip(f, strip, y, G.STRIP_H)
-          for c = 1, 3 do
+          for c = 1, cols do
             local i = (c == 1) and first or c
-            local look = GridLook(r, ids[i])
-            if look then PaintFigure(strip.figs[c], Icon, look, G.CELL, math.floor(MM.THIRDS[c] * CTX_W + 0.5)) end
+            local look
+            if mode == "show" then look = GridLook(r, ids[i], rest) else look = GridLook(r, show, ids[i]) end
+            if look then PaintFigure(strip.figs[c], Icon, look, G.CELL, math.floor(at[c] * CTX_W + 0.5)) end
           end
           y = y - G.STRIP_H - G.STRIP_GAP
         end
-        for c = 1, 3 do
+        for c = 1, cols do
           local i = (c == 1) and first or c
-          PaintCaption(f, caps[c], math.floor(MM.THIRDS[c] * CTX_W + 0.5), capY, keys[i], ids[i] == current, on)
+          PaintCaption(f, caps[c], math.floor(at[c] * CTX_W + 0.5), capY, keys[i], ids[i] == current, on,
+            (cols == 2) and (math.floor(CTX_W / 2) - 4) or nil)
         end
       elseif mode == "large" then
         -- The marker on its own, as on the icon and larger, side by side.
@@ -7874,14 +7892,16 @@ end
 -- Anchor, Offset X and Offset Y -- while there is no marker to wear it:
 -- Mail Memory off, Warn about Off, Minimap marker Off, or the minimap icon
 -- it is drawn on off (its block has them grey already);
--- Larger when alone unless Minimap marker is Always (the one choice that
--- puts the marker on its own), and with the rest. On the Minimap tab, with
--- the icon on: Count on icon while Mail Memory is off, which it is made
--- from; Pulse while Glow is off; Glow color while neither Glow nor Flash
--- on new mail, the two things that wear it, is on. When to show stays
--- live, its Mail on any character set aside (faint in its list, and said
--- why) while Mail Memory is off. With the icon off the Minimap tab's block
--- has its rows grey already, saying to turn the icon on.
+-- Larger when alone unless Stays is Hidden and Minimap marker is Always
+-- (the one pair that puts the marker on its own), and with the rest. On
+-- the Minimap tab, with the icon on: Count on icon while Mail Memory is
+-- off, which it is made from; Pulse while Glow is off; Glow color while
+-- neither Glow nor Flash on new mail, the two things that wear it, is on.
+-- Full size for while Stays is Full size and gray, where it changes
+-- nothing you can see; else live, its New since last visit and Mail on any
+-- character set aside (faint in its list, and said why) while Mail Memory
+-- is off. With the icon off the Minimap tab's block has its rows grey
+-- already, saying to turn the icon on.
 function State.MinimapRows()
   local Icon, rows = ns.MinimapButton, S.mmRows
   if not (Icon and rows and Icon.GetEnabled) then return end
@@ -7899,7 +7919,8 @@ function State.MinimapRows()
   if rows.offx then Rows.SetEnabled(rows.offx, marking, why) end
   if rows.offy then Rows.SetEnabled(rows.offy, marking, why) end
   if rows.large then
-    Rows.SetEnabled(rows.large, marking and expiry == "always", marking and "OPT_MINIMAP_WHY_ALONE" or why)
+    local alone = expiry == "always" and Icon.GetRest and Icon.GetRest() == "hide"
+    Rows.SetEnabled(rows.large, marking and alone and true or false, marking and "OPT_MINIMAP_WHY_ALONE" or why)
   end
   if not icon then return end
   local glow = Icon.GetGlow() and true or false
@@ -7912,7 +7933,12 @@ function State.MinimapRows()
   if rows.show then
     if S.mmShowAny then S.mmShowAny.off = not memory end
     if S.mmShowSince then S.mmShowSince.off = not memory end
-    Rows.Say(rows.show, memory)
+    if Icon.GetRest and Icon.GetRest() == "full" then
+      Rows.SetEnabled(rows.show, false, "OPT_MINIMAP_WHY_REST")
+    else
+      Rows.SetEnabled(rows.show, true, "OPT_MINIMAP_WHY_ANY")
+      Rows.Say(rows.show, memory)
+    end
   end
   if rows.pulse then Rows.SetEnabled(rows.pulse, glow) end
   if rows.glow then Rows.SetEnabled(rows.glow, glow or (Icon.GetAlertFlash() and true or false)) end
@@ -9873,12 +9899,14 @@ function Pages.windowCreative(col, Skin)
   end
 end
 
--- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups --
--- when the icon shows and where it sits, the icon itself, its glow, and the
--- marker it wears for expiring mail. Resolved at click time like every other
--- binding, so the page stays honest if the module is absent. A row grey
--- because another setting is off says what turns it on (Rows.Why); with
--- the switch off, every row says to turn the icon on.
+-- The Minimap tab (Core/MinimapButton.lua): the switch, then four groups,
+-- in the order things happen -- with mail (which mail brings the icon up
+-- to full size, its glow), with no mail (what it is then), the marker it
+-- wears for expiring mail, and the icon itself (its look and where it
+-- sits). Resolved at click time like every other binding, so the page
+-- stays honest if the module is absent. A row grey because another setting
+-- is off says what turns it on (Rows.Why); with the switch off, every row
+-- says to turn the icon on.
 function Pages.minimap(col)
   local Icon = ns.MinimapButton
   -- With EllesmereUI's minimap module running, Postbox restyles its own
@@ -9912,13 +9940,13 @@ function Pages.minimap(col)
     }
   end
 
-  -- When it shows: whether the icon is on the map at all. Under
-  -- EllesmereUI's minimap too -- Postbox keeps their button shown for as
-  -- long as this says (Core/MinimapButton.lua, SyncEuiButtonShown).
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_SHOWS"])
+  -- With mail: which mail brings the icon up to full size (Full size for),
+  -- then its glow. Under EllesmereUI's minimap too -- Postbox keeps their
+  -- button shown for as long as the icon is on the map (Core/
+  -- MinimapButton.lua, SyncEuiButtonShown).
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_MAIL"])
   local showNames = {
     since = L["OPT_MINIMAP_SHOW_SINCE"], new = L["OPT_MINIMAP_SHOW_NEW"], any = L["OPT_MINIMAP_SHOW_ANY"],
-    always = L["OPT_MINIMAP_SHOW_ALWAYS"],
   }
   local showItems = {}
   for _, mode in ipairs((Icon and Icon.SHOW_MODES) or { "new" }) do
@@ -9940,11 +9968,67 @@ function Pages.minimap(col)
   showRow.entry.stage = "minimap"
   rows.show = showRow
   Rows.Why(showRow, "OPT_MINIMAP_WHY_ANY")
+  -- Grey while Stays is Full size and gray (State.MinimapRows).
+  Rows.Why(showRow, "OPT_MINIMAP_WHY_REST")
 
-  -- Where it sits on the map, and the lock on moving it, under When to
-  -- show in the same group: no heading of their own. Under EllesmereUI's
-  -- minimap that, and the size, are EllesmereUI's, and one quiet line says
-  -- so in their place.
+  -- Glow: the glow and its pulse side by side, the one breathing the
+  -- other, and the colour it wears -- which the flash when mail arrives
+  -- (on General, under Alerts) wears too. Pulse greys while Glow is off, Glow
+  -- color while neither Glow nor the flash is on (State.MinimapRows).
+  local glowPair = Rows.Pair(block,
+    Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow", function()
+      State.MinimapRows()
+      Ctx.Repaint()
+    end),
+    Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
+  rows.pulse = glowPair.pair[2]
+  Rows.Why(rows.pulse, "OPT_MINIMAP_WHY_GLOW")
+
+  local glowRow = Pages.MinimapColor(block, {
+    title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"],
+    ids = (Icon and Icon.GLOW_COLORS) or { "gold" },
+    get = "GetGlowColor", set = "SetGlowColor", pick = "PickGlowColor", custom = "GetGlowCustom", rgb = "GlowRGB",
+  })
+  modes[glowRow.entry] = "glow"
+  glowRow.entry.stage = "minimap"
+  rows.glow = glowRow
+  Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
+  -- (Flash on new mail, which wears Glow color and keeps it live while it
+  -- is on, is on General, under Alerts: Pages.Alerts.)
+
+  -- With no mail: what the icon is while no mail brings it up (Stays):
+  -- small and gray, full size and gray, or hidden. Full size for greys on
+  -- Full size and gray, and Larger when alone needs Hidden
+  -- (State.MinimapRows).
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_REST"])
+  local restNames = {
+    small = L["OPT_MINIMAP_REST_SMALL"], full = L["OPT_MINIMAP_REST_FULL"], hide = L["OPT_MINIMAP_REST_HIDE"],
+  }
+  local restItems = {}
+  for _, mode in ipairs((Icon and Icon.REST_MODES) or { "small" }) do
+    restItems[#restItems + 1] = { id = mode, name = restNames[mode] }
+  end
+  local restRow = Rows.Dropdown(block, {
+    title = L["OPT_MINIMAP_REST_TITLE"], text = L["OPT_MINIMAP_REST_DESC"], items = restItems,
+    get = function() return ns.MinimapButton and ns.MinimapButton.GetRest and ns.MinimapButton.GetRest() end,
+    set = function(id)
+      if ns.MinimapButton and ns.MinimapButton.SetRest then ns.MinimapButton.SetRest(id) end
+      State.MinimapRows()
+      Ctx.Repaint()
+    end,
+  })
+  modes[restRow.entry] = "rest"
+  restRow.entry.stage = "minimap"
+  rows.rest = restRow
+
+  -- Expiring mail marker: Minimap marker and the marker's look.
+  Pages.MinimapMarker(block, modes, rows)
+
+  -- Icon: its art, its size, its count and its shadow, then where it sits
+  -- on the map and the lock on moving it. EllesmereUI's button wears all of
+  -- it but the size; under their minimap that, the place and the lock are
+  -- EllesmereUI's, and one quiet line says so in their place.
+  Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
   -- Where the icon was moved to, besides the choice: the spot on the rim a
   -- shift-drag left (Custom) and the one on screen (Anywhere on
   -- screen). Read only by Reset this tab (TabReset.Units).
@@ -9954,44 +10038,6 @@ function Pages.minimap(col)
     if type(prefs) ~= "table" then return nil end
     return tostring(prefs.angle) .. "|" .. tostring(prefs.offsetX) .. "|" .. tostring(prefs.offsetY)
   end
-  if hostStyled then
-    -- One quiet line, not a paragraph: the whole of it is in the inspector.
-    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
-  else
-    -- Every placement in ONE list -- a mode checkbox beside a position list
-    -- gave two controls authority over one fact, and they contradicted
-    -- each other the moment shift-drag moved the icon. Blizzard default
-    -- leads: it is where the stock indicator lives. A fresh install starts
-    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
-    -- picking that corner again is the way back to it after a shift-drag.
-    local placeRow = Rows.Dropdown(block, {
-      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
-      items = {
-        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
-        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
-        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
-        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
-        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
-        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
-        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
-      },
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
-      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
-    })
-    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
-    -- puts it back with Position, as Reset settings does, and a later pick
-    -- of either choice starts from the default spot.
-    placeRow.moreGet = MovedTo
-    Rows.Check(block, {
-      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
-      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
-      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
-    })
-  end
-
-  -- Icon: its art, its size, its count and its shadow. EllesmereUI's
-  -- button wears all of it but the size.
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_ICON"])
 
   -- Each "clean" restyle sits directly beneath its original, named as the
   -- original plus the localized clean suffix.
@@ -10117,34 +10163,40 @@ function Pages.minimap(col)
   end
   Rows.Check(block, Effect("OPT_MINIMAP_SHADOW_TITLE", "OPT_MINIMAP_SHADOW_DESC", "GetShadow", "SetShadow"))
 
-  -- Glow: the glow and its pulse side by side, the one breathing the
-  -- other, and the colour it wears -- which the flash when mail arrives
-  -- (on General, under Alerts) wears too. Pulse greys while Glow is off, Glow
-  -- color while neither Glow nor the flash is on (State.MinimapRows).
-  Rows.Group(block, L["OPT_MINIMAP_GROUP_GLOW"])
-  local glowPair = Rows.Pair(block,
-    Effect("OPT_MINIMAP_GLOW_TITLE", "OPT_MINIMAP_GLOW_DESC", "GetGlow", "SetGlow", function()
-      State.MinimapRows()
-      Ctx.Repaint()
-    end),
-    Effect("OPT_MINIMAP_PULSE_TITLE", "OPT_MINIMAP_PULSE_DESC", "GetPulse", "SetPulse"))
-  rows.pulse = glowPair.pair[2]
-  Rows.Why(rows.pulse, "OPT_MINIMAP_WHY_GLOW")
-
-  local glowRow = Pages.MinimapColor(block, {
-    title = L["OPT_MINIMAP_GLOWCOLOR_TITLE"], text = L["OPT_MINIMAP_GLOWCOLOR_DESC"],
-    ids = (Icon and Icon.GLOW_COLORS) or { "gold" },
-    get = "GetGlowColor", set = "SetGlowColor", pick = "PickGlowColor", custom = "GetGlowCustom", rgb = "GlowRGB",
-  })
-  modes[glowRow.entry] = "glow"
-  glowRow.entry.stage = "minimap"
-  rows.glow = glowRow
-  Rows.Why(glowRow, "OPT_MINIMAP_WHY_GLOWCOLOR")
-  -- (Flash on new mail, which wears Glow color and keeps it live while it
-  -- is on, is on General, under Alerts: Pages.Alerts.)
-
-  -- Expiring mail marker: Minimap marker and the marker's look.
-  Pages.MinimapMarker(block, modes, rows)
+  if hostStyled then
+    -- One quiet line, not a paragraph: the whole of it is in the inspector.
+    Rows.Note(block, L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_SHORT"], L["OPT_MINIMAP_EUI_STYLED"])
+  else
+    -- Every placement in ONE list -- a mode checkbox beside a position list
+    -- gave two controls authority over one fact, and they contradicted
+    -- each other the moment shift-drag moved the icon. Blizzard default
+    -- leads: it is where the stock indicator lives. A fresh install starts
+    -- in the top-right corner (MinimapButton's DEFAULTS.position), and
+    -- picking that corner again is the way back to it after a shift-drag.
+    local placeRow = Rows.Dropdown(block, {
+      title = L["OPT_MINIMAP_POS_TITLE"], text = L["OPT_MINIMAP_POS_DESC"],
+      items = {
+        { id = "BLIZZARD",    name = L["OPT_MINIMAP_POS_BLIZZARD"] },
+        { id = "TOPRIGHT",    name = L["OPT_MINIMAP_POS_TR"] },
+        { id = "TOPLEFT",     name = L["OPT_MINIMAP_POS_TL"] },
+        { id = "BOTTOMRIGHT", name = L["OPT_MINIMAP_POS_BR"] },
+        { id = "BOTTOMLEFT",  name = L["OPT_MINIMAP_POS_BL"] },
+        { id = "CUSTOM",      name = L["OPT_MINIMAP_POS_CUSTOM"] },
+        { id = "FREE",        name = L["OPT_MINIMAP_POS_FREE"] },
+      },
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetPosition() end,
+      set = function(id) if ns.MinimapButton then ns.MinimapButton.SetPosition(id) end end,
+    })
+    -- Where it was moved to (MovedTo) is the tab's too, so the tab's reset
+    -- puts it back with Position, as Reset settings does, and a later pick
+    -- of either choice starts from the default spot.
+    placeRow.moreGet = MovedTo
+    Rows.Check(block, {
+      title = L["OPT_MINIMAP_LOCK_TITLE"], text = L["OPT_MINIMAP_LOCK_DESC"],
+      get = function() return ns.MinimapButton and ns.MinimapButton.GetLocked() end,
+      set = function(on) if ns.MinimapButton then ns.MinimapButton.SetLocked(on) end end,
+    })
+  end
   Rows.EndBlock(block)
 end
 
