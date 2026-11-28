@@ -69,10 +69,16 @@ local DEFAULTS = {
   -- sound plays something and Off while it is Off (SaleTone).
   alertFlash = false,
   lock     = false,  -- swallow shift-drag entirely: no accidental nudges
-  -- When the icon is on the map: "new" while the game says there is unread
-  -- mail (the default indicator's own rule, and the only one there was),
-  -- "any" while Mail Memory knows mail waiting on any character, "always";
-  -- or "since", only while mail has come since the mailbox was last opened.
+  -- Full size for (`show`, When to show until 2.1): which mail brings the
+  -- icon up to full size. "new" while the game says there is unread mail
+  -- (the default indicator's own rule, and the only one there was), "any"
+  -- while Mail Memory knows mail waiting on any character, or "since", only
+  -- while mail has come since the mailbox was last opened. A saved "always"
+  -- (When to show's Always) reads as "new" with Stays on Full size and gray
+  -- (ShowMode, RestMode), so it looks as it did; it is kept as saved until
+  -- a choice is made. Stays (`rest`, under With no mail: how the icon looks
+  -- while no mail brings it up) is deliberately not seeded: an unset one is
+  -- read from `show`, which a seeded default would hide.
   show     = "new",
   -- The number on the icon: "off", "me" (this character's box) or "all"
   -- (every character's, the hidden ones aside).
@@ -333,8 +339,13 @@ end
 -- its side (MailMemory, MM.Characters), so reading it here is a walk over a
 -- list that already exists.
 --
---   lit     the game's unread-mail flag: the icon at full voice (its glow and
---           pulse). Every mode shows the icon at least while this is true.
+--   lit     the game's unread-mail flag.
+--   full    the icon at full size: Full size for has it up (or Stays is Full
+--           size and gray), or the marker is on it.
+--   bright  the icon in color, at full voice (its glow and pulse): the flag,
+--           with Full size for agreeing (any flag, on Full size and gray).
+--   small   the icon resting small and gray (Stays: Small and gray), quiet:
+--           no glow, pulse or count.
 --   shown   whether the icon is on the map at all.
 --   mine    the mail in this character's box, as Mail Memory counts it
 --           (what still holds something or is unread, the read mail kept,
@@ -347,28 +358,55 @@ end
 --           or mail known to be on its way unopened for over three weeks),
 --           this character included and the hidden ones left out, as its
 --           warnings leave them -- and Show marker puts the marker where
---           the icon is now. On the icon it brings the icon forward and its
---           glow up, in Glow color: the marker alone says why.
+--           the icon is now. On the icon it keeps the icon at full size, so
+--           it stands where its Anchor and Offset put it, and lights nothing:
+--           color still means new mail here, and the marker says why.
 --   alone   the marker stands on its own, where it stands on the icon:
---           Show marker is Always and When to show has the icon down. The
+--           Show marker is Always and Stays is Hidden with the icon down. The
 --           button is on the map for the marker's sake, its art hidden: the
 --           same hit area, the same tooltip and clicks, and no glow, shadow
 --           or count.
 --
--- The marker never brings the icon itself up: When to show alone says
--- when the icon is on the map, and means exactly what it says.
+-- The marker never brings the icon itself up: Full size for and Stays
+-- alone say when the icon is on the map, and mean exactly what they say.
 -------------------------------------------------------------
 
 -- "since" (New since last visit): only while mail is known to have come to
 -- this character since its mailbox was last opened (Mail Memory's arrival
 -- watch, MailMemory.NewSinceVisit); listed first, as it shows the icon in
 -- the fewest cases. Saved by id, so the order moves no saved choice.
-local SHOW_MODES = { since = true, new = true, any = true, always = true }
-MB.SHOW_MODES = { "since", "new", "any", "always" }
+-- A saved "always" (When to show's Always, before Stays) reads as New mail:
+-- with Stays on Full size and gray, which it reads as too (RestMode), the
+-- icon looks exactly as Always drew it.
+local SHOW_MODES = { since = true, new = true, any = true }
+MB.SHOW_MODES = { "since", "new", "any" }
 
 local function ShowMode(prefs)
   local mode = (prefs or Settings()).show
   return SHOW_MODES[mode] and mode or DEFAULTS.show
+end
+
+-- Stays (`rest`, under With no mail): how the icon looks while no mail
+-- brings it up to full size (Full size for).
+--   small  on the map, small and gray, and quiet: no glow, pulse or count
+--          (the default; it grows when mail comes);
+--   full   on the map at full size, gray (When to show's Always look);
+--   hide   not on the map (When to show's look before 2.1).
+-- Unset, it is read from the When to show it came after: Always is Full
+-- size and gray, every other choice Small and gray. Stored as nothing while
+-- it reads the same, so a profile carries across without a write.
+local REST_MODES = { small = true, full = true, hide = true }
+MB.REST_MODES = { "small", "full", "hide" }
+
+local function RestCarried(prefs)
+  return prefs.show == "always" and "full" or "small"
+end
+
+local function RestMode(prefs)
+  prefs = prefs or Settings()
+  local mode = prefs.rest
+  if REST_MODES[mode] then return mode end
+  return RestCarried(prefs)
 end
 
 local COUNT_MODES = { off = true, me = true, all = true }
@@ -595,8 +633,10 @@ end
 -- mailbox (Reevaluate): `on` while held, `armed` while its one check waits.
 MB._hold = { on = false, armed = false, checked = false }
 
+-- (Section 1b's fields, and `full`, `bright` and `small`: the icon at full
+-- size, in color, or resting small; see Evaluate.)
 local view = { lit = false, shown = false, mine = 0, all = 0, count = 0, alert = false, alone = false,
-  holder = nil, anchor = nil, side = nil }
+  full = false, bright = false, small = false, holder = nil, anchor = nil, side = nil }
 
 -- Warn about (General, Expiring mail): what the marker warns of, by the
 -- rule the chat line at login follows too (MailMemory.lua, MM.Warns).
@@ -645,11 +685,9 @@ local function Evaluate()
   -- Held up through a moment's drop (MB._hold, Reevaluate).
   if not lit and MB._hold.on then lit = true end
   view.lit, view.mine, view.all = lit, mine, all
-  -- When to show, and nothing else, puts the icon on the map.
+  -- Full size for says which mail brings the icon up to full size.
   local up
-  if mode == "always" then
-    up = true
-  elseif mode == "any" then
+  if mode == "any" then
     up = lit or all > 0 or uncounted
   elseif mode == "since" then
     -- Mail come since this character's mailbox was last opened; none at a
@@ -661,19 +699,39 @@ local function Evaluate()
   else
     up = lit
   end
-  -- The dot goes on the icon while it is up; on Always, also on its own
-  -- where the icon would be while it is not.
-  local alert = warn and expiry ~= "off" and (up or expiry == "always")
+  -- Stays says what the icon is while nothing brings it up: small and gray,
+  -- full size and gray (which Full size for then changes nothing about but
+  -- the color, and that only the unread flag gives), or not there.
+  local rest = RestMode(prefs)
+  local full, bright
+  if rest == "full" then
+    full, bright = true, lit
+  else
+    full, bright = up, lit and up
+  end
+  -- In color only for new mail here: the flag, and Full size for agreeing.
+  -- The icon is on the map at either size; then the marker goes on it.
+  local there = full or rest == "small"
+  -- The dot goes on the icon while it is there; on Always, also on its own
+  -- where the icon would be while it is not (Stays on Hidden).
+  local alert = warn and expiry ~= "off" and (there or expiry == "always")
   view.alert = alert
-  view.alone = alert and not up
-  view.shown = up or view.alone
+  view.alone = alert and not there
+  view.shown = there or view.alone
+  -- While the marker is on the icon, the icon keeps its full size (gray,
+  -- unless new mail here lights it), so the marker stands exactly where
+  -- its Anchor and Offset put it, at any Stays.
+  if alert and there then full = true end
+  view.full = full and true or false
+  view.bright = bright and true or false
+  view.small = there and not full
   view.count = (countMode == "me" and mine) or (countMode == "all" and all) or 0
   -- s33 mmcount. A sale on its way joins the count when its gold lands: while
   -- the icon is up wearing a count (or Mail on any character, which a
   -- landing can bring up), Mail Memory arms its one timer for the next
   -- landing (MailMemory.ArmLanding; nothing when none is on its way or one
   -- is armed already).
-  if (mode == "any" or (view.shown and countMode ~= "off")) and Memory and type(Memory.ArmLanding) == "function"
+  if (mode == "any" or (view.full and countMode ~= "off")) and Memory and type(Memory.ArmLanding) == "function"
     and MemoryOn() then
     Memory.ArmLanding()
   end
@@ -801,25 +859,218 @@ local function PaintCount(holder, anchor, size, n)
   fs:Show()
 end
 
--- The icon shown while nothing is new -- a launcher that is always there, or
--- mail waiting on another character -- rests: its art in grey, a step back
--- in alpha, and no glow. State rises in colour and alpha together, so the
--- moment mail arrives is the moment it comes forward, glow or no glow.
+-- The icon shown while nothing is new here -- mail waiting on another
+-- character, the marker on it, or Stays on Full size and gray -- rests: its
+-- art in grey, a step back in alpha, and no glow. State rises in colour and
+-- alpha together, so the moment mail arrives is the moment it comes
+-- forward, glow or no glow.
 local REST_ALPHA = 0.65
 -- The options' preview draws the resting icon by the same number.
 MB.REST_ALPHA = REST_ALPHA
 
--- An alert is not rest: it is the icon asking to be looked at. (A dot on
--- its own has no icon to rest; its art is hidden.)
-local function Resting()
-  return view.shown and not view.lit and not view.alert
+-- Small and gray (Stays): the art at 0.6 of the icon's side, in whole
+-- units (12 of 20; 10 of EllesmereUI's 16), grey at 0.7, with the shadow
+-- art at 0.45 under it, the soft dark ground that holds it on snow. Pointed
+-- at, it lifts to 0.8 (16 of 20) at 0.95; the hover light is the icon's own.
+MB.REST_SCALE, MB.REST_SMALL_ALPHA, MB.REST_SHADOW_ALPHA = 0.6, 0.7, 0.45
+MB.LIFT_SCALE, MB.LIFT_ALPHA = 0.8, 0.95
+
+-- The share `share` of a side `side` drawn in whole units, as a scale.
+function MB.RestScale(side, share)
+  if not side or side <= 0 then return share end
+  return math.max(1, math.floor(side * share + 0.5)) / side
 end
 
--- Whether the glow is lit: new mail, or the marker on the icon -- never for
--- a marker on its own, which has no icon to glow behind. It wears Glow color
--- either way (GlowRGB): the marker alone says mail is expiring.
+-- At rest: on the map, not lit by new mail here. (A dot on its own has no
+-- icon to rest; its art is hidden.)
+local function Resting()
+  return view.shown and not view.bright and not view.alone
+end
+
+-- Whether the glow is lit: new mail here, in Glow color (GlowRGB) -- never
+-- for a marker, on the icon or on its own: the marker alone says mail is
+-- expiring, and the glow is new mail's.
 local function Glowing(prefs)
-  return prefs.glow == true and (view.lit or view.alert) and not view.alone
+  return prefs.glow == true and view.bright and not view.alone
+end
+
+-- The number the icon wears now: at full size only (none small, none for
+-- the marker on its own).
+local function CountShown()
+  return (view.full and not view.alone) and view.count or 0
+end
+
+-- The grow (f88's Soft): with mail the small icon grows to full size in
+-- 0.9 s, eased in and out, its color warming in 0.15 s behind it over
+-- 0.75 s and the glow from 0.35 s over 0.8 s, the pulse taking over after;
+-- back, the color goes first (0.7 s), the size in 1.1 s eased, the glow
+-- gone by 0.45 s. Pointed at, the small icon lifts in 0.2 s and settles
+-- back the same. Animation groups on Postbox's own regions only, built
+-- once per host, played only for the moment a look changes: nothing runs
+-- in Lua while one plays, and nothing at all at rest.
+--
+-- A motion (`mv`) is a frame that is scaled (`frame`: our art holder, or
+-- the stand-in on EllesmereUI's button), the art in its new look
+-- (`icon`), its old look over it fading out (`twin`), the glow and its
+-- pulse. The look it ends on is painted first, static, by the caller; the
+-- groups then run from the old look to it, so a group stopped part way
+-- leaves the new look standing. `done` runs once every group is over.
+local Motion = {}
+do
+  local GROW, SHRINK, LIFT = 0.9, 1.1, 0.2
+  local IN_HOLD, IN_FADE, OUT_FADE = 0.15, 0.75, 0.7
+  local GLOW_HOLD, GLOW_IN, GLOW_OUT = 0.35, 0.8, 0.45
+  -- An ordered hold of no length.
+  local NO_HOLD = 0.01
+
+  -- A group of two alphas in order on `region`: a hold, then the fade.
+  local function Fade(region, mv)
+    local g = region:CreateAnimationGroup()
+    local hold = g:CreateAnimation("Alpha")
+    hold:SetOrder(1)
+    local fade = g:CreateAnimation("Alpha")
+    fade:SetOrder(2)
+    fade:SetSmoothing("IN_OUT")
+    if g.SetToFinalAlpha then g:SetToFinalAlpha(true) end
+    g.hold, g.fade = hold, fade
+    local function Over() Motion.Over(mv, g) end
+    g:SetScript("OnFinished", Over)
+    g:SetScript("OnStop", Over)
+    return g
+  end
+
+  local function Set(g, from, to, hold, dur)
+    g.hold:SetFromAlpha(from)
+    g.hold:SetToAlpha(from)
+    g.hold:SetDuration(math.max(NO_HOLD, hold))
+    g.fade:SetFromAlpha(from)
+    g.fade:SetToAlpha(to)
+    g.fade:SetDuration(dur)
+  end
+
+  function Motion.Build(frame, icon, twin, glow, pulse, done)
+    local mv = { frame = frame, icon = icon, twin = twin, glow = glow, pulse = pulse, done = done,
+      live = 0, wantPulse = false, glowOut = false }
+    local grow = frame:CreateAnimationGroup()
+    local scale = grow:CreateAnimation("Scale")
+    if scale.SetOrigin then scale:SetOrigin("CENTER", 0, 0) end
+    grow.scale = scale
+    local function Over() Motion.Over(mv, grow) end
+    grow:SetScript("OnFinished", Over)
+    grow:SetScript("OnStop", Over)
+    mv.grow = grow
+    mv.iconFade, mv.twinFade, mv.glowFade = Fade(icon, mv), Fade(twin, mv), Fade(glow, mv)
+    -- The art's own pixel snapping, put back when a motion ends: a hard
+    -- edge snapped while it scales steps through whole pixels.
+    mv.snap = icon.IsSnappingToPixelGrid and icon:IsSnappingToPixelGrid()
+    return mv
+  end
+
+  -- Whether a motion is running, and the glow's part of one.
+  function Motion.Busy(mv) return mv ~= nil and mv.live > 0 end
+  function Motion.GlowBusy(mv) return mv ~= nil and mv.glowFade:IsPlaying() end
+
+  -- A group of `mv` is over: the twin goes once its fade is, the glow
+  -- hands on to its pulse (or goes, faded out), and the last one runs
+  -- `done`.
+  function Motion.Over(mv, g)
+    if not g.__pbLive then return end
+    g.__pbLive = false
+    if g == mv.twinFade then mv.twin:Hide() end
+    if g == mv.glowFade then
+      if mv.glowOut then
+        mv.glow:Hide()
+      elseif mv.wantPulse and not mv.pulse:IsPlaying() then
+        mv.pulse:Play()
+      end
+    end
+    mv.live = mv.live - 1
+    if mv.live > 0 then return end
+    mv.live = 0
+    if mv.snap ~= nil and mv.icon.SetSnapToPixelGrid then
+      mv.icon:SetSnapToPixelGrid(mv.snap)
+      mv.twin:SetSnapToPixelGrid(mv.snap)
+    end
+    if mv.done then mv.done() end
+  end
+
+  local function Start(mv, g)
+    g.__pbLive = true
+    mv.live = mv.live + 1
+    g:Play()
+  end
+
+  -- One group stopped, and seen over even where the client let it go
+  -- without a word.
+  local function Halt(mv, g)
+    if not g.__pbLive then return end
+    if g:IsPlaying() then g:Stop() end
+    if g.__pbLive then Motion.Over(mv, g) end
+  end
+
+  -- Every group of `mv` stopped where it stands; the look the caller
+  -- paints next stands.
+  function Motion.Stop(mv)
+    if not mv or mv.live <= 0 then return end
+    Halt(mv, mv.grow)
+    Halt(mv, mv.iconFade)
+    Halt(mv, mv.twinFade)
+    Halt(mv, mv.glowFade)
+  end
+
+  -- From scale `fromK` to `toK` (the frame already at `toK`); `cross`: the
+  -- color changes, the twin wearing the old look (`twinGray`, `twinAlpha`)
+  -- and the icon fading in to `iconAlpha`; `glow`: "in", "out" or nil;
+  -- `pulse`: whether the pulse takes over from a glow that came in.
+  function Motion.Play(mv, fromK, toK, cross, twinGray, twinAlpha, iconAlpha, glow, pulse)
+    local lift = fromK < 1 and toK < 1
+    local growing = toK > fromK
+    if mv.icon.SetSnapToPixelGrid then
+      mv.icon:SetSnapToPixelGrid(false)
+      mv.twin:SetSnapToPixelGrid(false)
+    end
+    if fromK ~= toK and mv.grow.scale.SetScaleFrom then
+      local r = fromK / toK
+      local scale = mv.grow.scale
+      scale:SetScaleFrom(r, r)
+      scale:SetScaleTo(1, 1)
+      scale:SetDuration(lift and LIFT or (growing and GROW or SHRINK))
+      scale:SetSmoothing(lift and "OUT" or "IN_OUT")
+      Start(mv, mv.grow)
+    end
+    if cross then
+      local hold = growing and IN_HOLD or NO_HOLD
+      local dur = growing and IN_FADE or OUT_FADE
+      mv.twin:SetDesaturated(twinGray and true or false)
+      mv.twin:SetAlpha(0)
+      mv.twin:Show()
+      Set(mv.twinFade, twinAlpha, 0, hold, dur)
+      Set(mv.iconFade, 0, iconAlpha, hold, dur)
+      Start(mv, mv.twinFade)
+      Start(mv, mv.iconFade)
+    end
+    if glow == "in" then
+      mv.glowOut, mv.wantPulse = false, pulse and true or false
+      mv.pulse:Stop()
+      mv.glow:SetAlpha(1)
+      mv.glow:Show()
+      Set(mv.glowFade, 0, 1, GLOW_HOLD, GLOW_IN)
+      Start(mv, mv.glowFade)
+    elseif glow == "out" then
+      mv.glowOut, mv.wantPulse = true, false
+      mv.pulse:Stop()
+      mv.glow:SetAlpha(1)
+      mv.glow:Show()
+      Set(mv.glowFade, 1, 0, NO_HOLD, GLOW_OUT)
+      Start(mv, mv.glowFade)
+    end
+    -- Nothing to move (a client without the scale's from and to): the look
+    -- painted stands, at once.
+    if mv.live <= 0 then
+      mv.live = 0
+      if mv.done then mv.done() end
+    end
+  end
 end
 
 -- The alert's mark, the marker: a small flat shape at the art's corner, at
@@ -1361,6 +1612,7 @@ local function EuiHidesMail()
 end
 
 local RestoreEuiSkin -- forward: the finder restores an orphaned button on rebuild
+local ApplyEuiSkin -- forward: the overlay's hover lifts the small icon
 
 local function FindEuiMailButton()
   local minimap = _G.Minimap
@@ -1485,11 +1737,21 @@ local function EnsureEuiOverlay(btn)
     return btn:IsVisible() and (btn:GetEffectiveAlpha() or 1) > 0.15
   end
 
+  -- Pointed at, the small icon lifts (Small and gray, section 1b); let go,
+  -- it settles back. Only for the button we dress now.
   overlay:SetScript("OnEnter", function(self)
     if not Reachable() then return end
+    self.__pbHover = true
+    if view.small and euiSkin.applied and euiSkin.button == btn then ApplyEuiSkin() end
     ShowTooltip(self, true)
   end)
-  overlay:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  overlay:SetScript("OnLeave", function(self)
+    if self.__pbHover then
+      self.__pbHover = false
+      if view.small and euiSkin.applied and euiSkin.button == btn then ApplyEuiSkin() end
+    end
+    GameTooltip:Hide()
+  end)
   overlay:SetScript("OnClick", function(self, mouseButton)
     if not Reachable() then return end
     if mouseButton == "RightButton" then
@@ -1534,7 +1796,9 @@ local function EnsureEuiOverlay(btn)
   -- be, nothing is done in combat. `reHiding` keeps the hide from waking the
   -- re-show above: no loop between their show and this hide.
   overlay:SetScript("OnShow", function()
-    if euiSkin.reHiding or ShowMode() ~= "since" then return end
+    -- (With Stays on Small and gray or Full size and gray the icon is on
+    -- the map whatever Full size for says: nothing to answer.)
+    if euiSkin.reHiding or ShowMode() ~= "since" or RestMode() ~= "hide" then return end
     if not (euiSkin.applied and euiSkin.button == btn and btn:IsShown()) or view.alone then return end
     local Memory = ns.MailMemory
     if not (MemoryOn() and Memory and type(Memory.NewSinceVisit) == "function") then return end
@@ -1572,7 +1836,75 @@ local function EuiArtSize(btn, icon)
   return math.max(10, math.min(w, h) - 6), w, h
 end
 
-local function ApplyEuiSkin()
+-- Small and gray on their button: their icon drawn smaller where only we
+-- size it. Their passes size it again only where it carries their atlas
+-- (Icon style Blizzard: ResizeIndicator, EllesmereUIMinimap 9.8.4), where
+-- their Classic WoW UI ring dresses it (16 px each pass, _ClassicRingButton)
+-- or where it is stretched to the button (two points or more: WoW
+-- Forever's header art, _FvHeaderIndicator). There the icon rests full size
+-- and gray instead, its look on Full size and gray, and never fights them.
+local function EuiRestsSmall(btn, icon, prefs)
+  if prefs.icon == "blizzard" or icon._classicMasked then return false end
+  local n = icon.GetNumPoints and icon:GetNumPoints()
+  if IsSecret(n) or type(n) ~= "number" then return false end
+  return n <= 1
+end
+
+-- Our glow on their button and its pulse, made once, hidden until worn.
+local function EuiGlow(btn, icon)
+  local glow = btn.__pbMailGlow
+  if glow then return glow end
+  glow = btn:CreateTexture(nil, "BACKGROUND")
+  glow:SetPoint("CENTER", icon, "CENTER")
+  glow:SetTexture(MEDIA .. "minimap-glow.tga")
+  glow:SetBlendMode("ADD")
+  glow:Hide()
+  btn.__pbMailGlow = glow
+  local pulse = glow:CreateAnimationGroup()
+  pulse:SetLooping("BOUNCE")
+  local fade = pulse:CreateAnimation("Alpha")
+  fade:SetFromAlpha(1)
+  fade:SetToAlpha(0.55)
+  fade:SetDuration(1.6)
+  fade:SetSmoothing("IN_OUT")
+  btn.__pbMailPulse = pulse
+  return glow
+end
+
+-- The grow on their button (Motion, section 1b). Their icon is theirs, so
+-- nothing of ours animates it: for the moment of a grow, a fall or a lift
+-- our own copy of the art stands over it (a frame of ours on their button,
+-- under our overlay), moves, and hands back to their icon, which waits at
+-- alpha 0 at its new size; their icon then wears the look the copy ended
+-- on. Nothing of it runs or shows at rest.
+local function EuiMotion(btn, icon)
+  local overlay = btn.__pbOverlay
+  local mv = overlay.__pbMotion
+  if mv then return mv end
+  EuiGlow(btn, icon)
+  local move = CreateFrame("Frame", nil, btn)
+  move:SetPoint("CENTER", icon, "CENTER", 0, 0)
+  move:SetSize(16, 16)
+  move:Hide()
+  local art = move:CreateTexture(nil, "ARTWORK", nil, 0)
+  art:SetPoint("CENTER")
+  local twin = move:CreateTexture(nil, "ARTWORK", nil, 1)
+  twin:SetPoint("CENTER")
+  twin:Hide()
+  move.Art, move.Twin = art, twin
+  overlay.__pbMove = move
+  mv = Motion.Build(move, art, twin, btn.__pbMailGlow, btn.__pbMailPulse, function()
+    move:Hide()
+    -- Their icon in the look the copy ended on, while we still dress it.
+    local mine = euiSkin.applied and euiSkin.button == btn and btn._icon
+    if mine then mine:SetAlpha(overlay.__pbHand or 1) end
+    if view.holder == overlay then PaintCount(overlay, view.anchor, view.side, CountShown()) end
+  end)
+  overlay.__pbMotion = mv
+  return mv
+end
+
+ApplyEuiSkin = function()
   local btn = FindEuiMailButton()
   local icon = btn and btn._icon
   if not icon then return false end
@@ -1597,6 +1929,11 @@ local function ApplyEuiSkin()
   local prefs = Settings()
   local spec = ICONS[IconId(prefs.icon)]
   local side, artW, artH = EuiArtSize(btn, icon)
+  local overlay = btn.__pbOverlay
+  -- The size it is drawn at: small (lifted while pointed at) where it may
+  -- be (EuiRestsSmall), else full.
+  local small = view.small and EuiRestsSmall(btn, icon, prefs)
+  local k = small and MB.RestScale(side, overlay.__pbHover and MB.LIFT_SCALE or MB.REST_SCALE) or 1
 
   if prefs.icon == "blizzard" then
     -- "Blizzard" here means EllesmereUI's stock look, which is the same art.
@@ -1617,25 +1954,75 @@ local function ApplyEuiSkin()
     else
       icon:SetTexture(spec.texture)
     end
-    icon:SetSize(side, side * (spec.aspect or 1))
+    icon:SetSize(side * k, side * (spec.aspect or 1) * k)
     icon:SetVertexColor(1, 1, 1)
   end
-  -- At rest (shown with nothing new), as Postbox's own button rests. For
-  -- the marker on its own the art is drawn at zero alpha: the button stays
-  -- where they placed it, the marker on our overlay keeps its place on
-  -- their icon, and the overlay keeps the hover and the clicks. Their own
-  -- chrome around it (the dark box behind their row's buttons, the Classic
-  -- ring) is theirs and stays: their layout pass sets it on every pass.
+  -- At rest (shown with nothing new here), as Postbox's own button rests:
+  -- small and gray, or full size and gray. For the marker on its own the
+  -- art is drawn at zero alpha: the button stays where they placed it, the
+  -- marker on our overlay keeps its place on their icon, and the overlay
+  -- keeps the hover and the clicks. Their own chrome around it (the dark
+  -- box behind their row's buttons, the Classic ring) is theirs and stays:
+  -- their layout pass sets it on every pass.
   local resting = Resting()
+  local bright = view.bright
   icon:SetDesaturated(resting)
+  local alpha
   if view.alone then
+    alpha = 0
+  elseif not resting then
+    alpha = euiSkin.saved.alpha or 1
+  elseif small then
+    alpha = overlay.__pbHover and MB.LIFT_ALPHA or MB.REST_SMALL_ALPHA
+  else
+    alpha = REST_ALPHA
+  end
+
+  -- A change of size moves (Motion): their icon waits under our copy of
+  -- the art, which grows or falls from the size painted last and hands
+  -- back. Only where the art was up and is up, on a button on screen.
+  local mv = EuiMotion(btn, icon)
+  local glowing = Glowing(prefs)
+  local wasK, wasBright, wasAlpha = overlay.__pbK, overlay.__pbBright, overlay.__pbAlpha
+  local wasGlow, wasUp = overlay.__pbGlow, overlay.__pbUp
+  local up = view.shown and not view.alone
+  local changed = wasK ~= k or wasBright ~= bright or wasGlow ~= glowing
+  if changed then Motion.Stop(mv) end
+  local animate = changed and wasUp and up and wasK ~= nil and wasK ~= k
+    and btn:IsVisible() and prefs.icon ~= "blizzard" and not icon._classicMasked
+  overlay.__pbK, overlay.__pbBright, overlay.__pbAlpha, overlay.__pbGlow, overlay.__pbUp = k, bright, alpha, glowing, up
+  overlay.__pbHand = alpha
+  if animate then
+    local move = overlay.__pbMove
+    local w, h = side, side * (spec.aspect or 1)
+    move:SetFrameLevel(btn:GetFrameLevel() + 1)
+    move:SetSize(w, h)
+    move:SetScale(k)
+    local art, twin = move.Art, move.Twin
+    art:SetSize(w, h)
+    twin:SetSize(w, h)
+    if spec.atlas then
+      art:SetAtlas(spec.atlas)
+      twin:SetAtlas(spec.atlas)
+    else
+      art:SetTexture(spec.texture)
+      twin:SetTexture(spec.texture)
+    end
+    art:SetVertexColor(1, 1, 1)
+    twin:SetVertexColor(1, 1, 1)
+    art:SetDesaturated(resting)
+    art:SetAlpha(alpha)
+    move:Show()
+    icon:SetAlpha(0)
+  elseif Motion.Busy(mv) then
+    -- A move under way and nothing changed: the copy keeps the stage.
     icon:SetAlpha(0)
   else
-    icon:SetAlpha(resting and REST_ALPHA or (euiSkin.saved.alpha or 1))
+    icon:SetAlpha(alpha)
   end
 
   local shadow = btn.__pbMailShadow
-  if prefs.shadow == true and not view.alone then
+  if (prefs.shadow == true or small) and not view.alone then
     if not shadow then
       shadow = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
       shadow:SetPoint("CENTER", icon, "CENTER", 0, -1)
@@ -1644,39 +2031,34 @@ local function ApplyEuiSkin()
       shadow:SetAlpha(0.9)
       btn.__pbMailShadow = shadow
     end
-    shadow:SetSize(artW * 1.3, artH * 1.3)
+    shadow:SetSize(artW * 1.3 * k, artH * 1.3 * k)
+    shadow:SetAlpha(small and MB.REST_SHADOW_ALPHA or 0.9)
     shadow:Show()
   elseif shadow then
     shadow:Hide()
   end
 
-  local glow = btn.__pbMailGlow
-  if Glowing(prefs) then
-    if not glow then
-      glow = btn:CreateTexture(nil, "BACKGROUND")
-      glow:SetPoint("CENTER", icon, "CENTER")
-      glow:SetTexture(MEDIA .. "minimap-glow.tga")
-      glow:SetBlendMode("ADD")
-      btn.__pbMailGlow = glow
-      local pulse = glow:CreateAnimationGroup()
-      pulse:SetLooping("BOUNCE")
-      local fade = pulse:CreateAnimation("Alpha")
-      fade:SetFromAlpha(1)
-      fade:SetToAlpha(0.55)
-      fade:SetDuration(1.6)
-      fade:SetSmoothing("IN_OUT")
-      btn.__pbMailPulse = pulse
-    end
-    glow:SetSize(artW * 1.6, artH * 1.6)
-    glow:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
+  local glow = EuiGlow(btn, icon)
+  local pulse = btn.__pbMailPulse
+  local pulseOn = prefs.pulse ~= false
+  glow:SetSize(artW * 1.6, artH * 1.6)
+  glow:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
+  local glowMove = nil
+  if animate and glowing ~= (wasGlow and true or false) then glowMove = glowing and "in" or "out" end
+  if glowMove then
+    -- The motion's (Motion.Play, below).
+  elseif Motion.GlowBusy(mv) then
+    mv.wantPulse = glowing and pulseOn
+  elseif glowing then
+    glow:SetAlpha(1)
     glow:Show()
-    if prefs.pulse ~= false then
-      if not btn.__pbMailPulse:IsPlaying() then btn.__pbMailPulse:Play() end
+    if pulseOn then
+      if not pulse:IsPlaying() then pulse:Play() end
     else
-      btn.__pbMailPulse:Stop()
+      pulse:Stop()
     end
-  elseif glow then
-    btn.__pbMailPulse:Stop()
+  else
+    pulse:Stop()
     glow:Hide()
   end
 
@@ -1696,12 +2078,16 @@ local function ApplyEuiSkin()
   -- icon for the number to belong to. The marker stands on the art drawn
   -- there, by its box: the style's, and on Blizzard their own stock art,
   -- which is the same atlas at the same 19.5 : 15 (their indicator's ratio).
-  PaintCount(btn.__pbOverlay, icon, side, (not view.alone) and view.count or 0)
-  view.holder, view.anchor, view.side = btn.__pbOverlay, icon, side
-  PaintMark(btn.__pbOverlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
+  -- A count comes in once the icon has grown (the motion's end paints it).
+  PaintCount(overlay, icon, side, (animate and k > wasK) and 0 or CountShown())
+  view.holder, view.anchor, view.side = overlay, icon, side
+  PaintMark(overlay, icon, side, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
     view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
   euiSkin.applied = true
+  if animate then
+    Motion.Play(mv, wasK, k, bright ~= wasBright, not wasBright, wasAlpha or alpha, alpha, glowMove, pulseOn)
+  end
   return true
 end
 
@@ -1712,6 +2098,13 @@ RestoreEuiSkin = function(orphaned)
   local btn = euiSkin.button
   local saved = euiSkin.saved
   if not (btn and saved) then return end
+  -- A move under way ends where it stands; its copy goes.
+  local overlay = btn.__pbOverlay
+  if overlay then
+    Motion.Stop(overlay.__pbMotion)
+    if overlay.__pbMove then overlay.__pbMove:Hide() end
+    overlay.__pbK, overlay.__pbUp, overlay.__pbHover = nil, nil, false
+  end
 
   -- Hand their button back its own input. Hidden rather than destroyed:
   -- frames cannot be, and the enable/disable cycle can run repeatedly.
@@ -1758,6 +2151,8 @@ local function SyncEuiButtonShown()
 
   local waiting = view.shown and not EuiHidesMail()
   btn:SetShown(waiting)
+  -- Off the map, a move has nothing to move.
+  if not waiting and btn.__pbOverlay then Motion.Stop(btn.__pbOverlay.__pbMotion) end
 
   -- EllesmereUI anchors this button only inside its own layout pass, and
   -- only while the button is SHOWN -- their builder gives it no points at
@@ -1868,6 +2263,15 @@ local function RimOffset(minimap)
   return cos * reach, sin * reach
 end
 
+-- The button's level (MB.ICON_LEVEL) and, over its art holder, the frame
+-- the marker and the count stand on (Build).
+local function Lift(button, minimap)
+  button:SetFrameLevel((minimap:GetFrameLevel() or 2) + MB.ICON_LEVEL)
+  local level = button:GetFrameLevel()
+  if button.art then button.art:SetFrameLevel(level + 1) end
+  if button.over then button.over:SetFrameLevel(level + 2) end
+end
+
 local function Reposition(button)
   local minimap = _G.Minimap
   if not (button and minimap) then return end
@@ -1884,7 +2288,7 @@ local function Reposition(button)
     if mail then
       button:ClearAllPoints()
       button:SetPoint("CENTER", mail, "CENTER", 0, 0)
-      button:SetFrameLevel((minimap:GetFrameLevel() or 2) + MB.ICON_LEVEL)
+      Lift(button, minimap)
       return
     end
   end
@@ -1904,7 +2308,7 @@ local function Reposition(button)
 
   button:ClearAllPoints()
   button:SetPoint("CENTER", minimap, "CENTER", x, y)
-  button:SetFrameLevel((minimap:GetFrameLevel() or 2) + MB.ICON_LEVEL)
+  Lift(button, minimap)
 end
 
 local function AngleFromCursor()
@@ -1928,38 +2332,77 @@ local function ApplyLook(button)
   local prefs = Settings()
   local size = IconSize()
   button:SetSize(size, size)
-  -- The art holder tracks the button's size; the textures inside it are
-  -- sized from the same number below, so all three stay in step.
-  if button.art then button.art:SetSize(size, size) end
+  -- The art holder and the marker's holder track the button's size; the
+  -- textures inside them are sized from the same number below, so all
+  -- stay in step.
+  local art, over = button.art, button.over
+  art:SetSize(size, size)
+  over:SetSize(size, size)
 
   local spec = ICONS[IconId(prefs.icon)]
-  local icon = button.icon
-  icon:SetSize(size, size * (spec.aspect or 1))
+  local icon, twin, ref = button.icon, button.twin, button.ref
+  local h = size * (spec.aspect or 1)
+  icon:SetSize(size, h)
+  twin:SetSize(size, h)
+  -- The icon's rect at full size, never scaled: the marker and the count
+  -- stand on it exactly where they stood on the icon itself.
+  ref:SetSize(size, h)
   if spec.atlas then
     icon:SetAtlas(spec.atlas)
+    twin:SetAtlas(spec.atlas)
   else
     icon:SetTexture(spec.texture)
+    twin:SetTexture(spec.texture)
   end
 
   -- The art as it is drawn: the Minimal letter white, the painted icons in
   -- their own colours. The glow wears Glow color (below).
   icon:SetVertexColor(1, 1, 1)
-  local resting = Resting()
+  twin:SetVertexColor(1, 1, 1)
+  -- Its size: small (lifted while pointed at) at rest on Small and gray,
+  -- else full; the art holder is scaled, round its centre.
+  local resting, small, bright = Resting(), view.small, view.bright
+  local hover = small and button.__pbHover
+  local k = small and MB.RestScale(size, hover and MB.LIFT_SCALE or MB.REST_SCALE) or 1
+  local alpha = (not resting and 1) or (small and (hover and MB.LIFT_ALPHA or MB.REST_SMALL_ALPHA)) or REST_ALPHA
+  local glowing = Glowing(prefs)
+  local pulseOn = prefs.pulse ~= false
+
+  -- A change of size moves (Motion): from the size painted last, where the
+  -- art was up and is up, on a button on the map. Anything else is drawn
+  -- at once, as it always was.
+  local mv = button.mv
+  local wasK, wasBright, wasAlpha, wasGlow, wasUp = button.__pbK, button.__pbBright, button.__pbAlpha,
+    button.__pbGlow, button.__pbUp
+  local up = view.shown and not view.alone
+  local changed = wasK ~= k or wasBright ~= bright or wasGlow ~= glowing
+  if changed then Motion.Stop(mv) end
+  local animate = changed and wasUp and up and wasK ~= nil and wasK ~= k and button:IsShown()
+  button.__pbK, button.__pbBright, button.__pbAlpha, button.__pbGlow, button.__pbUp = k, bright, alpha, glowing, up
+
+  art:SetScale(k)
   icon:SetDesaturated(resting)
-  icon:SetAlpha(resting and REST_ALPHA or 1)
+  icon:SetAlpha(alpha)
   -- The marker on its own: no icon art, only the marker in its place; the
   -- button keeps its size, so the hover and the clicks are the icon's own.
   icon:SetShown(not view.alone)
+  if not Motion.Busy(mv) then twin:Hide() end
 
-  -- The glow is the icon's voice for new mail, and for the marker on the
-  -- icon, in Glow color either way: it rests with the icon, and a marker on
-  -- its own has none.
+  -- The glow is the icon's voice for new mail here, in Glow color: it rests
+  -- with the icon, and a marker has none.
   local glow = button.glow
   glow:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
   glow:SetVertexColor(GlowRGB(GlowColorMode(prefs)))
-  if Glowing(prefs) then
+  local glowMove = nil
+  if animate and glowing ~= (wasGlow and true or false) then glowMove = glowing and "in" or "out" end
+  if glowMove then
+    -- The motion's (Motion.Play, below).
+  elseif Motion.GlowBusy(mv) then
+    mv.wantPulse = glowing and pulseOn
+  elseif glowing then
+    glow:SetAlpha(1)
     glow:Show()
-    if prefs.pulse ~= false then
+    if pulseOn then
       if not button.pulse:IsPlaying() then button.pulse:Play() end
     else
       button.pulse:Stop()
@@ -1970,18 +2413,26 @@ local function ApplyLook(button)
   end
 
   -- The shadow is the glow art in black at normal blend, a touch smaller
-  -- and nudged down -- grounding rather than radiance. No pulse.
+  -- and nudged down -- grounding rather than radiance. No pulse. Under the
+  -- small icon always, lighter: the ground that holds it on snow.
   local shadow = button.shadow
   shadow:SetSize(size * 1.8, size * 1.8)
-  shadow:SetShown(prefs.shadow == true and not view.alone)
+  shadow:SetAlpha(small and MB.REST_SHADOW_ALPHA or 0.9)
+  shadow:SetShown((prefs.shadow == true or small) and not view.alone)
 
-  -- Nor a count: there is no icon for the number to belong to.
-  PaintCount(button.art, icon, size, (not view.alone) and view.count or 0)
-  view.holder, view.anchor, view.side = button.art, icon, size
-  PaintMark(button.art, icon, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
+  -- The count at full size only (none for the marker on its own: there is
+  -- no icon for the number to belong to), coming in once a grow is over
+  -- (the motion's end paints it); the marker on the full-size rect, over
+  -- the art and never scaled with it.
+  PaintCount(over, ref, size, (animate and k > wasK) and 0 or CountShown())
+  view.holder, view.anchor, view.side = over, ref, size
+  PaintMark(over, ref, size, view.alert, MarkerShape(prefs), MarkerCorner(prefs),
     view.alone and MarkerLarge(prefs), prefs.markerX, prefs.markerY, MarkerColorMode(prefs), spec.box)
 
   Reposition(button)
+  if animate then
+    Motion.Play(mv, wasK, k, bright ~= wasBright, not wasBright, wasAlpha or alpha, alpha, glowMove, pulseOn)
+  end
 end
 
 -------------------------------------------------------------
@@ -2114,6 +2565,7 @@ MB.HOLD, MB.HOLD_CLOSE = 0.5, 5
 
 local function Reevaluate()
   local lit, shown, alert, count, alone = view.lit, view.shown, view.alert, view.count, view.alone
+  local full, bright = view.full, view.bright
   Evaluate()
   local hold = MB._hold
   if lit and not view.lit and not hold.on and not hold.checked and view.holder and not MB.AtMailbox() then
@@ -2129,17 +2581,19 @@ local function Reevaluate()
       end
     end
   end
+  local moved = view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone
+    or view.full ~= full or view.bright ~= bright
   local redressed = false
-  if not (view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone) then
+  if not moved then
     redressed = HostRedressed()
   end
-  if view.lit ~= lit or view.shown ~= shown or view.alert ~= alert or view.alone ~= alone or redressed then
+  if moved or redressed then
     MB.PaintLog.Note("whole", lit, shown, count, redressed)
     MB.Refresh()
   elseif view.count ~= count then
     MB.PaintLog.Note("count", lit, shown, count, false)
     if view.holder then
-      PaintCount(view.holder, view.anchor, view.side, (not view.alone) and view.count or 0)
+      PaintCount(view.holder, view.anchor, view.side, CountShown())
     else
       MB.Refresh()
     end
@@ -2534,6 +2988,24 @@ local function Build()
   local icon = art:CreateTexture(nil, "ARTWORK")
   icon:SetPoint("CENTER")
   button.icon = icon
+  -- The art in the look it had, over it, fading out while the color
+  -- changes in a grow (Motion); hidden otherwise.
+  local twin = art:CreateTexture(nil, "ARTWORK", nil, 1)
+  twin:SetPoint("CENTER")
+  twin:Hide()
+  button.twin = twin
+
+  -- The marker and the count stand here, over the art holder and never
+  -- scaled with it, on `ref`: the icon's rect at full size (no art of its
+  -- own), where the icon stands at full size. So a small icon, or one
+  -- growing, never moves either of them by a pixel.
+  local over = CreateFrame("Frame", nil, button)
+  over:SetPoint("CENTER", button, "CENTER", 0, 0)
+  over:SetSize(DEFAULTS.size, DEFAULTS.size)
+  button.over = over
+  local ref = over:CreateTexture(nil, "ARTWORK")
+  ref:SetPoint("CENTER")
+  button.ref = ref
 
   -- Hover feedback reuses the glow art faintly, so the hit target reads as a
   -- control without adding chrome.
@@ -2561,11 +3033,28 @@ local function Build()
   -- helper in section 3, which is also what dresses EllesmereUI's button.
   button.alert, button.flash = BuildAlertHalo(art)
 
+  -- The grow (Motion, section 1b), on the art holder; its end puts the
+  -- count on.
+  button.mv = Motion.Build(art, icon, twin, glow, pulse, function()
+    if view.holder == over then PaintCount(over, ref, view.side, CountShown()) end
+  end)
+
   -- Wrapped, not passed directly: OnEnter hands the handler (self, motion),
   -- and that second argument would arrive as `hostMode` and quietly strip
-  -- the drag and lock lines from our OWN icon's tooltip.
-  button:SetScript("OnEnter", function(self) ShowTooltip(self) end)
-  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- the drag and lock lines from our OWN icon's tooltip. Pointed at, the
+  -- small icon lifts; let go, it settles back.
+  button:SetScript("OnEnter", function(self)
+    self.__pbHover = true
+    if view.small then ApplyLook(self) end
+    ShowTooltip(self)
+  end)
+  button:SetScript("OnLeave", function(self)
+    if self.__pbHover then
+      self.__pbHover = false
+      if view.small then ApplyLook(self) end
+    end
+    GameTooltip:Hide()
+  end)
   button:SetScript("OnClick", function(self, mouseButton)
     if IsShiftKeyDown() then return end -- shift is the drag modifier
     -- Alt-click toggles the position lock in place -- the same setting the
@@ -2788,7 +3277,10 @@ Refresh = function()
     RestoreEuiSkin()
     euiSkin.tries = 0
     euiSkin.fallback = false
-    if MB._button then MB._button:Hide() end
+    if MB._button then
+      Motion.Stop(MB._button.mv)
+      MB._button:Hide()
+    end
     return
   end
 
@@ -2811,7 +3303,10 @@ Refresh = function()
   -- EllesmereUI's minimap module running: restyle its icon in place, leave
   -- position and size to them.
   if EuiSkinCandidate() and not euiSkin.fallback then
-    if MB._button then MB._button:Hide() end
+    if MB._button then
+      Motion.Stop(MB._button.mv)
+      MB._button:Hide()
+    end
     if ApplyEuiSkin() then
       euiSkin.tries = 0
       SyncEuiButtonShown()
@@ -2847,6 +3342,8 @@ Refresh = function()
   button.highlight:SetSize(size * GLOW_SCALE, size * GLOW_SCALE)
 
   button:SetShown(view.shown)
+  -- Off the map, a move has nothing to move.
+  if not view.shown then Motion.Stop(button.mv) end
 end
 
 MB.Refresh = Refresh
@@ -2856,12 +3353,14 @@ MB.Refresh = Refresh
 -- visibility depends on, captured at the moment the report is built.
 function MB.Diagnose()
   return string.format(
-    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s wants %s | count %s %d | expiring %s %s | marker %s %s %s %+d,%+d%s | glow %s",
+    "runtime %s | suppressing %s | eui candidate %s applied %s tries %d fallback %s | own button %s | mail waiting %s | show %s stays %s wants %s %s | count %s %d | expiring %s %s | marker %s %s %s %+d,%+d%s | glow %s",
     tostring(runtimeActive), tostring(suppressing),
     tostring((EuiSkinCandidate())), tostring(euiSkin.applied),
     euiSkin.tries, tostring(euiSkin.fallback),
     (MB._button and MB._button:IsShown()) and "shown" or "hidden/none",
-    tostring((MailWaiting())), ShowMode(), tostring(view.shown and not view.alone), CountMode(), view.count,
+    tostring((MailWaiting())), ShowMode(), RestMode(), tostring(view.shown and not view.alone),
+    (view.small and "small") or (view.bright and "full color") or (view.full and "full gray") or "-",
+    CountMode(), view.count,
     ExpiryMode(), (view.alone and "DOT ALONE") or (view.alert and "DOT ON ICON") or "quiet",
     MarkerShape(), MarkerColorMode(), MarkerCorner(), MarkerOffset(Settings().markerX), MarkerOffset(Settings().markerY),
     MarkerLarge() and " large" or "", GlowColorMode()) .. MB.PaintLog.Lines()
@@ -2911,12 +3410,28 @@ function MB.SetIcon(id)
   Refresh()
 end
 
--- When the icon is on the map (MB.SHOW_MODES; DEFAULTS.show).
+-- Full size for (MB.SHOW_MODES; DEFAULTS.show). A saved Always stays as
+-- saved until a choice is made here; then its Full size and gray is kept
+-- as Stays' own, so the choice changes only what it says.
 function MB.GetShowWhen() return ShowMode() end
 
 function MB.SetShowWhen(mode)
   if not SHOW_MODES[mode] then return end
-  Settings().show = mode
+  local prefs = Settings()
+  if prefs.show == "always" and not REST_MODES[prefs.rest] then prefs.rest = RestCarried(prefs) end
+  prefs.show = mode
+  if prefs.rest == RestCarried(prefs) then prefs.rest = nil end
+  Refresh()
+end
+
+-- Stays, under With no mail (MB.REST_MODES; RestMode). Stored as nothing
+-- while the saved Full size for would read the same, as a reset leaves it.
+function MB.GetRest() return RestMode() end
+
+function MB.SetRest(mode)
+  if not REST_MODES[mode] then return end
+  local prefs = Settings()
+  if mode == RestCarried(prefs) then prefs.rest = nil else prefs.rest = mode end
   Refresh()
 end
 
